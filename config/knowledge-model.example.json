@@ -1,0 +1,7 @@
+{
+  "expectedRevision": 0,
+  "enabled": false,
+  "model": {"name": "Qwen/Qwen3.5-9B", "baseUrl": "http://127.0.0.1:8000/v1"},
+  "maxPerDay": 2,
+  "maxLifetime": 20
+}
