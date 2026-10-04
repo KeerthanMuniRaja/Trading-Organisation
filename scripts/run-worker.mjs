@@ -1,0 +1,22 @@
+import { spawn } from 'node:child_process';
+
+const role = process.argv[2];
+if(!['researcher','evaluator','coordinator'].includes(role)) throw new Error('Choose researcher, evaluator, or coordinator');
+const principals = JSON.parse(process.env.PRINCIPALS_JSON ?? '[]');
+const credential = principals.find(p=>p.role === role);
+if(!credential) throw new Error(`Configure a dedicated ${role} principal first`);
+const env = Object.fromEntries(['PATH','Path','SystemRoot','SYSTEMROOT','TEMP','TMP'].filter(k=>process.env[k]).map(k=>[k,process.env[k]]));
+Object.assign(env,{API_URL:process.env.API_URL ?? 'http://127.0.0.1:3000',API_TOKEN:credential.token,PYTHONIOENCODING:'utf-8'});
+const engine = process.env.RESEARCH_ENGINE ?? 'deterministic';
+if(!['deterministic','hermes'].includes(engine)) throw new Error('Unknown research engine');
+const hermes = role==='researcher' && engine==='hermes';
+if(role==='coordinator'&&process.env.RUFLO_STATE_DIR)env.RUFLO_STATE_DIR=process.env.RUFLO_STATE_DIR;
+if(hermes)for(const name of ['HERMES_ENABLED','HERMES_SOURCE_PATH','HERMES_PYTHON','HERMES_MODEL','HERMES_MODEL_BASE_URL','HERMES_MODEL_API_KEY'])if(process.env[name])env[name]=process.env[name];
+const script=role==='coordinator'?'integrations/ruflo/worker.mjs':hermes?'integrations/hermes/worker.py':'services/research/worker.py';
+const executable=role==='coordinator'?process.execPath:process.env.PYTHON_BIN??(process.platform==='win32'?'python':'python3');
+const args=[script,...(role==='coordinator'?[]:['--role',role]),...process.argv.slice(3)];
+const child=spawn(executable,args,{env,stdio:'inherit',shell:false,windowsHide:true});
+child.once('error',()=>{console.error('Worker failed to start; verify its runtime and configuration');process.exitCode=1;});
+child.once('exit',code=>{process.exitCode=code??1;});
+process.once('SIGINT',()=>child.kill('SIGINT'));
+process.once('SIGTERM',()=>child.kill('SIGTERM'));

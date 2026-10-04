@@ -1,0 +1,20 @@
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { existsSync } from 'node:fs';
+
+const args=process.argv.slice(2);
+if(args.length!==0&&(args.length!==2||args[0]!=='--minutes'||!/^\d{1,3}$/.test(args[1])||Number(args[1])>360))throw new Error('Use --minutes 0..360, or omit it for one cycle');
+const minutes=args.length?Number(args[1]):0;
+const root=fileURLToPath(new URL('../',import.meta.url));
+const credential=JSON.parse(process.env.PRINCIPALS_JSON??'[]').find(p=>p.role==='evaluator');
+if(!credential)throw new Error('Configure a dedicated evaluator credential');
+const localPython=join(root,'integrations','skfolio','.venv',process.platform==='win32'?'Scripts/python.exe':'bin/python');
+const python=process.env.PYTHON_BIN??(existsSync(localPython)?localPython:(process.platform==='win32'?'python':'python3'));
+const env=Object.fromEntries(['PATH','Path','SystemRoot','SYSTEMROOT','TEMP','TMP'].filter(k=>process.env[k]).map(k=>[k,process.env[k]]));
+Object.assign(env,{API_URL:process.env.API_URL??'http://127.0.0.1:3000',API_TOKEN:credential.token,PYTHONIOENCODING:'utf-8',PYTHONNOUSERSITE:'1'});
+const child=spawn(python,['services/research/lifecycle_worker.py',...args],{cwd:root,env,windowsHide:true,stdio:'inherit',shell:false});
+const timer=setTimeout(()=>{console.error('Lifecycle worker reached its session deadline');child.kill();},minutes*60_000+25_000);
+child.on('error',error=>{clearTimeout(timer);console.error(error.message);process.exitCode=1;});
+child.on('exit',code=>{clearTimeout(timer);process.exitCode=code??1;});
+for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>child.kill());
