@@ -1,0 +1,12 @@
+{
+  "repository": "https://github.com/NousResearch/hermes-agent",
+  "release": "v2026.9.24",
+  "version": "0.21.5",
+  "revision": "f97608f178d1ffeca59860195ab7da295f7c8e5f",
+  "license": "MIT",
+  "reviewedOn": "2026-10-03",
+  "python": ">=3.11,<3.14",
+  "interface": "run_agent.AIAgent.run_conversation",
+  "scope": "research candidate selection; no enabled tools",
+  "validation": "pinned source and documentation reviewed; local contract tests; provider inference not yet exercised"
+}
