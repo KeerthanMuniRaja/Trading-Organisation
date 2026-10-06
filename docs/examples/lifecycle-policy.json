@@ -1,0 +1,15 @@
+{
+  "expectedRevision": 0,
+  "rules": {
+    "enabled": false,
+    "maxActiveBots": 4,
+    "maxBirthsPerDay": 2,
+    "maxLifetimeBots": 20,
+    "minWindows": 3,
+    "reviewsBeforeRetirement": 3,
+    "mentorReviews": 3,
+    "positiveRewardBps": 50,
+    "negativeRewardBps": -50,
+    "cycleSeconds": 60
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "expectedRevision": 0,
+  "enabled": false,
+  "modelId": "factual-memory-v1",
+  "maxPerDay": 12,
+  "maxLifetime": 100
+}

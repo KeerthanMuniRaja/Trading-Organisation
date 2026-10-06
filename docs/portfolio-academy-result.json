@@ -1,0 +1,83 @@
+{
+  "planId": "d18c0e877021043ac41dc5856d7e318d871d83cebeb30f27065132443bf56762",
+  "updatedAt": "2026-10-04T01:59:36.025181+00:00",
+  "status": "completed",
+  "expectedTrials": 108,
+  "completedTrials": 108,
+  "attempts": 108,
+  "failedAttempts": 0,
+  "promotionAllowed": false,
+  "metadata": {
+    "config": {
+      "trainBars": 252,
+      "testBars": 63,
+      "priceBars": 2521,
+      "costBps": 15,
+      "weightCap": 0.25,
+      "maxAttempts": 2,
+      "methods": [
+        "equal_weight",
+        "inverse_volatility",
+        "minimum_variance"
+      ],
+      "purpose": "example-data-testing-only"
+    },
+    "dataset": "skfolio bundled S&P500 selected-20 example",
+    "usage": "testing and examples only; stale selected universe, not investment evidence",
+    "firstReturnDate": "2012-12-26 00:00:00",
+    "lastReturnDate": "2022-12-28 00:00:00",
+    "assets": [
+      "AAPL",
+      "AMD",
+      "BAC",
+      "BBY",
+      "CVX",
+      "GE",
+      "HD",
+      "JNJ",
+      "JPM",
+      "KO",
+      "LLY",
+      "MRK",
+      "MSFT",
+      "PEP",
+      "PFE",
+      "PG",
+      "RRC",
+      "UNH",
+      "WMT",
+      "XOM"
+    ],
+    "dataDigest": "441281b13d510edcd10fd2dd727a50034f98408331929fb9a4dac64fe6f62ca9",
+    "codeDigest": "88f301a48e8ef444b96bacd3b1ee116d742a185d10c4b8d7a4c2887409cd8baa",
+    "dependencyDigest": "215c10073a2cc9055b18cbc18fb2f95851268ba60e89b9bd1596ee9d9e02f3dc"
+  },
+  "summary": [
+    {
+      "method": "equal_weight",
+      "windows": 36,
+      "positiveRewards": 0,
+      "negativeRewards": 0,
+      "meanRewardBps": 0.0
+    },
+    {
+      "method": "inverse_volatility",
+      "windows": 36,
+      "positiveRewards": 19,
+      "negativeRewards": 17,
+      "meanRewardBps": 14.979573126986244
+    },
+    {
+      "method": "minimum_variance",
+      "windows": 36,
+      "positiveRewards": 18,
+      "negativeRewards": 18,
+      "meanRewardBps": -35.668250112764156
+    }
+  ],
+  "verification": {
+    "academyTestsPassed": 9,
+    "rerunNewAttempts": 0,
+    "pipCheck": "passed"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "status": "passed",
+  "phase": "complete",
+  "packageVersion": "3.51.1",
+  "checks": [
+    "actual MCP create/status/complete",
+    "real backend HTTP feed",
+    "restart without duplicate task",
+    "owner failure/recovery inbox",
+    "coordinator wallet access denied",
+    "zero financial transactions"
+  ],
+  "note": "Synthetic integration fixture; does not validate a trading strategy or model.",
+  "checkedAt": "2026-10-04T01:29:54.563Z",
+  "executedBy": "Owner in normal Windows terminal",
+  "independentlyInspected": [
+    "one completed upstream task",
+    "create_requested / created / completion_requested / completed journal sequence",
+    "application-owned completion result"
+  ]
+}

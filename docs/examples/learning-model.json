@@ -1,0 +1,5 @@
+{
+  "id": "factual-memory-v1",
+  "name": "Factual research memory compiler",
+  "engine": "factual-reflection-v1"
+}

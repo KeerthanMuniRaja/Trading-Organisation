@@ -1,0 +1,11 @@
+{
+  "requestId": "RECOMMENDED_REQUEST_UUID",
+  "botId": "MANAGED_COLLEGE_BOT_ID",
+  "operationalDefinition": "Describe the fixed portfolio-method diagnostic and how its measured outcome relates to the proposed hypothesis.",
+  "datasetIds": ["FIRST_DATASET_UUID", "SECOND_DATASET_UUID", "THIRD_DATASET_UUID"],
+  "thresholds": {
+    "minMeanRewardBps": 0,
+    "maxDrawdownBps": 1000,
+    "minPositiveWindows": 2
+  }
+}

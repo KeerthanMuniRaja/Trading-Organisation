@@ -1,0 +1,9 @@
+{
+  "expectedRevision": 0,
+  "rules": {
+    "enabled": false,
+    "maxAssignmentsPerDay": 12,
+    "maxLifetimeAssignments": 100,
+    "datasetIds": []
+  }
+}
