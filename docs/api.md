@@ -1,5 +1,14 @@
 # API contract and roles
 
+## Inference usage — migration 022
+
+- `POST /v1/development/inference-reports` (assigned researcher, idempotency key) records one immutable outcome for a model ticket: `{requestId,outcome,failureCode?,engine,promptVersion,latencyMs?,promptTokens?,completionTokens?,reportedModel?}`.
+- `GET /v1/development/inference-usage` (owner/evaluator) returns the rolling 24-hour charge against `maxTokensPerDay`, per-kind and per-model statistics, and recent reports.
+- The development policy accepts an optional `maxTokensPerDay`; when omitted, the current ceiling is kept.
+- Assessment work responses now include `inferenceRequestId`.
+
+See [model readiness](model-readiness.md).
+
 ## Learning workflow API — migration 021
 
 POST `/v1/learning/workflows` (owner) freezes a programme. `/progress` is read-only for owner/assigned participants; `/links` binds exact stage records for the assigned worker; `/cancellations` records owner cancellation of progression. Mutation routes require idempotency keys. See [workflow contracts and cancellation limits](learning-workflows.md).
@@ -21,7 +30,7 @@ The `/v1/learning/knowledge/` request, preflight, proposal, review and graph rou
 
 GET `/v1/skills/experiments/research-approvals` is owner/evaluator read-only. Owner POSTs to that route and its `/revocations` subroute require idempotency keys. They bind a passing independent paired review to exact hashes, expiry and immutable withdrawal. See [contract](research-approvals.md). No execution, deployment or financial authority is created.
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 ## Execution observations — migration 015
 
@@ -147,5 +156,10 @@ Endpoints have bounded lists rather than pagination. External reporting, long-hi
 
 - `POST /v1/sources/observations`: researcher/market; idempotency key required. Immutable collector-submitted snapshot, unverified evidence, approved HTTPS origin, first backend observation time.
 - `POST /v1/sources/observations/query`: owner/researcher/evaluator; source ID and optional evidence status; newest 50 with truncation flag.
+- `POST /v1/sources/observations/review-queue`: owner/evaluator; optional source ID, `after` observation UUID, `limit` 1–50 and `includeBlocked`. Oldest pending source observations across publishers with a stable cursor and review blockers. Read-only; no idempotency key required.
+- `POST /v1/learning/knowledge/discover`: owner/researcher/evaluator; active `botId`, `query` (3–200 characters), optional `limit` (1–20). Returns ranked currently reviewed cross-bot lessons and up to five suggested IDs. Read-only, no inference or idempotency key; [details](knowledge-discovery.md).
 
 Existing evidence review/revocation and lesson review routes govern downstream use. No external URL is fetched by these routes. See [contracts and batch commands](source-observations.md). Migration 019 required.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

@@ -27,7 +27,7 @@ Rebuild and restart through migration **021**. Use an already reviewed observati
 }
 ```
 
-```powershell
+```cmd
 npm run learning:workflow -- create workflow.json
 ```
 
@@ -39,7 +39,7 @@ There can be at most 10 new workflows per rolling day and 100 lifetime. A succes
 
 Use the returned workflow UUID. In separate normal terminals, run the researcher and evaluator as needed:
 
-```powershell
+```cmd
 npm run worker:knowledge -- workflow-run --workflow-id WORKFLOW-UUID --role researcher --cycles 20 --interval-seconds 15
 npm run worker:knowledge -- workflow-run --workflow-id WORKFLOW-UUID --role evaluator --cycles 20 --interval-seconds 15
 ```
@@ -54,7 +54,7 @@ The assigned evaluator handles workflow progression and assessment issuance/grad
 
 Create `workflow-ref.json` containing `{ "workflowId": "WORKFLOW-UUID" }`:
 
-```powershell
+```cmd
 npm run learning:workflow -- progress workflow-ref.json
 ```
 
@@ -62,7 +62,7 @@ Owner progress is read-only and never returns an executable action. Assigned wor
 
 For cancellation, provide `{ "workflowId": "WORKFLOW-UUID", "reason": "Owner's reason" }` in a separate file:
 
-```powershell
+```cmd
 npm run learning:workflow -- cancel cancellation.json
 ```
 
@@ -92,4 +92,7 @@ Existing source/knowledge/assessment routes remain the only creators and reviewe
 
 Backend tests exercise the complete source-to-assessment sequence, separate reviews, identity binding, substitution rejection, immutable links, halt, revocation, policy change and cancellation. Python tests check no-model waiting, stable recovery keys, stage dispatch and bounded polling. The actual HTTP fixture runs researcher/evaluator Python stages and injects lost acknowledgements, including an assessment-link response.
 
-The remaining orchestration work includes source discovery/collection, qualified reviewer reasoning, recipient relevance selection, durable distributed inference leases, workflow queues, richer owner reports and operational deployment. See AUTO-01 in the [remaining-work assessment](remaining-work-assessment.md).
+Finite publisher/Vibe collection and reviewed keyword lesson discovery now exist separately. Remaining orchestration work includes connecting these tools to workflow queues, qualified reviewer reasoning, recipient relevance selection, durable distributed inference leases, richer owner reports and operational deployment. See AUTO-01 in the [remaining-work assessment](remaining-work-assessment.md).
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

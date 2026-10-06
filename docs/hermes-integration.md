@@ -1,10 +1,10 @@
 # Hermes research integration
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
-Status: optional implemented adapter, with local contract tests. The default deterministic paper demonstration needs no Hermes installation or model credentials. No real model/provider call has been validated in this workspace. This is an explicitly bounded first integration, not a claim that Hermes has been trained into an advanced trader.
+Status: optional implemented adapter, with local contract tests. The default deterministic paper demonstration needs no Hermes installation or model credentials. A direct 2B model benchmark is saved locally, but qualification through this pinned Hermes path remains unverified. See [model strategy](model-strategy.md). This is an explicitly bounded first integration, not a claim that Hermes has been trained into an advanced trader.
 
-Version 0.1.7 extends the adapter/runner with an optional [capability-proposal task](learning-and-development.md#existing-model-rd-through-hermes), using the same pinned actual `AIAgent`. This changed source is unverified; earlier contract passes do not cover it. It receives approved temporal memory, returns a structured unverified hypothesis and uses a separate R&D budget/review path. It does not replace the existing momentum selector or enable tools.
+Version 0.1.7 extends the adapter/runner with an optional [capability-proposal task](learning-and-development.md#existing-model-rd-through-hermes), using the same pinned actual `AIAgent`. Current fixture tests cover the task contract; real model quality on this path remains unqualified. It receives approved temporal memory, returns a structured unverified hypothesis and uses a separate R&D budget/review path. It does not replace the existing momentum selector or enable tools.
 
 ## Role in this organisation
 
@@ -26,7 +26,7 @@ Install Hermes separately from this backend. Do not use a personal Hermes profil
 
 Example preparation commands, run deliberately in an appropriate development directory:
 
-```powershell
+```cmd
 git clone https://github.com/NousResearch/hermes-agent.git hermes-research-source
 git -C hermes-research-source checkout --detach f97608f178d1ffeca59860195ab7da295f7c8e5f
 uv sync --project hermes-research-source --frozen --python 3.12
@@ -51,7 +51,7 @@ Provide these values only to this optional worker process:
 
 From the project root:
 
-```powershell
+```cmd
 python integrations/hermes/worker.py --role researcher --once
 python -m unittest discover -s integrations/hermes -p "test_*.py" -v
 ```
@@ -72,6 +72,11 @@ Only the model key and necessary OS runtime settings reach the child environment
 
 ## Validation and remaining checks
 
+v0.1.29: prompts and token limits now live in `contracts.py`, with version hashes, loaded by exact path. Before activating inference, run [`model:doctor` and `model:benchmark`](model-readiness.md), then confirm with `model:benchmark -- --engine hermes`.
+
 The stdlib suite covers malformed/model-generated commands, non-finite JSON, duplicated keys, configuration failure, credential isolation, dirty/wrong source, unexpected tool injection, refused tool execution, subprocess deadlines, output bounds, holdout separation, deterministic scores, role separation and uncertain completion retries.
 
-Before enabling inference, run against the actual pinned installation and selected provider with a paper experiment. Verify successful completion, provider timeout, a malformed reply, blocked tools, and separate evaluator completion. Inspect the real process/network boundary. This external smoke test has not been run because Hermes and provider credentials are not provisioned here; unit/contract success does not establish provider compatibility.
+Before enabling inference, run against the actual pinned installation and selected provider with a paper experiment. Verify successful completion, provider timeout, a malformed reply, blocked tools, and separate evaluator completion. Inspect the real process/network boundary. Production qualification is not established by the saved direct-model reports or fixture tests. Constrained JSON is currently available in the direct benchmark only; the Hermes production path still needs equivalent implementation and validation. See [selection evidence](model-selection.md).
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

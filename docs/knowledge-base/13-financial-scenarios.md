@@ -1,6 +1,6 @@
 # Financial Scenarios and Acceptance Criteria
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](../current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](../current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 [Home](README.md) · [Wallet policy](12-wallet-and-treasury.md) · [Reconciliation template](templates/financial-reconciliation.md)
 
@@ -66,3 +66,6 @@ This is a reconciliation check, not the method for calculating profit. When posi
 For each case, capture the starting ledger, actor and permissions, policy version, input events, expected result, observed result, provider evidence, restart/retry behaviour, final reconciliation, and owner-notification state.
 
 Include adverse and concurrent cases before any live connection. Record failures as well as successes. The [financial reconciliation template](templates/financial-reconciliation.md) can be used for paper exercises first.
+
+<!-- documentation-navigation -->
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

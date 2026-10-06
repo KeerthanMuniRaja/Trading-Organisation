@@ -1,6 +1,6 @@
 # Financial model
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 All values in the API are integer **paise encoded as strings**. TypeScript uses `bigint` for money. The database stores signed, balanced double-entry postings. This version models internal accounts; it does not connect to SBI, a broker, an exchange or a blockchain wallet.
 
@@ -44,3 +44,6 @@ Source references prevent duplicate deposits/fills/allocations under different r
 There is no automatic bank top-up, borrowing, margin, short selling, or spend to a target balance. Wallet 1 is an upper bound on operational capital, not an instruction to consume everything. Profit retention does not automatically increase bot budgets.
 
 This ledger assumes one base currency and synthetic settlement. Tax accruals, broker-specific settlement, corporate actions, FX, funding costs, externally verified deposit/fill receipts, custody reconciliation and reversals require further design before live use. P/A history must be backed up with journals and pending obligations together; restoring only wallet totals would be unsafe.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

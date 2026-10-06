@@ -68,7 +68,9 @@ class AdapterTests(unittest.TestCase):
             seen.update(kwargs)
             self.assertEqual(command[1], "-I")
             self.assertNotIn("API_TOKEN", kwargs["env"])
-            self.assertEqual(set(json.loads(kwargs["input"])), {"source", "model", "baseUrl", "trials"})
+            self.assertEqual(set(json.loads(kwargs["input"])), {"source", "model", "baseUrl", "trials", "timeoutSeconds"})
+            self.assertEqual(json.loads(kwargs["input"])["timeoutSeconds"], 70)
+            self.assertEqual(kwargs["env"]["HERMES_API_CALL_TIMEOUT"], "40")
             kwargs["stdout"].write(b'{"kind":"momentum","lookback":7}')
             return subprocess.CompletedProcess(command, 0)
 
@@ -76,6 +78,30 @@ class AdapterTests(unittest.TestCase):
             self.assertEqual(adapter.propose(settings(), trials()), {"kind": "momentum", "lookback": 7})
         self.assertFalse(seen["shell"])
         self.assertEqual(seen["timeout"], 70)
+
+    def test_configured_timeout_is_capped_by_each_ticket_lifetime(self):
+        seen = []
+
+        def run(command, **kwargs):
+            seen.append((json.loads(kwargs["input"])["timeoutSeconds"], kwargs["timeout"], kwargs["env"]["HERMES_API_CALL_TIMEOUT"]))
+            kwargs["stdout"].write(b'{"kind":"momentum","lookback":7}')
+            return subprocess.CompletedProcess(command, 0)
+
+        slow = adapter.Settings(Path("/reviewed/hermes"), Path(sys.executable), "m", "http://127.0.0.1:8080/v1", "k", 300)
+        with patch.object(adapter, "verify_checkout"), patch.object(adapter.subprocess, "run", side_effect=run):
+            adapter.propose(slow, trials())
+            for task in ("capability", "knowledge"):
+                with self.assertRaises(adapter.HermesError):  # the stub output is not a valid plan; only budgets matter here
+                    adapter.invoke(slow, {"task": task, "context": {}}, lambda value: (_ for _ in ()).throw(adapter.HermesError("x")))
+        # The momentum lease keeps 70 s; R&D tickets cap at 150 s; knowledge tasks use the configured 300 s.
+        self.assertEqual(seen, [(70, 70, "40"), (150, 150, "120"), (300, 300, "270")])
+        base = dict(HERMES_ENABLED="true", HERMES_SOURCE_PATH="source", HERMES_PYTHON=sys.executable, HERMES_MODEL="m",
+                    HERMES_MODEL_BASE_URL="http://127.0.0.1:8080/v1", HERMES_MODEL_API_KEY="k")
+        self.assertEqual(adapter.Settings.from_env(base).timeout_seconds, 70)
+        self.assertEqual(adapter.Settings.from_env({**base, "HERMES_TIMEOUT_SECONDS": "540"}).timeout_seconds, 540)
+        for bad in ("69", "541", "1e3", "-5", ""):
+            with self.assertRaises(adapter.HermesError):
+                adapter.Settings.from_env({**base, "HERMES_TIMEOUT_SECONDS": bad})
 
     def test_provider_timeout_and_oversized_output_fail_closed(self):
         def too_large(command, **kwargs):

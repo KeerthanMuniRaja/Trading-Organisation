@@ -15,6 +15,23 @@ export function validateBatch(value){
     return Object.fromEntries(fields.map(k=>[k,row[k]]));
   });
 }
+/** Operator-supplied publisher origin -> backend source ID mappings. Mapping does not approve a source. */
+export function parseSourceMappings(policy){
+  if(!policy||!Array.isArray(policy.sources)||policy.sources.length>100)throw new Error('Explicit source mappings required');
+  const sources=new Map();
+  for(const entry of policy.sources){
+    if(!entry||typeof entry.origin!=='string'||typeof entry.sourceId!=='string'||
+      !/^[a-zA-Z0-9_-]{1,80}$/.test(entry.sourceId))throw new Error('Invalid source mapping');
+    const origin=new URL(entry.origin);
+    if(origin.protocol!=='https:'||origin.username||origin.password||origin.search||
+      origin.hash||origin.pathname!=='/'||sources.has(origin.origin))
+      throw new Error('Source mappings require unique HTTPS origins');
+    sources.set(origin.origin,entry.sourceId);
+  }
+  return sources;
+}
+/** Same derivation as the importer's idempotency key, so local checkpoints and backend retries agree. */
+export const observationKey=row=>'observation-'+createHash('sha256').update(JSON.stringify(row)).digest('hex');
 export async function importBatch(value,env=process.env,transport=fetch){
   const rows=validateBatch(value),base=new URL(env.API_URL??'http://127.0.0.1:3000');
   if(base.username||base.password||base.search||base.hash||base.pathname!=='/'||
@@ -23,14 +40,14 @@ export async function importBatch(value,env=process.env,transport=fetch){
   if(principals.length!==1||typeof principals[0].token!=='string'||!principals[0].token)throw new Error('Configure exactly one researcher credential');
   const results=[];
   for(const [index,row] of rows.entries()){
-    const body=JSON.stringify(row),key='observation-'+createHash('sha256').update(body).digest('hex');
+    const body=JSON.stringify(row),key=observationKey(row);
     try{
       const response=await transport(new URL('/v1/sources/observations',base),{method:'POST',redirect:'error',signal:AbortSignal.timeout(10000),
         headers:{Authorization:'Bearer '+principals[0].token,'Content-Type':'application/json','Idempotency-Key':key},body});
       if(!response.ok)throw new Error('HTTP '+response.status);
       const result=await response.json();
       if(typeof result.id!=='string')throw new Error('Invalid acknowledgement');
-      results.push({id:result.id,status:result.status});
+      results.push({id:result.id,status:result.status,duplicate:result.duplicate===true});
     }catch{
       throw new Error(`Observation ${index+1} was not acknowledged; ${results.length} prior acknowledgements. Rerun the unchanged file to recover safely.`);
     }

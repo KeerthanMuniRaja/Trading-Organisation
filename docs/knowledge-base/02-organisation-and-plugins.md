@@ -1,6 +1,6 @@
 # Organisation and Plugins
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](../current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](../current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 [Home](README.md) · [Knowledge graph](03-knowledge-graph.md) · [Learning](05-learning-and-evaluation.md)
 
@@ -87,3 +87,6 @@ Financial authority is enforced by controlled services, account configuration, a
 The distribution service may send the prescribed amount to the configured Wallet 2 destination, but it has no authority to spend from Wallet 2. Owner transfer approval is a separate flow.
 
 See the [wallet policy](12-wallet-and-treasury.md).
+
+<!-- documentation-navigation -->
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

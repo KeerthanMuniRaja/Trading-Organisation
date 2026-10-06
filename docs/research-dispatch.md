@@ -1,6 +1,6 @@
 # Bounded research department
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 Version 0.1.5 connects the managed student lifecycle to the existing skfolio portfolio backend. This source increment has not been built or run. It follows our organisation's admission, education, evaluation and retirement model. Hermes and Ruflo retain their existing optional roles; this department uses deterministic skfolio methods without a hosted model or model credits.
 
@@ -59,7 +59,7 @@ Apply it with `npm run lifecycle:admin -- dispatch-policy .local/dispatch-policy
 
 For one cycle in separate terminals:
 
-```powershell
+```cmd
 npm run worker:department -- evaluator
 npm run worker:department -- researcher
 ```
@@ -68,7 +68,7 @@ Run the evaluator again to review a submitted trial. School-to-college admission
 
 For a finite continuous session, start these in separate terminals:
 
-```powershell
+```cmd
 npm run worker:department -- evaluator --minutes 30
 npm run worker:department -- researcher --minutes 30
 ```
@@ -95,3 +95,6 @@ All mutation routes require an `Idempotency-Key`. `/portfolio/trials` accepts `a
 ## Verification status
 
 Four backend dispatch regression cases were added; lifecycle fixtures now use assignments. A bridge regression case covers fit reuse across changed leases. These tests, compilation, migration and worker execution are **not run**, following the owner's instruction to execute commands themselves. Earlier v0.1.3 build confirmation does not verify v0.1.4 or v0.1.5.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

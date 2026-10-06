@@ -1,8 +1,16 @@
 # Remaining work to build the self-growing trading organisation
 
 **Assessment date:** 6 October 2026  
-**Codebase:** v0.1.25, migrations 001–019  
+**Original codebase snapshot:** v0.1.25, migrations 001–019; updates through v0.1.32 / migration 022 follow.
 **Purpose:** turn the owner's original vision into an implementation-backed completion plan.
+
+**Development update, v0.1.32:** Corrected benchmark pairing and coverage, effective Hermes timeouts and feed failure/304 recovery. Local model artifacts and a direct 2B report now exist, superseding older no-inference statements. The 2B run failed source-learning and numerical tasks; Newer direct constrained 4B results pass the tested schemas but still fail drawdown. Constrained 4B is the preferred experimental profile; production Hermes remains unqualified. See [selection evidence](model-selection.md). AI-01 stays open for production Hermes/task qualification. Read [model strategy](model-strategy.md) for shared inference, memory constraints and role-specific growth. No autonomous retraining, release, live funds or new departments were activated.
+
+**Development update, v0.1.30:** Per-request inference reports and an owner token ceiling (migration 022) cover AI-01's usage-recording and spend-ceiling evidence at token level, and gap 12's request-kind reporting. Production token counts, monetary budgets and a real endpoint remain open.
+
+**Development update, v0.1.29:** [Model readiness](model-readiness.md) adds AI-01 pre-activation tooling: versioned prompt contracts, an endpoint doctor and a budgeted task benchmark that records validity, latency, tokens and a paired with/without-lessons assessment comparison. AI-01 remains open until a real endpoint completes these contracts and usage is recorded per backend request.
+
+**Development update, v0.1.28:** [Publisher feed intake](publisher-feeds.md) implements DATA-01's generic adapter: bounded fetch, checkpoint/cursor, backoff, size/time limits, refused redirects, replay-safe resubmission, corrections as new revisions and source-withdrawal handling, verified against a synthetic loopback publisher and real in-memory backend. DATA-01 stays partial until an owner-selected publisher and its access terms are exercised on a real feed.
 
 **Development update, v0.1.27:** [Bounded learning workflows](learning-workflows.md) now connect source proposals, transfer, assessment issuance/answers/grading with owner-selected participants and durable links. AUTO-01 remains partial: review judgement, discovery, recipient selection, distributed leases and persistent organisation-wide scheduling remain outstanding. The v0.1.25 inventory below is historical.
 
@@ -230,3 +238,6 @@ These do not all block the next development step, and no answer is requested by 
 Start with **AI-01 + DATA-01**, then **DATA-02 + minimal KG-01**, then **AUTO-01 + LEARN-01**. Use a small team with one analyst, one independent evaluator and a receiving specialist; do not spawn a large population before their work creates measurable value.
 
 The next meaningful demonstration should show a bot receiving new external evidence, forming a reviewed lesson, teaching another bot, and being evaluated on a fresh task—with actual inference, lineage and cost records. That is the shortest path from today's governed research backend toward the self-developing organisation you described.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

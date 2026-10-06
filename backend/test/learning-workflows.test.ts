@@ -85,3 +85,21 @@ test('workflow HTTP routes restrict creation and return no action to the wrong r
     assert.equal((await post('researcher','/cancellations',{workflowId,reason:'Stop'})).status,403);
   }finally{if(app)await app.close();await f.db.close();}
 });
+
+test('a methods workflow issues method assessments and rejects a basics assessment link',async()=>{
+  const f=await setup();try{
+    const {workflowId}=await f.w.register(owner,key(),{...f.input,assessmentRubric:'research-methods-v1'}),ref={workflowId};
+    const t=await sourceStage(f,workflowId);await f.s.review(evaluator,key(),{requestId:t.id,decision:'accepted',reason:'Bounded source lesson'});
+    let p=await f.w.progress(researcher,ref);
+    const kt=await f.k.request(researcher,p.action!.requestKey,p.action!.body);
+    await f.k.submit(researcher,key(),{requestId:kt.id,contextHash:kt.contextHash,proposal:{summary:'Apply cost lesson',application:'Subtract stated costs',lessonIds:p.action!.body.lessonIds,checks:['Verify net results'],risks:['Source may not generalise']}});
+    await f.w.attach(researcher,key(),{workflowId,step:'transfer',referenceId:kt.id});
+    await f.k.review(evaluator,key(),{requestId:kt.id,decision:'accepted',reason:'Test the cited plan'});
+    p=await f.w.progress(evaluator,ref);assert.equal(p.state,'assessment-create');
+    assert.deepEqual(p.action!.body,{requestId:kt.id,rubric:'research-methods-v1'});
+    // A basics assessment for the same transfer cannot be attached to a methods workflow.
+    const basics=await f.a.create(evaluator,key(),{requestId:kt.id});
+    await assert.rejects(async()=>f.w.attach(evaluator,key(),{workflowId,step:'assessment',referenceId:basics.assessmentId}),/does not match/);
+    await assert.rejects(async()=>f.w.register(owner,key(),{...f.input,assessmentRubric:'research-guessing-v1'}),/Invalid request/);
+  }finally{await f.db.close();}
+});

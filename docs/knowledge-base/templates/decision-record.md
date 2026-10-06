@@ -1,6 +1,6 @@
 # Decision Record Template
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](../../current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](../../current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 [Home](../README.md) · [Decision process](../04-research-and-decisions.md)
 
@@ -66,3 +66,6 @@ Status: template; no actual decision or trade recorded.
 - Outstanding financial policy questions:
 - Qualification, transfer, or recovery-verification references:
 - Owner notification and delivery state:
+
+<!-- documentation-navigation -->
+[Documentation index](../../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

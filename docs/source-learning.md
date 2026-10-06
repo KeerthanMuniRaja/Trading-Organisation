@@ -17,7 +17,7 @@ The worker does not fetch websites, approve its own output, update weights, sche
 
 Rebuild/restart the backend through migration **020**. Actual inference requires a configured Hermes environment and a matching enabled owner model profile. The provisional model has not been activated or benchmarked by this implementation.
 
-```powershell
+```cmd
 npm run worker:knowledge -- source-learn --bot-id mentor --evidence-id <reviewed-observation-evidence-id> --request-key source-lesson-001
 ```
 
@@ -33,7 +33,7 @@ Inspect `GET /v1/learning/sources` with an owner/evaluator credential to review 
 }
 ```
 
-```powershell
+```cmd
 npm run worker:knowledge -- source-review review.json
 ```
 
@@ -55,4 +55,7 @@ Text limits: lesson 500 characters, exact quote 10–500 characters, limitation 
 
 Backend tests cover citation fabrication, changed context/identity, dedicated review enforcement, rejected-lesson bypass, quota sharing, halt, source withdrawal, retired recipients, policy change, graph lineage and HTTP roles. Python tests cover the tool-disabled prompt contract and durable replay without duplicate inference. The HTTP fixture now starts with a synthetic article observation, generates a lesson through the actual Python worker with a deterministic stand-in, reviews it, transfers it to another bot and grades fresh tasks. It injects lost acknowledgements at all three submission stages.
 
-This completes a bounded extraction mechanism, not the full DATA-02 work package in the [remaining-work assessment](remaining-work-assessment.md): multi-source corroboration, entity/claim modelling, reliable automatic judgement, real inference validation and continuous orchestration remain outstanding.
+This completes a bounded extraction mechanism, not the full DATA-02 work package in the [remaining-work assessment](remaining-work-assessment.md): multi-source corroboration, entity/claim modelling, reliable automatic judgement, production Hermes qualification and continuous orchestration remain outstanding. Saved direct 4B source-lesson outputs passed their schemas, but this does not verify factual quality or the production learning path; see [model selection](model-selection.md).
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

@@ -1,50 +1,24 @@
 # Trading Organisation — backend foundation
 
-[Vibe-Trading news adapter](integrations/vibe-trading/README.md) now converts saved upstream news results into reviewed-source observation submissions. It includes offline preparation, explicit submission and provenance diagnostics; upstream runtime activation and automatic collection remain pending.
+Version **0.1.34** adds [method-based assessments](docs/assessment-methods.md): bots choose computations and the backend does the arithmetic. With directly relevant lessons, local Qwen3.5-4B chose correctly 96% of the time vs 77% without. In the real chain, one news-derived lesson was not enough (8/16), so learning from real sources is not yet demonstrated.
 
-Version **0.1.27** adds [bounded learning workflows](docs/learning-workflows.md): owner-defined programmes, role-specific next actions, durable stage links and finite polling. Rebuild/restart through migration **021**. Source and transfer judgements still require independent review.
+Version **0.1.33** runs the organisation's learning chain on a real local model. Qwen3.5-4B, schema-constrained through the new owner-selectable `direct-structured-v1` engine, completed source lesson → review → transfer → fresh assessment end to end (`npm run verify:real-model`). The bot scored 6/16 on the assessment, and arithmetic remains its weakness. See [model selection](docs/model-selection.md).
 
-The preceding source-learning increment adds [article-to-lesson proposals](docs/source-learning.md), independent review and source-to-bot graph lineage. Actual model inference remains unverified.
+Version **0.1.32** builds our owner-controlled bot organisation: NestJS/TypeScript authority, Python research, specialised bot identities, an academy, reviewed shared knowledge, finite learning workflows and paper trading. **All money, quotes, fills and bank references are simulated.** APP_MODE=live is rejected.
 
-[Remaining work to achieve the full organisation](docs/remaining-work-assessment.md) — implementation-backed assessment, priorities, dependencies and completion gates (6 October 2026).
+This release fixes benchmark pairing, Hermes timeout handling and publisher crash recovery. [Current status](docs/current-status.md) separates implemented behaviour from remaining work; [verification](docs/verification.md) records the checks.
 
-The learning workflow tests accepted transfer plans on fresh synthetic tasks and returns independently graded feedback to future bot context. [Source observations](docs/source-observations.md) add article provenance, immutable revisions and a bounded batch importer. Automatic feed retrieval, model execution, causal improvement and live-market competence remain unverified or unfinished.
+The preferred experimental local reasoning profile is **Qwen3.5-4B Q4_K_M**, shared across bots with distinct contexts. The saved 2B benchmark failed important tasks, so it is not qualified as the general reasoning model. Newer constrained direct 4B reports pass the tested output schemas but do not qualify production Hermes or numerical accuracy. See [model evidence](docs/model-selection.md), the [model strategy and organisation graph](docs/model-strategy.md), [local runtime](docs/local-model.md) and [ten-repository reference map](docs/reference-map.md). The example policy stays disabled.
 
-The main development focus is now [bot reasoning, knowledge graphs and cross-bot learning](docs/bot-knowledge.md). The first workflow connects reviewed lessons and experience to Hermes-generated application plans and independent evaluation; actual model inference and measured skill improvement remain unverified.
+The bot community grows through reviewed knowledge and measured skills, with preserved experience on retirement. Continuous autonomous growth, general self-repair, model fine-tuning and profitable live trading are not complete. [Remaining work](docs/remaining-work-assessment.md) tracks those gaps.
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](docs/current-status.md). Dated milestones and design proposals retain their original scope.
-
-**Continuing in another account or chat?** Start with [KT.md](KT.md), then use the [resume prompt](RESUME-PROMPT.md). They preserve owner requirements, implementation context, unverified work and terminal-execution preferences.
-
-Version 0.1.27 extends our trading organisation backend: an owner-controlled NestJS/TypeScript core, Python research, an academy with independent evaluation, reviewed shared knowledge, registered R&D experiments, monitored department supervisors, paper execution, and your two-wallet financial rules. **All money, quotes, fills and bank references are simulated.** `APP_MODE=live` is rejected. Current tests and integration results are in the [verification record](docs/verification.md); persistent activation and model inference remain pending.
-
-Owner [research approvals](docs/research-approvals.md) now record a specific independently evaluated candidate, with bounded expiry and permanent revocation. This is governance for further research, not execution or deployment authority. Rebuild/restart through migration **016** for these routes.
-
-The [artifact runner](docs/artifact-execution.md) supports reviewed local source and a Docker Linux adapter whose live validation remains deferred. Backend execution reports, durable outbox delivery, read-only journal inspection and bounded saved-submission recovery are implemented. See [current status](docs/current-status.md) and the [recovery guide](docs/artifact-recovery.md). Synthetic comparisons do not deploy versions or establish learned trading ability.
-
-New [paired academy experiments](docs/skill-experiments.md) compare baseline and candidate declarations on identical cases under pre-registered criteria, with independent review and retained incomplete/failure history. Results cannot approve or deploy versions. Rebuild/restart through migration **015** before using these routes; `npm run verify:paired-skills` tests actual Python-to-HTTP transport in a temporary fixture.
-
-The new [exam diagnostics](docs/skill-diagnostics.md) bind declared worker fingerprints before questions, preserve observed failure patterns, and produce corrective lessons through separate proposal/review roles. Version comparisons report complete outcome counts but cannot approve upgrades from unpaired random exams. Updated departments require a backend rebuilt/restarted through migration **013**.
-
-The new [school recovery workflow](docs/skill-recovery.md) lets the owner approve one extra exam after three consumed attempts, a graded failure and a newly reviewed corrective lesson. Approval is revocable, expires after seven days and preserves all counters/history. It does not grant trading authority or change model code. Rebuild/restart through migration **012** before using recovery routes.
-
-The new [research-basics exam](docs/academy-skills.md) can require a managed school student to demonstrate cost calculations, drawdown, data timing and abstention before college admission. A separate evaluator requests backend grading; attempts and failures are preserved. The gate defaults off and gives no trading authority. Updated Python departments require a current backend with migration **011** before launch.
-
-`npm run verify:organisation` repeats the integrated starter/research/memory/supervisor check using fresh ephemeral credentials and an in-memory database. It does not load `.env` or alter the persistent community. See [organisation verification](docs/organisation-verification.md) for prerequisites, duration and scope.
-
-The latest [department monitoring](docs/department-monitoring.md) adds renewable supervisor sessions and owner-visible responding/degraded/stale/stopped states. Rebuild/restart before using updated launchers, because they now require the new worker-session routes and migration 010. Inspect with `npm run lifecycle:admin -- workers`. This guard covers the updated launchers, not every possible API client or operating-system process.
-
-To prepare that first community, `npm run organisation:prepare` exports a reviewable plan from the existing bundled skfolio examples. It makes no backend changes. The [starter guide](docs/organisation-starter.md) explains the separate explicit import and proposed activation steps for three students, nine windows and a bounded session. Preparation does not require a model provider.
-
-The new [registered experiment workflow](docs/development-experiments.md) fixes a proposal's datasets and diagnostic thresholds before work, waits for all planned results, and preserves positive and negative outcomes. It integrates with the existing evaluator loop and owner report; it does not automatically create a bot or deploy model-generated strategies. Inspect plans with `npm run lifecycle:admin -- experiments` after rebuilding/restarting. No new dependencies are needed.
-
-The long-term idea is retained in the [knowledge base](docs/knowledge-base/README.md). This README and [implementation roadmap](docs/roadmap.md) distinguish source implementation from that future design. The owner wants to reuse existing models and frameworks; a specific serving model/endpoint has not been chosen. The default workflow needs no model API.
+For continuity use [KT.md](KT.md) and [RESUME-PROMPT.md](RESUME-PROMPT.md).
 
 ## Run locally
 
 Use Node.js 24 and Python 3.12 or 3.13. Run these commands from this project directory. The default database is persistent PGlite in `.data/paper`; Docker is not needed.
 
-```powershell
+```cmd
 npm ci --ignore-scripts
 npm run dev:setup
 npm run build
@@ -55,9 +29,9 @@ npm start
 
 In a second terminal in the same project directory:
 
-```powershell
-# Set this only if Python is not already on PATH:
-# $env:PYTHON_BIN = 'C:\absolute\path\to\python.exe'
+```cmd
+REM Set this only if Python is not already on PATH:
+REM set "PYTHON_BIN=C:\absolute\path\to\python.exe"
 npm run demo
 ```
 
@@ -65,15 +39,17 @@ The demo performs a complete synthetic journey: register evidence → admit a di
 
 For ongoing research, start workers in separate terminals:
 
-```powershell
+```cmd
 npm run worker:research
 npm run worker:evaluation
-# Add -- --once to process at most one job and exit.
+REM Add -- --once to process at most one job and exit.
 ```
 
 These local launchers read the development configuration and pass each worker only its role token. Deployments must provision scoped secrets independently; the launchers are not an OS security boundary.
 
-## What is implemented
+## Earlier implementation milestones
+
+These version-specific descriptions are historical. For the current inventory and limits use [current status](docs/current-status.md).
 
 Version 0.1.7 adds [learning and R&D](docs/learning-and-development.md): immutable experience reflections, independent verification, temporally filtered shared memory, versioned reflection profiles and a finite two-role supervisor. `worker:organisation -- --minutes 30` runs the configured research/evaluation/memory workflow. An optional `worker:development` uses the existing pinned Hermes runtime and an owner-selected existing model to draft unverified research capabilities; independent review does not automatically recruit bots or deploy strategies. Both policies default off. Backend and mocked Python tests passed; actual model calls remain deferred.
 
@@ -103,6 +79,8 @@ This release learns through parameter experiments and reviewed reusable lessons.
 
 ## Read the design and contracts
 
+Start with the [complete documentation index](docs/documentation-index.md).
+
 - [Architecture and runtime knowledge graph](docs/architecture.md)
 - [Financial invariants and examples](docs/financial-model.md)
 - [API roles and request flow](docs/api.md)
@@ -113,7 +91,7 @@ This release learns through parameter experiments and reviewed reusable lessons.
 
 ## Tests
 
-```powershell
+```cmd
 npm test
 python -m unittest discover -s services/research -p "test_*.py" -v
 python -m unittest discover -s integrations/hermes -p "test_*.py" -v
@@ -131,3 +109,6 @@ The host run passed on 4 October 2026. This restricted execution environment sti
 Our core owns identities, capital, audit records, learning evidence, qualification and job state. Hermes and Ruflo have no authority to rewrite those rules. Both are optional, version-pinned integrations. The other repositories are architectural references or future candidate plugins, not bundled execution engines.
 
 Retain reviewed source, lockfiles, notices, dependency archives, model artifacts where permitted, and reproducible deployment images. This source ZIP excludes installed dependencies, credentials and databases: it is a development handoff, not an offline deployment image. GitHub disappearance would not erase a retained deployment, but initial installs, missing packages, model services, brokers and data providers remain separate availability dependencies.
+
+<!-- documentation-navigation -->
+[Documentation index](docs/documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

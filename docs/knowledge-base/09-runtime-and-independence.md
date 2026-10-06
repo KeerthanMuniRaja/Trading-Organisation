@@ -1,6 +1,6 @@
 # Runtime and Operational Independence
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](../current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](../current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 [Home](README.md) · [Repository map](07-repository-map.md) · [Recovery](10-autonomous-recovery-and-notifications.md)
 
@@ -67,3 +67,6 @@ The reviewed Hermes and Ruflo licence files use MIT terms. Required notices rema
 Sources: [Hermes licence](https://github.com/NousResearch/hermes-agent/blob/main/LICENSE), [Ruflo licence](https://github.com/ruvnet/ruflo/blob/main/LICENSE).
 
 Detailed repository observations, including the historical Ruflo audit and its recorded remediation, are in the [repository map](07-repository-map.md).
+
+<!-- documentation-navigation -->
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

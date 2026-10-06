@@ -14,10 +14,13 @@ Revocation input is `{approvalId, reason}`. Repeated identical revocation does n
 
 States are `approved-for-research`, `halted`, `unsupported`, `expired` and `revoked`. Revocation takes precedence. A halt temporarily blocks applicability; a changed policy revision makes the original approval unsupported. Expiry is evaluated at read time. Command replay returns its historical receipt; always read current status rather than treating an old receipt as renewed approval.
 
-```powershell
+```cmd
 npm run lifecycle:admin -- research-approvals
 npm run lifecycle:admin -- approve-research .local/research-approval.json
 npm run lifecycle:admin -- revoke-research .local/research-revocation.json
 ```
 
 Supply reviewed values in those files and rebuild/restart through migration 016. These commands are not run automatically. Withdrawal does not stop external processes or roll back deployed code; deployment/rollback management and independently trusted provenance remain future work. See [current status](current-status.md) and [verification](verification.md).
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

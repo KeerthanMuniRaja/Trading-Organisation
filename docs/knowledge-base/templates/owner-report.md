@@ -1,6 +1,6 @@
 # Owner Report Template
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](../../current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](../../current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 [Home](../README.md) · [Governance](../06-governance-and-capital.md)
 
@@ -53,6 +53,10 @@ Status: template; all figures are intentionally blank.
 - Incidents and containment:
 - Verified lessons and corrective tests:
 - Remaining operational concerns:
+- Model task validity versus independently measured correctness:
+- Pair coverage, failed calls and missing/estimated usage:
+- Inference memory/deadline pressure and affected task profiles:
+- Direct benchmark evidence versus production qualification:
 
 ## Owner attention
 
@@ -78,3 +82,6 @@ Use plain language in the report and link to detailed records. Do not present a 
 - Pending notifications or delivery problems:
 
 Financial figures should link to a [financial reconciliation record](financial-reconciliation.md). Transfers and contributions must not be reported as earnings.
+
+<!-- documentation-navigation -->
+[Documentation index](../../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

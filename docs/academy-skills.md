@@ -1,6 +1,6 @@
 # Research-basics examinations
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 Version 0.1.11 adds an optional practical assessment between school and college for managed research students. Earlier school admission verified curriculum references only. With the skill policy enabled, both automated lifecycle admission and the owner's school-completion endpoint require an independently graded pass under the current policy and curriculum.
 
@@ -33,7 +33,7 @@ The gate applies to **managed students still in school**. Enabling it does not r
 
 Researchers attempt at most one exam per department cycle, then proceed with normal learning and research work. Evaluators grade pending exams before lifecycle admission. The owner report includes `SKILL_ASSESSMENT_REQUIRED` when applicable. Inspect with:
 
-```powershell
+```cmd
 npm run lifecycle:admin -- skills
 ```
 
@@ -58,3 +58,6 @@ POST routes require idempotency keys. Replaying an old command returns its histo
 ## Validation
 
 Six backend cases cover known grading vectors, owner/role boundaries, both admission routes, answer immutability, independent evaluation, bounded attempts, expiration, policy changes, revocation and halt. Three Python cases check the independent solver and unsupported-rubric refusal. The organisation integration additionally enables this gate only in its fresh test database and requires three passed exams before reporting success. Current executed results are recorded in [verification](verification.md).
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

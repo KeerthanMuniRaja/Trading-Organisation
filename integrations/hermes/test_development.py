@@ -33,7 +33,7 @@ class DevelopmentTests(unittest.TestCase):
                   'expiresAt': (datetime.now(timezone.utc)+timedelta(seconds=180)).isoformat(),
                   'model': {'name': settings.model, 'baseUrl': settings.base_url, 'sourceRevision': adapter.PINNED_REVISION, 'engine': 'hermes-rd-v1'}}
         client = Mock(base='http://127.0.0.1:3000', token='researcher-token')
-        client.post.side_effect = [ticket, {'authorised': True}, TimeoutError('lost response')]
+        client.post.side_effect = [ticket, {'authorised': True}, {'recorded': True}, TimeoutError('lost response')]
         proposer = Mock(return_value=proposal())
         with tempfile.TemporaryDirectory() as directory:
             args = (client, settings, 'target', 'equal_weight', 'stable-request', Path(directory))
@@ -44,6 +44,9 @@ class DevelopmentTests(unittest.TestCase):
             development.run_once(*args, proposer=proposer)
             self.assertEqual(first, client.post.call_args)
             proposer.assert_called_once()
+            report = client.post.call_args_list[2]
+            self.assertEqual(report.args[0], '/v1/development/inference-reports')
+            self.assertEqual((report.args[1]['outcome'], report.args[1]['promptVersion']), ('completed', '788c3a60a187ca80'))
 
     def test_uncertain_inference_is_not_automatically_regenerated(self):
         settings = adapter.Settings(Path('/source'), Path('/python'), 'model', 'http://127.0.0.1:8000/v1', 'local-placeholder')
@@ -51,15 +54,18 @@ class DevelopmentTests(unittest.TestCase):
                   'expiresAt': (datetime.now(timezone.utc)+timedelta(seconds=180)).isoformat(),
                   'model': {'name': settings.model, 'baseUrl': settings.base_url, 'sourceRevision': adapter.PINNED_REVISION, 'engine': 'hermes-rd-v1'}}
         client = Mock(base='http://127.0.0.1:3000', token='researcher-token')
-        client.post.side_effect = [ticket, {'authorised': True}]
+        client.post.side_effect = [ticket, {'authorised': True}, {'recorded': True}]
         proposer = Mock(side_effect=RuntimeError('provider outcome unknown'))
         with tempfile.TemporaryDirectory() as directory:
             args = (client, settings, 'target', 'equal_weight', 'stable-request', Path(directory))
             with self.assertRaises(RuntimeError):
                 development.run_once(*args, proposer=proposer)
+            failed = client.post.call_args_list[2].args[1]
+            self.assertEqual((failed['outcome'], failed['failureCode']), ('failed', 'INFERENCE_FAILED'))
             with self.assertRaisesRegex(adapter.HermesError, 'uncertain'):
                 development.run_once(*args, proposer=proposer)
             proposer.assert_called_once()
+            self.assertEqual(client.post.call_count, 3)  # the acknowledged failure report is not resent
 
 
 if __name__ == '__main__':

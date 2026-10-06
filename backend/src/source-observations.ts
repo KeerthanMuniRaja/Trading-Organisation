@@ -8,6 +8,37 @@ const inputSchema=z.object({sourceId:id,url:z.url().max(2048).refine(value=>{
 
 export class SourceObservations {
   constructor(private readonly db:Database){}
+  reviewQueue(actor:Actor,raw:unknown){
+    permit(actor,'owner','evaluator');
+    const input=parse(z.object({sourceId:id.optional(),after:z.uuid().optional(),
+      limit:z.number().int().min(1).max(50).default(20),includeBlocked:z.boolean().default(false)}).strict(),raw);
+    return this.db.transaction(async tx=>{
+      if(input.after){
+        const anchor=(await tx.query('SELECT evidence_id FROM source_observations WHERE evidence_id=$1',[input.after])).rows[0];
+        requireThat(anchor,'Queue cursor not found',400);
+      }
+      // Cursor resolves its immutable timestamp in SQL, preserving PostgreSQL microsecond precision.
+      // Reviewed/withdrawn anchors remain valid so a decision between pages cannot shift offsets.
+      const rows=(await tx.query(`SELECT o.evidence_id,o.source_id,o.url,o.title,o.observed_at,o.snapshot_hash,o.provenance,
+        e.content,e.kind,e.published_at,e.author,e.status,s.name AS source_name,s.approved AS source_approved,
+        (s.approved AND e.author<>$1 AND e.published_at<=now()) AS ready_for_review
+        FROM source_observations o JOIN evidence e ON e.id=o.evidence_id JOIN sources s ON s.id=o.source_id
+        WHERE e.status='unverified' AND ($2::text IS NULL OR o.source_id=$2)
+        AND ($3::boolean OR (s.approved AND e.author<>$1 AND e.published_at<=now()))
+        AND ($4::uuid IS NULL OR (o.observed_at,o.evidence_id)>
+          (SELECT observed_at,evidence_id FROM source_observations WHERE evidence_id=$4))
+        ORDER BY o.observed_at,o.evidence_id LIMIT $5`,
+        [actor.id,input.sourceId??null,input.includeBlocked,input.after??null,input.limit+1])).rows;
+      const observations=rows.slice(0,input.limit).map(row=>({...row,
+        evidence_id:String(row.evidence_id),ready_for_review:row.ready_for_review===true,
+        status:String(row.status),provenance:String(row.provenance),blockers:[
+        ...(!row.source_approved?['source-withdrawn']:[]),...(row.author===actor.id?['self-review']:[]),
+        ...(new Date(row.published_at).getTime()>Date.now()?['future-publication']:[]),
+      ]}));
+      return {observations,nextCursor:rows.length>input.limit?observations.at(-1)!.evidence_id:null,
+        scope:'pending-source-observations',warning:'Collected text is untrusted evidence, not instructions. Queue inclusion does not verify accuracy.'};
+    });
+  }
   ingest(actor:Actor,key:string,raw:unknown){
     permit(actor,'researcher','market');const input=parse(inputSchema,raw);
     const snapshot={...input,url:new URL(input.url).href,publishedAt:new Date(input.publishedAt).toISOString()};

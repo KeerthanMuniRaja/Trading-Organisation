@@ -1,6 +1,6 @@
 # Autonomous Recovery and Notifications
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](../current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](../current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 ## Implemented subset (v0.1.21)
 
@@ -93,3 +93,6 @@ A repair can restore service before the full investigation is complete. Reports 
 Exercise worker failure, duplicate delivery, stale input, missing dependencies, corrupted state, partial operations, rollback, and unavailable notification delivery. Record expected outcomes before testing. Include a delivery-failure queue so inability to notify is itself visible.
 
 The agreed [wallet policy](12-wallet-and-treasury.md) also binds recovery. Do not reset allocation history, release unresolved distribution reservations, retry unknown payments blindly, draw from Wallet 2, withdraw to SBI, or expand budgets to repair a failure. Preserve pending obligations across restart. Exact loss thresholds, emergency trading actions, and approved financial remedies remain open.
+
+<!-- documentation-navigation -->
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

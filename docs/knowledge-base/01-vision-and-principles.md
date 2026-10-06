@@ -1,6 +1,6 @@
 # Vision and Principles
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](../current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](../current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 [Home](README.md) · [Organisation](02-organisation-and-plugins.md) · [Governance](06-governance-and-capital.md)
 
@@ -83,3 +83,6 @@ Fitness is evaluated against role-specific standards and contribution to the org
 See [the lifecycle](11-research-development-and-bot-lifecycle.md) and [operational independence](09-runtime-and-independence.md).
 
 The [wallet policy](12-wallet-and-treasury.md) records the accepted financial management principles. Financial operations remain inactive until a separately authorised and validated implementation exists.
+
+<!-- documentation-navigation -->
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

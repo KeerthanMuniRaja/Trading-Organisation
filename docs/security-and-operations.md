@@ -1,6 +1,10 @@
 # Security boundaries and operations
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+## Model and recovery controls — v0.1.32
+
+Benchmark results cannot grant authority. Inspect pair coverage and failures; a shared model across several bots does not create independent evidence. Publisher retries retain their recorded deadline after interruption. Model timeout overrides retain task caps. Keep source claims untrusted until reviewed; retirement preserves knowledge and accountability, not the retired identity's access. Model fit and quality still require measurement: [strategy](model-strategy.md).
+
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 ## Artifact operations through v0.1.21
 
@@ -51,3 +55,6 @@ For PostgreSQL, provision a least-privilege application identity and a separate 
 Root dependencies and optional integrations are pinned with lockfiles. Ruflo is in a separate package tree; its TOML parser has an explicit reviewed security override. Install with lifecycle scripts disabled for this foundation. No running bot performs `npm install`, downloads a strategy, changes an upstream pin or updates itself.
 
 The production dependency audits recorded in the validation report passed at the time of the build. That is a point-in-time package-advisory check, not a complete code/security audit. Recheck before releasing new images and retain required upstream notices. Optional/native packages omitted from Ruflo's installation were not exercised.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

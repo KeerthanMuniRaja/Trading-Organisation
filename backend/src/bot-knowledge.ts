@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { Actor, digest, id, parse, permit, requireThat, text, uuid } from './core.js';
 import { audit, Database, Row, Sql } from './database.js';
 import { sharedResearchMemory } from './learning-contract.js';
+import { assertTokenCapacity } from './inference-usage.js';
 
 const short=z.string().trim().min(1).max(500);
 const proposalSchema=z.object({summary:short,application:short,lessonIds:z.array(z.uuid()).min(1).max(5),
@@ -25,6 +26,32 @@ async function active(tx:Sql,request:Row){
 }
 export class BotKnowledge {
   constructor(private readonly db:Database){}
+  discover(actor:Actor,raw:unknown){
+    permit(actor,'owner','researcher','evaluator');
+    const input=parse(z.object({botId:id,query:z.string().trim().min(3).max(200),
+      limit:z.number().int().min(1).max(20).default(5)}).strict(),raw);
+    const terms=[...new Set(input.query.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu)??[])];
+    requireThat(terms.length>0&&terms.length<=12,'Use 1–12 distinct search terms of at least three characters',400);
+    return this.db.transaction(async tx=>{
+      const bot=(await tx.query("SELECT id FROM bots WHERE id=$1 AND state<>'retired'",[input.botId])).rows[0];
+      requireThat(bot,'Active recipient bot required');
+      const rows=(await tx.query(`SELECT l.id,l.bot_id AS author_bot_id,l.content,l.evidence_id,l.reviewer,
+        b.state AS author_state,e.source_id,e.published_at,e.received_at,o.url,o.observed_at,
+        matched.terms AS matched_terms,cardinality(matched.terms) AS relevance
+        FROM lessons l JOIN bots b ON b.id=l.bot_id JOIN evidence e ON e.id=l.evidence_id
+        JOIN sources s ON s.id=e.source_id LEFT JOIN source_observations o ON o.evidence_id=e.id
+        CROSS JOIN LATERAL (SELECT ARRAY(SELECT term FROM unnest($2::text[]) AS term
+          WHERE strpos(lower(l.content),term)>0 ORDER BY term) AS terms) matched
+        WHERE l.bot_id<>$1 AND l.status='verified' AND e.status='verified' AND s.approved
+        AND e.published_at<=now() AND cardinality(matched.terms)>0
+        ORDER BY cardinality(matched.terms) DESC,l.created_at DESC,l.id LIMIT $3`,[bot.id,terms,input.limit+1])).rows;
+      const lessons=rows.slice(0,input.limit);
+      return {botId:bot.id,terms,lessons,suggestedLessonIds:lessons.slice(0,5).map(l=>l.id),truncated:rows.length>input.limit,
+        ranking:'distinct-substring-matches-v1',scope:'current-reviewed-cross-bot-lessons',
+        warning:'Relevance is not confidence or demonstrated learning. Recheck support when requesting a transfer.',
+        modelInvoked:false,fitnessChanged:false};
+    });
+  }
   request(actor:Actor,key:string,raw:unknown){
     permit(actor,'researcher');const input=parse(z.object({botId:id,task:short,lessonIds:z.array(z.uuid()).min(1).max(5).refine(a=>new Set(a).size===a.length)}).strict(),raw);
     return this.db.command(actor,'bot-knowledge-request',key,input,async tx=>{
@@ -52,6 +79,7 @@ export class BotKnowledge {
           provenance:{sourceId:l.source_id,publishedAt:new Date(l.published_at).toISOString(),receivedAt:new Date(l.received_at).toISOString(),
             articleUrl:l.article_url??null,title:l.article_title??null,observedAt:l.observed_at?new Date(l.observed_at).toISOString():null}}))};
       const requestId=uuid(),contextHash=digest(context);
+      await assertTokenCapacity(tx,context);
       const saved=(await tx.query(`INSERT INTO development_requests(id,author,policy_revision,model,context,context_hash,expires_at)
         VALUES($1,$2,$3,$4::jsonb,$5::jsonb,$6,now()+interval '10 minutes') RETURNING expires_at`,
         [requestId,actor.id,policy.revision,JSON.stringify(policy.model),JSON.stringify(context),contextHash])).rows[0]!;

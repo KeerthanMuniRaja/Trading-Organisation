@@ -1,6 +1,6 @@
 # Our organisation: research bot birth, development and retirement
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 Version 0.1.4 implements the first governed lifecycle for **example-research students**. It follows the owner's organisation design. Existing repositories supply models, coordination and research methods; they do not define our institution or own its authority. This increment is source code only until the owner builds and runs it.
 
@@ -70,14 +70,13 @@ flowchart TD
 
 No new dependencies are required. Stop the running backend with Ctrl+C, then build and restart it when ready:
 
-```powershell
-npm run build
-if ($LASTEXITCODE -eq 0) { npm start }
+```cmd
+npm run build && npm start
 ```
 
 Startup applies migration `005_research_lifecycle.sql`. It creates the disabled policy; it does not admit or retire any bot by itself. In a second terminal, from the project directory, inspect it with:
 
-```powershell
+```cmd
 npm run lifecycle:admin -- status
 npm run lifecycle:admin -- knowledge
 npm run lifecycle:admin -- community
@@ -87,22 +86,22 @@ The admin CLI uses the existing owner credential for explicit owner commands. It
 
 To configure a policy later, copy `docs/examples/lifecycle-policy.json` into `.local/lifecycle-policy.json`. Edit `expectedRevision` to the revision returned by `status`, review the limits, and set `enabled` deliberately. The sample stays disabled. Submit the file using:
 
-```powershell
+```cmd
 npm run lifecycle:admin -- policy .local/lifecycle-policy.json
 ```
 
 A blueprint JSON file needs `id`, `name`, `specialty`, `method`, `contribution`, `evidenceId`, `lessonIds`, and optionally `mentorId`. Method is `equal_weight`, `inverse_volatility` or `minimum_variance`. Evidence and lesson IDs must already exist and be independently verified. The department is fixed to research. Submit with:
 
-```powershell
+```cmd
 npm run lifecycle:admin -- blueprint .local/student-blueprint.json
 ```
 
 The first enabled cycle can admit the student; the next eligible cycle can admit it to college. The worker uses only the evaluator credential and cannot change the policy or approve new blueprints:
 
-```powershell
-# One cycle, then exit:
+```cmd
+REM One cycle, then exit:
 npm run worker:lifecycle
-# Or supervise cycles for up to two hours:
+REM Or supervise cycles for up to two hours:
 npm run worker:lifecycle -- --minutes 120
 ```
 
@@ -113,3 +112,6 @@ Withdrawal files take `{blueprintId,reason}` and are submitted with `lifecycle:a
 ## Verification status
 
 The assistant has written regression tests for authority, paused operation, duplicate capability declarations, zero-budget constraints, repeat polling, positive/negative review streaks, evidence revocation, knowledge preservation and retirement draining. **They have not been executed**, as the owner is handling terminal execution and has deferred testing. The current Node backend suite includes them when the owner later chooses to run it. No new test results are claimed.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

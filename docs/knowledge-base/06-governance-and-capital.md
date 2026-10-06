@@ -1,6 +1,6 @@
 # Governance and Capital
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](../current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](../current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 [Home](README.md) · [Incident template](templates/incident-review.md) · [Owner report](templates/owner-report.md)
 
@@ -8,7 +8,7 @@
 
 This is a proposed constitution incorporating the owner's agreed financial requirements. The [wallet and treasury policy](12-wallet-and-treasury.md) now defines contributions, 60/40 profit allocation, access boundaries, and management controls. It supersedes the earlier blanket deferral of wallet design.
 
-Custody, timing, detailed cost treatment, numerical limits, and implementation remain open. The present work is still brainstorming. Writing or accepting this document does not enable account access, spending, or live trading.
+Custody, timing, detailed cost treatment, numerical limits, and implementation remain open. This file records the original governance design; a paper backend now implements a subset described in [the financial model](../financial-model.md). Writing or accepting this document does not enable account access, spending, or live trading.
 
 ## Owner authority
 
@@ -92,3 +92,6 @@ See [recovery and notifications](10-autonomous-recovery-and-notifications.md) an
 The profit-distribution ratio, recipient, permission boundary, accounting history, and spending limits cannot be altered by trading, research, reward, or recovery logic. Corrections require linked ledger entries and authorised handling. Unknown external transaction outcomes require reconciliation before retry.
 
 The incident court can recommend a financial-control correction but cannot give an affected bot permission to approve it. See [financial scenarios](13-financial-scenarios.md) for proposed validation cases.
+
+<!-- documentation-navigation -->
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

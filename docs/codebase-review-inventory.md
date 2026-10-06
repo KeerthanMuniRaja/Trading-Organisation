@@ -184,3 +184,6 @@ Source/configuration inventory fingerprint: `39ecfdb4759a2fa074eec6306502860caf5
 | [services/research/pyproject.toml](../services/research/pyproject.toml) | 6 | `f0cdf7eea7d87572` |
 | [services/research/test_worker.py](../services/research/test_worker.py) | 75 | `09ecbb1bd0b66814` |
 | [services/research/worker.py](../services/research/worker.py) | 195 | `5230eedf87493f32` |
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

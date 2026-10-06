@@ -1,6 +1,8 @@
 # Knowledge Graph
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](../current-status.md). Dated milestones and design proposals retain their original scope.
+Current implementation and the target shared-inference learning loop are distinguished in [bot knowledge](../bot-knowledge.md) and [model strategy](../model-strategy.md). The runtime graph is a bounded SQL projection; this design does not imply a separate graph database or autonomous neural training.
+
+> [Current implementation, validation and limits](../current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 ## Implemented execution subgraph (v0.1.21)
 
@@ -252,3 +254,6 @@ The graph separates financial infrastructure from learning bots. All confirmed o
 New financial records need currency, exact amounts, source event IDs, policy versions, timestamps, ledger references, external references, state, and linked corrections. Credentials remain outside the graph.
 
 See [wallet and treasury](12-wallet-and-treasury.md), [financial scenarios](13-financial-scenarios.md), and the [reconciliation template](templates/financial-reconciliation.md).
+
+<!-- documentation-navigation -->
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

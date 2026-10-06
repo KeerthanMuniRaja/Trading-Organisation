@@ -1,6 +1,10 @@
 # Architecture and runtime knowledge graph
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+## Shared inference and organisation growth — v0.1.32
+
+Bots keep distinct identities, reviewed context and outcome histories while sharing a bounded model endpoint. Financial arithmetic and authority remain deterministic. [Model strategy](model-strategy.md) maps the target learning loop, specialist numerical workers and role-specific fitness; it explicitly labels the unfinished autonomous stages. See [current status](current-status.md) for implemented boundaries.
+
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 ## Execution evidence and recovery flow
 
@@ -101,3 +105,6 @@ Worker claims have 120-second leases and a maximum of three attempts. Repeated c
 Uniqueness currently means a case-insensitive `(department, specialty, method)` declaration. It does not establish semantic novelty. Ordinary bots retain owner-controlled creation, school admission and retirement. Version 0.1.4 adds the [bounded research lifecycle](research-lifecycle.md): the owner approves capability blueprints and an optional policy; a cycle can then admit and archive managed example-research students. This code is not yet run. Those students have zero budget and cannot enter paper trading. Future evaluation must measure contribution to a department: a risk monitor may be valuable because it prevents losses even if it never generates trading revenue.
 
 The new graph adds `approved blueprint → managed student → reviewed curriculum → evaluated portfolio trials → lifecycle review → reputation/designation → retirement archive`. Blueprint, review, archive and original trial records remain linked. Current reputation excludes revoked evidence, while immutable historical reviews preserve the original decision context. A lifecycle worker is an explicit, bounded clock; no model or process is spawned merely by inserting a student record.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

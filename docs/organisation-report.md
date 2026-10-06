@@ -1,6 +1,6 @@
 # Owner organisation report
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 ## Additional execution view
 
@@ -16,7 +16,7 @@ The owner subsequently confirmed an empty v0.1.8 report response; full workflow 
 
 After rebuilding and restarting the backend in your own terminal, inspect it with:
 
-```powershell
+```cmd
 npm run lifecycle:admin -- report
 ```
 
@@ -66,3 +66,6 @@ This is an on-demand backend report, not an email/push service, scheduled summar
 `backend/src/organisation-report.ts` builds a read-only snapshot under the existing database command lock. `research-eligibility.ts` shares dataset eligibility with dispatch. Portfolio submission now uses a shared curriculum check that rejects both revoked references and an empty curriculum; previously the submission check only searched for invalid references.
 
 Three added regression cases in `backend/test/dispatch.test.ts` cover owner-only access/read-only behaviour, ready→queued→running→evaluation→capacity states, overlapping-window exclusion, lease-token omission, and expired/revoked/halted work visibility. No build or test was executed, respecting the owner's instruction to handle terminal execution. Source review is not runtime validation.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

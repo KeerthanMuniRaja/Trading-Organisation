@@ -1,57 +1,67 @@
-# Current implementation — v0.1.27
+# Current implementation — v0.1.34
 
-Updated 6 October 2026: [bounded learning workflows](learning-workflows.md) connect owner-selected source/mentor/recipient plans to researcher and evaluator stages, with finite polling and durable stage links. Independent source/transfer review remains explicit. Migration 021 is required; no persistent process or real model was activated.
+**v0.1.34:** [method-based assessments](assessment-methods.md) (migration 023).
+- **What changed:** under rubric `research-methods-v1`, bots choose how to compute costs, drawdown, record eligibility and action, and the backend derives the numbers. The default rubric is unchanged; learning workflows can opt in.
+- **Benchmark on local 4B:** 96% with directly relevant lessons vs 77% without, across 3 pairs.
+- **Real chain:** with only one model-extracted article lesson, the bot scored 8/16. Mechanism works; competence from real sources is not yet shown.
 
-Updated 6 October 2026: [article-to-lesson learning](source-learning.md) adds model-assisted, exactly cited proposals from reviewed source observations, dedicated independent review and graph lineage. Migration 020 is required. Real inference and continuous collection remain unverified or unfinished.
+**v0.1.33:** the production workers can now use the measured-better local setup.
+- **Owner-selectable engine:** the development policy accepts `"engine": "direct-structured-v1"`. This is a schema-constrained chat completion with no agent loop or tools, reporting real token usage. The default stays `hermes-rd-v1`.
+- **Real end-to-end run:** `npm run verify:real-model` ran source lesson → review → transfer → fresh assessment through the production worker CLI on local Qwen3.5-4B in 4 min 45 s. The assessment passed 6/16 checks; costs and drawdown failed.
+- **Evidence:** see [model selection](model-selection.md#production-path--v0133). No persistent policy, worker or service was activated.
 
-For the full vision-to-code gap analysis and development sequence, see [remaining work assessment](remaining-work-assessment.md) and its [source inventory](codebase-review-inventory.md).
+Updated 6 October 2026. This is the current index for the documentation set. Dated milestones and the brainstorming knowledge base retain their original scope. The full organisation is still under development.
 
-Updated 6 October 2026: source observation intake now retains article provenance, immutable revisions and first-observed timestamps. Reviewed observations connect to lessons, bot context and the knowledge graph. A bounded batch importer is available; automated feed retrieval and model extraction remain outstanding. See [source observations](source-observations.md). Migration 019 is required.
+## This update
 
-Updated 6 October 2026: accepted knowledge transfers now support fresh-task assessments, backend grading and reusable outcome feedback through migration 018. Real-model execution and causal learning benefit remain unverified. See [workflow and commands](bot-knowledge.md).
+- Model benchmark comparisons now use matching, completed, contract-valid assessment pairs. All attempted arms retain failure counts and coverage; incomplete runs cannot invent pairs. Reports use reportVersion 2.
+- Hermes benchmark timeouts now honour the explicit option or inherited setting, retain production task caps, and report effective per-task values.
+- Publisher recovery restores durable Retry-After deadlines and failure counts after a crash; replaying a saved 304 clears previous failures.
+- [Model strategy](model-strategy.md) maps the ten supplied repositories to the organisation and recommends Qwen3.5-4B Q4_K_M as the preferred experimental shared local candidate. It is not qualified yet. The disabled example points to its loopback alias.
 
-Updated 5 October 2026. This page is the current status index for the whole documentation set. Earlier dated verification entries and version narratives are historical. The knowledge-base folder retains the owner's design, not a claim that every proposed capability is implemented.
+## Implemented foundation
 
-## Bot learning priority
-
-v0.1.23 adds a model-assisted cross-bot lesson application workflow, reusable accepted plans, per-bot reviewed experience context and a live knowledge-graph API. v0.1.24 adds fresh-task assessments and reusable outcome feedback. The provisional model is Qwen3.5-9B through Hermes; it has not been activated or verified here. See [bot reasoning and knowledge](bot-knowledge.md). Accepted plans and synthetic assessments do not establish causal improvement; real-model evaluation and external-source ingestion remain outstanding.
-
-## Implemented since v0.1.15
-
-| Version | Capability | Boundary |
+| Area | Available | Boundary |
 | --- | --- | --- |
-| 0.1.16 | Docker Linux execution adapter with pinned local image ID, resource limits and runtime guard | Live Docker verification deferred by the owner; transport/guard tests do not prove host isolation. |
-| 0.1.17 | Durable container ownership registry and bounded cleanup/recovery | Deletes only matching recorded containers; uncertain cleanup blocks new work. No continuously running reaper. |
-| 0.1.18 | Backend execution observations, immutable event streams, owner inbox notifications and durable Python outbox | Authenticated worker claims, not independent attestation or worker liveness. Migration 015 required. |
-| 0.1.19 | Recovery of saved submissions without original artifacts/runtime | Replays the original body/key with matching backend and credential identity; no solver execution. |
-| 0.1.20 | Read-only journal inspection and bounded local listing | Local snapshots only; does not contact the backend or infer process health. |
-| 0.1.21 | One recovery pass over 1–10 explicitly selected journals | Sequential, finite, no automatic discovery or scheduling; individual failures remain visible. |
-| 0.1.22 | Owner approval/revocation of an exact independently evaluated research candidate | Governance record only; no execution consumer, deployment, trading authority or attestation. Migration 016. |
+| Governance and money | NestJS roles, audit history, paper treasury, fixed two-wallet rules | APP_MODE=live rejected; no real bank/exchange access |
+| Bot lifecycle | Registration, example school/college examinations, governed admission/retirement, preserved history | No proven advanced trader or unlimited autonomous population |
+| Research and teams | Numerical Python research, constrained skfolio adapter, R&D proposals, dispatch, finite department supervision | Example/research results; general autonomous hiring and department discovery unfinished |
+| Learning | Reviewed lessons, cross-bot discovery, bounded context, transfer proposals, fresh assessments and SQL-backed graph | Feedback and memory reuse; no demonstrated model-weight training or trading improvement |
+| External information | Publisher RSS/Atom and bounded Vibe MCP intake, snapshots, revisions, review inbox, article-to-lesson contracts | Real publisher validation and corroboration still pending |
+| Inference | Pinned tool-disabled Hermes adapter, versioned prompts, doctor/benchmark, immutable outcome reports and token ceiling | Outcome reports are worker claims; provider usage/financial cost attestation absent |
+| Coordination | Scoped Ruflo mirror and application-owned workflow records | Upstream coordination cannot change authority |
+| Operations | Owner inbox, durable outboxes/journals, bounded recovery, local artifact runner and Docker adapter | Live Docker isolation deferred; no autonomous deployment or guaranteed recovery |
 
-The NestJS/TypeScript core still supplies paper treasury, independent evaluation, academy, governed lifecycle, dispatch, memory, R&D plans and monitored supervisors. Python implements numerical research and the artifact tools. Hermes and Ruflo remain scoped integrations; no model provider was selected or invoked by these increments.
+Migration 022 is the latest required migration. This update adds no migration or backend API. Existing reviewed lessons from retired bots remain reusable when their support is valid. A learning proposal or a benchmark never grants trading, recruitment, spending or deployment authority.
 
-## Validation and limits
+## Actual model evidence
 
-Current build and **110 backend tests passed** for v0.1.27, along with **34 Hermes Python tests**. The actual Python-to-HTTP fixture now advances an owner-defined workflow through source proposal, separate review, transfer and assessment using distinct researcher/evaluator workers, including response-loss recovery. It uses deterministic stand-ins; real inference and causal learning benefit remain unverified. The unchanged importer retains its prior two-test pass. See [verification](verification.md).
+Local runtime and 2B/4B GGUF files exist. The saved 2B direct benchmark contains twelve real-model calls, including two failed source-lesson outputs and one malformed assessment response. Offline corrected regrading yields one complete valid pair from two planned and no learning gain. See [model strategy](model-strategy.md) and [verification](verification.md). Newer 4B reports include a constrained direct run with 6/6 valid outputs and 2/2 complete pairs, but drawdown scored 0/16. See [selection evidence](model-selection.md). Production Hermes qualification remains open; a direct benchmark does not establish it. Model service liveness is not inferred from saved files.
 
-Docker Desktop startup attempts did not yield a usable engine. The owner explicitly deferred Docker testing. No live container-isolation result is claimed. Generated-code execution, remote attestation, autonomous code deployment, owner-approved version release/rollback, model learning, real market ingestion and financial connectivity remain unfinished. Synthetic fixture score improvements are injected test differences, not learned trading ability.
+Observed hardware: i7-1355U, 15.69 GiB RAM and about 1.24 GiB free at inspection. One shared endpoint with distinct bot contexts is the recommended starting point. Weight-file size is not total memory. No new download, model call, persistent worker, private configuration or financial connection was activated by v0.1.32.
 
-No persistent worker, policy, model service or financial account was activated. Managed students remain zero-budget example researchers. Wallet 1 receives all owner deposits; eligible cumulative realised net profit is allocated 60/40; Wallet 2 and bank withdrawals stay outside bot authority. Retirement preserves knowledge and accountability history.
+## Validation
 
-## Read and operate
-
-- [Artifact execution and Docker limits](artifact-execution.md)
-- [Monitoring, journal inspection and recovery commands](artifact-recovery.md)
-- [Owner research approval and revocation](research-approvals.md)
-- [API contracts](api.md), [architecture](architecture.md), [security](security-and-operations.md)
-- [Financial rules](financial-model.md), [roadmap](roadmap.md), [verification](verification.md)
-- [Continuity context](../KT.md) and [resume prompt](../RESUME-PROMPT.md)
-
-Rebuild and restart the backend through migration 021 for learning workflows (source learning requires 020; observations require 019; assessments require 018). Never modify old applied migrations. Preserve local journals and private configuration; do not publish `.env`, `.local`, `.data`, `.state` or signing keys.
+The new targeted regression checks are recorded in [verification](verification.md). The earlier full backend result of 116 tests belongs to v0.1.30; it is not represented as a new full-suite run. Docker testing remains deferred by the owner.
 
 ## Next development priorities
 
-1. Add a bounded publisher feed adapter and independently reviewed article-to-lesson extraction on top of source observations.
-2. Run the provisional existing model through the learning workflow and evaluate its performance on fresh tasks, including a comparison without transferred lessons.
-3. Expand specialist evaluation with controlled real-data provenance and disjoint evaluation windows.
-4. Add separate owner-governed version release/rollback and stronger execution provenance; resume Docker verification when the owner returns to that deferred work.
+1. Separate method from arithmetic in fresh assessments: the model states the computation and rules, and the backend computes the numbers. Then extend constrained 4B evaluation to fresh held-out cases. The constrained output mode now runs in production workers through the direct engine (v0.1.33); the Hermes-path equivalent remains unverified.
+2. Validate one owner-selected publisher end to end, including review, cited lessons, transfer and fresh evaluation.
+3. Add evidence-backed claim/entity extraction and corroboration, then bounded organisation-wide scheduling with health reporting.
+4. Expand role-specific fitness, novelty checks and measured specialist evaluations; preserve failure knowledge when retiring bots.
+5. Add independently governed release/rollback and validated host isolation before generated-code deployment; market-connected execution remains a later milestone.
+
+## Read and operate
+
+- [Documentation index](documentation-index.md), [model selection evidence](model-selection.md)
+- [Model strategy](model-strategy.md), [local serving](local-model.md), [readiness and usage](model-readiness.md)
+- [Learning workflows](learning-workflows.md), [bot knowledge](bot-knowledge.md), [discovery](knowledge-discovery.md)
+- [Publisher feeds](publisher-feeds.md), [source observations](source-observations.md), [Vibe integration](../integrations/vibe-trading/README.md)
+- [Reference map](reference-map.md), [remaining work](remaining-work-assessment.md), [roadmap](roadmap.md)
+- [Architecture](architecture.md), [API](api.md), [financial rules](financial-model.md), [security](security-and-operations.md)
+
+Wallet 1 receives all owner deposits; eligible cumulative realised net profit is allocated 60/40 without redistributing the same profit. Wallet 2, bank withdrawals, ratio changes and permission changes stay outside bot authority. Preserve private .env, journals, signing keys and local state; do not publish them.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

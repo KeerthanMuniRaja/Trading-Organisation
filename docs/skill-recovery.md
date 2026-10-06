@@ -1,6 +1,6 @@
 # Bounded recovery after failed school exams
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 Version 0.1.12 preserves the three base attempts from [academy skills](academy-skills.md) and adds **one owner-approved extra attempt per managed student lifetime**. The backend keeps every failure, expiration, approval and revocation. Approval does not mark a bot as competent; the new random exam must still pass independent grading.
 
@@ -35,7 +35,7 @@ The owner report distinguishes `SKILL_ATTEMPTS_EXHAUSTED` from a pending grade a
 
 Inspect current exams, failed checks and any previous approval:
 
-```powershell
+```cmd
 npm run lifecycle:admin -- skills
 npm run lifecycle:admin -- skill-recoveries
 ```
@@ -52,13 +52,13 @@ Use the existing lesson proposal/review endpoints to register the corrective les
 }
 ```
 
-```powershell
+```cmd
 npm run lifecycle:admin -- skill-recovery recovery.json
 ```
 
 The identifiers above are placeholders. Use actual current records and preserve the request file for retries. Revocation uses a file containing `recoveryId` and `reason`:
 
-```powershell
+```cmd
 npm run lifecycle:admin -- revoke-skill-recovery revoke-recovery.json
 ```
 
@@ -69,3 +69,6 @@ Migration **012** is additive. Rebuild/restart the backend before using these ro
 ## What this does not yet do
 
 There is no automatic repair of worker code, model fine-tuning or proof that reading a corrective lesson changed behaviour. The existing Python solver is shared and deterministic. This increment adds a controlled reassessment path and preserved accountability. Automated diagnosis, versioned solver attribution, agent-written remediation plans and operational-failure appeals remain future work. Executed results are in [verification](verification.md).
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

@@ -8,9 +8,10 @@ from pathlib import Path
 import re
 import sys
 
-from adapter import Settings, HermesError, PINNED_REVISION, verify_checkout
+from adapter import Settings, HermesError, engine_label, profile_matches, verify_checkout
 from development_worker import Client, locked, save
 from knowledge import propose_knowledge, validate_plan
+from inference_reporting import flush_report, mark_uncertain, timed_inference
 
 
 def run_once(client, settings, body, request_key, directory, proposer=propose_knowledge, *, workflow='knowledge'):
@@ -39,24 +40,58 @@ def run_once(client, settings, body, request_key, directory, proposer=propose_kn
             save(path, record)
         ticket = record['ticket']
         profile = ticket['model']
-        if (profile['name'] != settings.model or profile['baseUrl'].rstrip('/') != settings.base_url.rstrip('/')
-                or profile['sourceRevision'] != PINNED_REVISION or profile['engine'] != 'hermes-rd-v1'):
+        if not profile_matches(profile, settings):
             raise HermesError('Owner model profile differs from local settings')
+        task, report_key = ('source-lesson' if workflow == 'sources' else 'knowledge'), 'inference-report-' + stable
         if 'proposal' not in record:
             if record['inferenceStarted']:
+                mark_uncertain(record, path, save, task, engine_label(settings))
+                flush_report(client, record, path, save, ticket['id'], report_key)
                 raise HermesError('Uncertain model outcome; automatic regeneration forbidden')
             if datetime.fromisoformat(ticket['expiresAt'].replace('Z', '+00:00')) <= datetime.now(timezone.utc):
                 raise HermesError('Knowledge request expired')
             client.post(route + '/preflight', {'requestId': ticket['id']})
             record['inferenceStarted'] = True
             save(path, record)
-            record['proposal'] = proposer(settings, ticket['context'])
+            try:
+                record['proposal'] = timed_inference(record, path, save, task, lambda: proposer(settings, ticket['context']), engine_label(settings))
+            except Exception:
+                flush_report(client, record, path, save, ticket['id'], report_key)
+                raise
             save(path, record)
+        flush_report(client, record, path, save, ticket['id'], report_key)
         return client.post(route + '/proposals', {'requestId': ticket['id'], 'contextHash': ticket['contextHash'],
             'proposal': validator(record['proposal'], ticket['context'])}, 'knowledge-submit-' + stable)
 
 
 def main():
+    if sys.argv[1:2] == ['discover-learn']:
+        from discovered_learning import run_discovered
+        parser = argparse.ArgumentParser(description='Discover, freeze and propose one cross-bot learning plan')
+        parser.add_argument('--bot-id', required=True)
+        parser.add_argument('--query', required=True)
+        parser.add_argument('--task', required=True)
+        parser.add_argument('--request-key', required=True)
+        args = parser.parse_args(sys.argv[2:])
+        def settings_factory():
+            settings = Settings.from_env()
+            verify_checkout(settings)
+            return settings
+        client = Client(os.environ['API_URL'], os.environ['API_TOKEN'])
+        print(json.dumps(run_discovered(client, {'botId': args.bot_id, 'query': args.query, 'task': args.task},
+                                       args.request_key, Path(__file__).parent / '.state' / 'discovered-learning',
+                                       settings_factory, proposal_runner=run_once)))
+        return
+    if sys.argv[1:2] == ['discover']:
+        parser = argparse.ArgumentParser(description='Find reviewed cross-bot lessons without model inference')
+        parser.add_argument('--bot-id', required=True)
+        parser.add_argument('--query', required=True)
+        parser.add_argument('--limit', type=int, default=5, choices=range(1, 21))
+        args = parser.parse_args(sys.argv[2:])
+        client = Client(os.environ['API_URL'], os.environ['API_TOKEN'])
+        print(json.dumps(client.post('/v1/learning/knowledge/discover',
+                                    {'botId': args.bot_id, 'query': args.query, 'limit': args.limit})))
+        return
     if sys.argv[1:2] == ['workflow-run']:
         from learning_workflow import run_cycles
         parser = argparse.ArgumentParser(description='Advance one authorised learning workflow stage')

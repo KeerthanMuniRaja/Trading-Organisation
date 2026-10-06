@@ -1,12 +1,23 @@
 {
   "name": "trading-organisation",
-  "version": "0.1.27",
+  "version": "0.1.34",
   "private": true,
   "description": "Owner-controlled trading organisation: paper-first backend and research workers",
   "engines": {
     "node": ">=24.0.0 <25"
   },
   "scripts": {
+    "review:news": "node --env-file=.env scripts/review-news-queue.mjs",
+    "sources:feed": "node --env-file=.env scripts/run-feed-cycle.mjs",
+    "model:local": "node --env-file-if-exists=.env scripts/local-model.mjs",
+    "verify:real-model": "npm run build && node --env-file=.env scripts/verify-real-model.mjs",
+    "model:doctor": "node --env-file=.env scripts/run-model-tool.mjs doctor",
+    "model:benchmark": "node --env-file=.env scripts/run-model-tool.mjs benchmark",
+    "test:feeds": "node --test integrations/publisher-feeds/*.test.mjs scripts/run-feed-cycle.test.mjs",
+    "verify:feeds": "npm run build && node scripts/verify-feeds.mjs",
+    "sources:collect:vibe": "node scripts/collect-vibe-news.mjs",
+    "test:vibe": "node --test integrations/vibe-trading/*.test.mjs scripts/import-vibe-news.test.mjs scripts/import-observations.test.mjs scripts/run-vibe-cycle.test.mjs",
+    "worker:news:vibe": "node --env-file=.env scripts/run-vibe-cycle.mjs",
     "learning:workflow": "node --env-file=.env scripts/learning-workflow-admin.mjs",
     "sources:import": "node --env-file=.env scripts/import-observations.mjs",
     "test:sources": "node --test scripts/import-observations.test.mjs",

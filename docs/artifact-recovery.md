@@ -1,12 +1,12 @@
 # Artifact monitoring and recovery
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 Current through v0.1.21. These commands operate on research artifacts, never financial transfers or trading orders. Run from the project root with the configured scoped researcher identity. The default journal directory is `integrations/skfolio/.state/paired-artifacts`; use `--state PATH` consistently if it differs.
 
 ## Inspect before recovery
 
-```powershell
+```cmd
 npm run worker:recover-artifacts -- --list
 npm run worker:recover-artifacts -- --inspect --journal JOURNAL_ID
 npm run lifecycle:admin -- execution-reports
@@ -22,7 +22,7 @@ Reporting remains allowed after cancellation, halt or expiry so historical opera
 
 ## Recover one journal
 
-```powershell
+```cmd
 npm run worker:recover-artifacts -- --journal JOURNAL_ID
 npm run worker:recover-artifacts -- --report-only --journal JOURNAL_ID
 ```
@@ -39,7 +39,7 @@ Create a JSON file containing 1–10 distinct journal IDs chosen from inspection
 ["REPLACE_WITH_A_REAL_64_CHARACTER_JOURNAL_ID"]
 ```
 
-```powershell
+```cmd
 npm run worker:recover-artifacts -- --batch .local/recovery-selection.json
 ```
 
@@ -50,3 +50,6 @@ Container cleanup is separate: `artifact_executor.py sandbox-recover` checks the
 ## Code and validation
 
 `artifact_recovery.py`, `artifact_inspection.py`, `artifact_batch.py` and `execution_reporting.py` implement this workflow; the Node launcher supplies the researcher credential. Tests cover read-only inspection, bounded selection, mixed failures, stale runtime recovery, response loss, reporting outages, identity mismatch and no re-execution. The actual HTTP fixture verifies inspection before/after batch recovery, exactly two original solver runs, independent grading and no financial writes. See [verification](verification.md).
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

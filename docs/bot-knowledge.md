@@ -8,16 +8,16 @@ The tool-disabled Hermes worker answers costs, peak-relative drawdown, event/ava
 
 The graph links transfers to assessment nodes; accepted prior plans include their assessment report in future reasoning context, including failed results. This is feedback about submitted answers on fresh synthetic tasks. It is **not proof that the model ran, that transfer caused improvement, or that the bot generalises to markets**. The model receives task definitions, and there is no pre-transfer/control comparison. No fitness, money, school qualification or deployment permission changes.
 
-```powershell
-# JSON file: {"requestId":"an accepted transfer UUID"}
+```cmd
+REM JSON file: {"requestId":"an accepted transfer UUID"}
 npm run worker:knowledge -- assessment-create .local/assessment-request.json
-# Use the assessmentId returned above; requires the configured Hermes model endpoint.
+REM Use the assessmentId returned above; requires the configured Hermes model endpoint.
 npm run worker:knowledge -- assess --assessment-id ASSESSMENT_UUID
-# JSON file: {"assessmentId":"the issued assessment UUID"}
+REM JSON file: {"assessmentId":"the issued assessment UUID"}
 npm run worker:knowledge -- assessment-grade .local/assessment-grade.json
 ```
 
-Creation/grading select the evaluator credential; answering selects the researcher credential. The worker persists inference start and validated answers before submission, replays lost acknowledgements with the same key, and refuses automatic regeneration after uncertain inference. These are explicitly started operations; no model service or recurring worker has been activated.
+Creation/grading select the evaluator credential; answering selects the researcher credential. The worker persists inference start and validated answers before submission, replays lost acknowledgements with the same key, and refuses automatic regeneration after uncertain inference. These are explicitly started operations. Saved direct model benchmarks do not prove a recurring worker is active or that the production Hermes path qualifies.
 
 Assessment POST routes under `/v1/learning/knowledge/` are `assessments` (evaluator, `{requestId}`), `assessments/work` (researcher, `{assessmentId}`, read-only), `assessments/answers` (researcher, `{assessmentId,answers:[{caseId,answers}]}`), and `assessments/grades` (assigned evaluator, `{assessmentId}`). Mutations require idempotency keys. Scores are never accepted from clients. The four answer fields are `netProfitPaise`, `maxDrawdownBps`, `eligibleRecordIds`, and `action` (`research` or `wait`).
 
@@ -27,7 +27,7 @@ This begins the AI organisation's learning workflow. A recipient bot has its own
 
 ## Model selection
 
-Provisional candidate: **Qwen/Qwen3.5-9B** through a compatible chat-completions endpoint and the existing pinned Hermes adapter. The [official model card](https://huggingface.co/Qwen/Qwen3.5-9B) publishes the 9B model, Apache-2.0 license and serving interfaces. [Hermes local-model documentation](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/user-guide/local-models.md) describes local serving options. This is a candidate to evaluate, not a proven best model for trading. Hardware capacity, quantization, immutable weight revision, server compatibility and output quality still require validation. No weights were downloaded, server installed or real inference run by this increment. The default remains disabled; see `config/knowledge-model.example.json`.
+Preferred experimental local model: **Qwen3.5-4B Q4_K_M** through the compatible loopback endpoint and pinned Hermes adapter. The saved 2B direct benchmark failed important contracts and numerical checks. The constrained direct 4B run improved output validity on its tested tasks; drawdown still failed and production Hermes qualification remains open. See [selection evidence](model-selection.md). The [model strategy](model-strategy.md) replaces the earlier provisional 9B recommendation. The example policy stays disabled; no private settings were changed.
 
 We reuse one existing foundation model with different bot contexts. This is not a separately trained neural network per bot. Distinct responsibilities, evidence, memory and evaluation make the agents different. Model identity and endpoint are owner-configured and replaceable; generated content cannot change them.
 
@@ -35,7 +35,7 @@ We reuse one existing foundation model with different bot contexts. This is not 
 
 The graph is a bounded SQL-backed projection, not a separate graph database. It links bots → authored lessons → supporting evidence → source, lesson → transfer request → recipient, transfer → independent reviewer, and bot → reviewed experience → evaluated trial. Historical lessons and transfer plans remain inspectable after retirement or source withdrawal. Lesson usability is recomputed; historical acceptance must not be treated as current permission. Reviewed numerical experiences use the existing provenance/evidence/model filters. Rejected plans never enter reasoning context. Prior plans whose lesson support has been withdrawn are excluded.
 
-Graph output is current organisational knowledge, not a temporally filtered historical backtest dataset. Lesson review is not a guarantee that external claims are true. No web crawler is enabled here; outside news/articles still enter through the existing approved-source evidence and independent review workflow. Automated source ingestion and demonstrated transfer benefit on fresh held-out tasks are the next substantive learning steps.
+Graph output is current organisational knowledge, not a temporally filtered historical backtest dataset. Lesson review is not a guarantee that external claims are true. Publisher RSS/Atom and bounded Vibe collection adapters now feed the approved-source observation/review workflow. They are finite, explicitly started tools; real publisher validation, corroboration and demonstrated transfer benefit on fresh held-out tasks remain open.
 
 ## Workflow and authority
 
@@ -64,7 +64,7 @@ All routes start `/v1/learning/knowledge/`:
 
 After an owner has configured and enabled an actual model endpoint and approved inputs:
 
-```powershell
+```cmd
 npm run worker:knowledge -- --bot-id STUDENT_ID --lesson-id LESSON_UUID --task "Design a fresh cost-aware comparison" --request-key stable-learning-key
 npm run worker:knowledge -- review .local/knowledge-review.json
 npm run lifecycle:admin -- knowledge-graph .local/knowledge-bot.json
@@ -73,3 +73,6 @@ npm run lifecycle:admin -- knowledge-graph .local/knowledge-bot.json
 The review file contains `{requestId,decision,reason}`; the bot file contains `{botId}`. The Node launcher selects evaluator credentials only for `review`; inference gets only the researcher credential, and the Hermes child gets no backend credentials. Reuse the request key after an uncertain submission. Actual inference needs the existing `HERMES_ENABLED`, source/runtime, model, endpoint and provider credential settings documented in the Hermes guide. Do not paste secrets into chat.
 
 `npm run verify:knowledge` uses a fresh backend, two fixture bots, actual Python HTTP, independent review and a deterministic model stand-in. It verifies protocol behaviour and graph links, not real model reasoning. The report is `.local/knowledge-verification.json`.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

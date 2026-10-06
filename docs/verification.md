@@ -1,6 +1,139 @@
 # Validation record — updated 2026-10-06
 
+## Version 0.1.34 — method-based assessment rubric
+
+- **Full backend regression:** build plus **120/120 tests passed with zero failures (195.342 seconds)** against migration 023 (log `.local/backend-tests-v034.log`).
+  - New `assessment-methods.test.ts` (2 cases): derivation to 16/16 for correct methods; each wrong method fails only its own concept; answer forms cannot be mixed between rubrics; the basics default and its context shape are unchanged.
+  - One new workflow case: a methods workflow issues method assessments and refuses to link a basics assessment.
+- **Hermes Python suite:** **57/57**. Covers the method validator, a Python derivation matching the backend vectors (net 950, drawdown 2,500 and the 4,000 distractor), the methods schema, rubric-based task selection and a benchmark that reports paired method results.
+- **Benchmark, real inference (local Qwen3.5-4B, schema-constrained, 3 pairs):**
+  - With lessons: 46/48. Without lessons: 37/48. Higher in every pair; all 6 outputs valid.
+  - The lessons used directly state the tested concepts.
+- **Real chain (`verify:real-model -- --methods`):** completed in about 4.9 minutes and graded **8/16, failed**. The student had only one model-extracted article lesson.
+
+Scope:
+- Synthetic cases; automated fixture reviews.
+- Not evidence of learning from real sources or of market competence.
+- No persistent policy, worker or service was activated; the model server was stopped.
+
+## Version 0.1.33 — owner-selectable direct structured engine and first real end-to-end run
+
+- **Full backend regression:** build plus **117/117 tests** passed with zero failures (290.214 seconds; log `.local/backend-tests-v033.log`). This includes a new engine-selection case: Hermes stays the default; `direct-structured-v1` tickets carry `sourceRevision: null`, `tools: []` and `decoding: json-schema`; unknown engines and smuggled runtime fields are rejected.
+- **Hermes Python suite:** 55 tests; 21 of 22 runs passed (13 sequential, 8 under 4× parallel load). One run, immediately after the backend suite, reported 1 failure that could not be reproduced; its output was not captured, so the failing test is unidentified. Treat this as an open flakiness investigation. The suite includes 3 new direct-engine tests against a real loopback stand-in:
+  - No Hermes checkout is needed for the direct engine.
+  - Engine/profile binding works in both directions.
+  - The schema is sent with the exact supplied IDs.
+  - Fenced or unauthorised replies are refused.
+  - The worker reports real token counts and refuses an engine-mismatched ticket before preflight.
+- **Other suites, on the combined code after the parallel v0.1.32 review session:**
+  - skfolio 64, research 10, feeds 21, Vibe/importers 34, starter/supervisor 10, Ruflo 18. All passed.
+- **`npm run verify:real-model`:** passed at 2026-10-06T17:57:42Z with **real inference** on local Qwen3.5-4B Q4_K_M (llama.cpp b11435, CPU), through the production worker CLI and an in-memory backend:
+  - Source lesson: 34 s, exact quotation, 414+102 tokens.
+  - Transfer plan: 65 s, 535+294 tokens.
+  - Fresh assessment answers: 181 s, 3,126+341 tokens.
+  - Backend grade: **6/16, outcome failed** (abstention 4/4, timing 2/4, costs 0/4, drawdown 0/4).
+  - Three completed inference reports with real usage; graph of 10 nodes and 9 edges; zero wallet balance; valid audit chain.
+  - Report with the model's verbatim outputs: `.local/real-model-verification.json`.
+
+Scope:
+- Both review decisions were automated fixture acceptances.
+- One article and four synthetic cases; no control arm.
+- This demonstrates the chain end to end, not learning, market competence or Hermes-path behaviour.
+- No persistent policy, worker or service was activated; the model server was stopped afterwards.
+
+## Documentation reconciliation — v0.1.32, 6 October 2026
+
+Inspected all first-party Markdown documents and current code/report metadata. The newer saved 4B reports supersede the earlier statement that no 4B report existed. The free-form report (20261006T171731Z) has 1/4 valid assessments and no complete valid pair. The version-2 constrained report (20261006T173456Z) has 2/2 valid source lessons, 4/4 valid assessments and 2/2 complete pairs: 17/32 versus 10/32 checks, with 0/16 drawdown across both arms. It uses the direct engine only; production Hermes schema support remains pending. See [model selection](model-selection.md).
+
+This refresh changes documentation only. Saved reports were inspected, not rerun. No build/test result below is claimed as a new run, and no model/service/policy/financial state was changed. Current command examples use Command Prompt; historical transcripts retain their original context. The documentation index distinguishes runtime guides, original design, templates and dated records.
+
+## Version 0.1.32 — review fixes and model decision
+
+- **52/52 Hermes Python tests passed**, including regression cases for failed arms falsely forming a pair, a time budget ending mid-pair, configured/environment Hermes timeouts and effective task caps.
+- **21/21 publisher-feed tests passed**, including a crash between saving a 429 outcome and its checkpoint, and recovery of a saved 304 after previous failures. The six-hour Retry-After remains intact and failure counts apply once.
+- During the preceding review, TypeScript compilation and all three inference-usage tests passed; no backend source/migration changed in these fixes. The final TypeScript build also passed for v0.1.32.
+- Local file targets in 66 Markdown documents resolved; git diff --check passed.
+- Benchmark reports now use reportVersion 2; prompts and task contracts remain unchanged. Earlier raw reports are retained, not silently rewritten.
+- Inspected the existing Qwen3.5-2B direct report with twelve calls. It has 0/2 valid source lessons and 3/4 valid assessments. Offline replay of saved outputs through corrected scoring gives one complete valid pair of two planned, with 12.5% versus 18.75% checks passed. No new inference occurred; no causal learning improvement is established.
+- Read the ten supplied upstream repository entry points/READMEs plus official Qwen cards and relevant FreqAI/llama.cpp documentation. This is a capability/model-fit review, not a full source audit. The 4B candidate has no saved benchmark report in the inspected directory and remains unqualified.
+
+No new model download, service launch, persistent automation, private configuration, financial connection or Docker test was performed. Documentation now distinguishes saved direct-model evidence, production qualification and future organisation capabilities.
+
+## Version 0.1.30 — per-request inference usage and token ceiling
+
+- **Full backend regression:** build plus **116/116 tests** passed with zero failures (257.405 seconds; log `.local/backend-tests-v030.log`), against migration 022.
+- **Three new inference-usage tests:**
+  - Author-only, immutable, replay-safe reports; conflicting outcomes rejected; schema bounds.
+  - Failures audited, while completions create no inbox entry; reports accepted during a halt.
+  - The ceiling charges reservations until usage is reported; omitted policy fields keep the ceiling and `null` removes it.
+  - Per-kind/model statistics with latency percentiles; HTTP roles and idempotency.
+- **Hermes Python suite:** **47/47 tests** passed. Scripted-client tests now assert completed reports carry the correct prompt version, a failed inference reports `INFERENCE_FAILED` once, and the assessment worker reports against its own ticket ID without resending after a lost answer acknowledgement.
+- **`npm run verify:knowledge`:** passed over real Python-to-HTTP with injected response loss. All three model stages (source lesson, transfer, assessment) recorded exactly one `completed` report with a Hermes engine label and unreported tokens.
+
+Scope:
+- No model endpoint was configured or called; the stand-in inference has no token counts.
+- Reports are authenticated worker claims, not provider bills or attestation.
+- Tokens are not converted to money.
+
+## Version 0.1.29 — model endpoint readiness
+
+- **Prompt extraction:** before the runner refactor, the previous runner's system prompts and token limits for all five tasks were captured. All matched `contracts.py` exactly.
+- **Hermes Python suite:** **46/46 tests passed**. This includes the 41 existing tests run after the refactor, and 5 new `test_model_tools.py` tests against a real loopback OpenAI-compatible stand-in.
+- **Transport and doctor:** proxy variables ignored, redirect target never requested, unauthorised/oversized/timeout codes, the doctor's served-model and remote-cost gates, and no key in any output.
+- **Benchmark:** all task contracts, the paired with/without-lessons comparison (positive by construction of the stand-in), budgets, fenced-JSON categorisation, and grading fidelity to the backend's grader.
+- **Launcher smoke:** `npm.cmd run model:benchmark` through the Node launcher wrote a key-free report from the stand-in; that report was deleted.
+- **Doctor against the real `.env`:** `ENDPOINT_NOT_CONFIGURED`.
+
+Scope:
+- No model was installed, downloaded or called.
+- The machine had no model server or Hermes checkout, and no CUDA GPU.
+- No backend source or migration changed, so the 113-test backend result from v0.1.28 still applies.
+- Stand-in scores demonstrate the tooling, not any model's quality.
+
+## Version 0.1.28 — approved-publisher feed intake
+
+`npm.cmd run test:feeds` passed **19/19 tests**:
+- Parser (6): RSS/Atom extraction, DTD/entity/XXE refusal, malformed XML, fixed rejection reasons without publisher echo, backend length bounds, strict explicit-zone dates.
+- Client (4): configuration bounds, conditional requests, redirect/HTTP/type/size codes, Retry-After, and real loopback HTTP showing redirects are not followed and slow responses time out.
+- Cycle (9): poll interval, ETag, lost-acknowledgement resume from the saved snapshot, corrections, newest-N capacity, exponential backoff, parse failure retention, crash recovery, abandonment, configuration/credential binding, locking and a finite session.
+
+`node scripts/verify-feeds.mjs` passed at 2026-10-06T12:53:29Z against an actual in-memory backend and a loopback synthetic publisher. It covered:
+- Response loss after acceptance, recovered without a refetch or duplicate evidence.
+- The not-due and `304` paths.
+- A corrected entry stored as a separate unverified revision.
+- Evidence becoming usable only after independent review.
+- Source withdrawal blocking ingestion, followed by explicit abandonment.
+- No credentials reaching the publisher, zero wallet balance and a valid audit chain.
+
+Report: `.local/feed-verification.json`.
+
+The full backend regression passed **113/113 tests** with zero failures (395.530 seconds; log `.local/backend-tests-v028.log`). The suite includes the earlier discovery/review-inbox additions; no backend source or migration changed in this increment.
+
+Shared intake helpers moved into `scripts/cycle-state.mjs` and `parseSourceMappings`. Afterwards the Vibe, importer and review-inbox suites passed **34/34**.
+
+Scope: no real publisher was selected or contacted, and no persistent schedule, model, Docker engine or financial service was activated. Synthetic feeds do not establish real-feed compatibility, access permission or claim accuracy.
+
 ## Version 0.1.27 — bounded learning workflow orchestration
+
+### Discovered-learning worker — 6 October 2026
+
+**20/20 Python tests passed** across `test_discovered_learning`, `test_knowledge_discovery`, `test_knowledge`, `test_source_learning` and `test_learning_workflow`. Six new tests cover empty search without model setup, persisted selection and input binding, real nested proposal-journal recovery after a lost acknowledgement, invalid selections, support-withdrawal failures without rediscovery and unknown acknowledgements without success receipts. Command Prompt was used. No backend code changed in this increment; no model, live data provider or financial service was activated.
+
+### Cross-bot lesson discovery — 6 October 2026
+
+TypeScript compilation and **8/8 bot-knowledge backend tests** passed. Discovery checks cover bounded relevance ranking, retired-author retention, exclusion of unreviewed/own lessons, revoked support, strict HTTP roles and revalidation by the transfer path. **14 Python tests** passed across `test_knowledge`, `test_source_learning`, `test_learning_workflow` and `test_knowledge_discovery`; the latter verifies the discovery CLI never loads model settings or invokes inference. Checks used Command Prompt. No upstream runtime was activated and the full backend suite was not rerun for this increment.
+
+### Organisation evidence-review inbox — 6 October 2026
+
+TypeScript compilation passed. The focused source-observation, source-learning and learning-workflow suites passed **15/15 tests**, including authenticated HTTP permissions, oldest-first cursor pagination after review, self-review blocking and withdrawn-source diagnostics. The new terminal-reader suite passed **3/3 tests**, checking credential separation, endpoint validation and bounded responses. Commands ran through Command Prompt. The full backend suite was not rerun for this increment; no live model or upstream provider was contacted.
+
+### Additional Vibe-Trading news integration validation — 6 October 2026
+
+The subsequent resumable-cycle increment passes **31/31 focused tests**, extending the 23 checks below with saved-result recovery, immutable input/backend binding, empty/rejected outcomes, incomplete-collection handling, snapshot hash checks and concurrent-worker exclusion. Tests were run with `node --test` through Command Prompt. These remain fixture/contract checks, not actual upstream or live-backend verification.
+
+`npm.cmd run test:vibe` passed **23/23 tests** through Command Prompt. Coverage includes news conversion, importer retries, rejected-row handling, bounded files, real loopback HTTP JSON/SSE handshakes, one-tool restriction, scope binding, redirects, mismatched response IDs, oversized responses, timeout/session cleanup and collection artifact preservation. HTTP peers are local fixtures, not Vibe-Trading itself. Submission uses an injected transport. No live upstream, model, financial service or recurring worker was activated. The preceding adapter increment also passed `npm.cmd run build`; this collector increment changes JavaScript integration code, tests, configuration and documentation only.
+
+### Learning workflow validation
 
 The build and full **110-test backend regression suite passed** with zero failures (374.910 seconds). Log: `.local/backend-tests-v027.log`.
 
@@ -61,7 +194,7 @@ Approvals are records for further research only: no worker consumes them as an e
 
 Owner CLI syntax passed. Python and the actual artifact-recovery fixture were unchanged and were not rerun; the prior 64-test Python run and v0.1.21 HTTP fixture remain historical evidence. Live Docker testing remains explicitly deferred. Current API, approval guide, roadmap, README and continuation context were updated.
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 ## Versions 0.1.16–0.1.21 — isolation adapter, execution observations and recovery
 
@@ -258,3 +391,6 @@ The durable-database test separately closes and reopens a database with a **pend
 - Ruflo must run on a host with a functioning OS user profile; its verified integration is the bounded research-task mirror. Broader swarm/model features are not enabled or validated. Hermes requires a selected model and pinned installation before real inference can be verified.
 
 The [roadmap](roadmap.md) lists the corresponding work. These gaps do not prevent running the deterministic local foundation, and they must not be mistaken for completed capabilities.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

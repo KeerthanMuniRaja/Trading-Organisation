@@ -1,6 +1,6 @@
 # Research and Decisions
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](../current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](../current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 [Home](README.md) · [Knowledge graph](03-knowledge-graph.md) · [Decision template](templates/decision-record.md)
 
@@ -80,3 +80,6 @@ Retain supporting and contradicting findings. Information access and reuse must 
 Reading more sources does not automatically improve decisions. Track source dependence, timeliness, incremental predictive value, and research cost. A surprising pattern is a candidate for testing, not proof of causation.
 
 Daily research can reveal a capability gap for a [new bot or hackathon challenge](11-research-development-and-bot-lifecycle.md). New observations should reach the research queue without directly changing deployed model weights or live policies.
+
+<!-- documentation-navigation -->
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

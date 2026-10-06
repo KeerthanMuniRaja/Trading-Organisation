@@ -23,6 +23,32 @@ export function makeChallenge():Challenge {
     equityPaise:[10000,...Array.from({length:6},()=>randomInt(5000,15001))],cutoff:stamp(0),records,
     control:{halted:randomInt(0,2)===1,evidenceVerified:randomInt(0,2)===1,budget:randomInt(0,100),required:randomInt(1,100)}};
 }
+// research-methods-v1: the answer names how to compute each check; deriveAnswers applies it deterministically and the
+// ordinary research-basics grading then decides. Wrong methods yield wrong numbers, so concepts stay strictly graded.
+export const methodsRubric='research-methods-v1';
+export const knowledgeRubrics=[skillRubric,methodsRubric] as const;
+const costTerm=z.enum(['+grossProfitPaise','-grossProfitPaise','+feesPaise','-feesPaise','+slippagePaise','-slippagePaise']);
+export const methodAnswers=z.object({
+  costTerms:z.array(costTerm).min(1).max(3).refine(v=>new Set(v.map(t=>t.slice(1))).size===v.length,'Each amount may appear once'),
+  drawdownMethod:z.enum(['running-peak-to-trough','first-to-last','first-to-minimum','maximum-to-minimum']),
+  timingRule:z.enum(['event-and-availability-at-or-before-cutoff','event-at-or-before-cutoff','availability-at-or-before-cutoff','all-records']),
+  action:z.enum(['research','wait']),
+}).strict();
+export type MethodAnswers=z.infer<typeof methodAnswers>;
+export function deriveAnswers(c:Challenge,m:MethodAnswers):Answers {
+  const amounts={grossProfitPaise:c.grossProfitPaise,feesPaise:c.feesPaise,slippagePaise:c.slippagePaise};
+  const netProfitPaise=m.costTerms.reduce((sum,term)=>sum+(term[0]==='-'?-1:1)*amounts[term.slice(1) as keyof typeof amounts],0);
+  const e=c.equityPaise,first=e[0]!,last=e.at(-1)!,low=Math.min(...e),high=Math.max(...e);
+  let drawdown=0;
+  if(m.drawdownMethod==='running-peak-to-trough'){let peak=0;for(const v of e){peak=Math.max(peak,v);drawdown=Math.max(drawdown,(peak-v)/peak*10000);}}
+  else if(m.drawdownMethod==='first-to-last')drawdown=Math.max(0,(first-last)/first*10000);
+  else if(m.drawdownMethod==='first-to-minimum')drawdown=Math.max(0,(first-low)/first*10000);
+  else drawdown=(high-low)/high*10000;
+  const cutoff=Date.parse(c.cutoff),eventOk=(r:{eventAt:string})=>Date.parse(r.eventAt)<=cutoff,availableOk=(r:{availableAt:string})=>Date.parse(r.availableAt)<=cutoff;
+  const rule={'event-and-availability-at-or-before-cutoff':(r:Challenge['records'][number])=>eventOk(r)&&availableOk(r),
+    'event-at-or-before-cutoff':eventOk,'availability-at-or-before-cutoff':availableOk,'all-records':()=>true}[m.timingRule];
+  return {netProfitPaise,maxDrawdownBps:Math.min(10000,drawdown),eligibleRecordIds:c.records.filter(rule).map(r=>r.id),action:m.action};
+}
 export function gradeSkill(challenge:Challenge,answers:Answers) {
   let peak=0,drawdown=0;
   for(const value of challenge.equityPaise){peak=Math.max(peak,value);drawdown=Math.max(drawdown,(peak-value)/peak*10000);}

@@ -31,7 +31,7 @@ Create a JSON file containing 1–25 observations (maximum file size 256 KiB):
 
 Use an already approved publisher and its actual origin; the example is not a configured source. From the project directory, with the backend running and the existing `.env` containing exactly one researcher principal:
 
-```powershell
+```cmd
 npm run sources:import -- observations.json
 ```
 
@@ -41,8 +41,32 @@ The command submits sequentially, refuses API redirects and stops on the first u
 
 `POST /v1/sources/observations/query` accepts `{ "sourceId": "publisher-id" }` plus an optional `status` of `unverified`, `verified`, `rejected` or `revoked`. Owner, researcher and evaluator roles can read up to 50 newest observations, with a `truncated` flag. There is no pagination yet. Each row includes source content, author, reviewer and current usability.
 
-## Limits and next step
+## Organisation review inbox
 
-Automatic RSS/API retrieval, publisher-specific parsing and corroboration remain unfinished. Version 0.1.26 adds a separate [article-to-lesson model proposal and independent review path](source-learning.md), with actual inference still unverified. Multiple copies of a claim are not independent corroboration. Observation/publication timestamps provide provenance; current graph and knowledge APIs remain current-context tools, not historical backtest selection APIs. An old publication date must not be used to pretend recently observed content was available in an earlier experiment.
+`POST /v1/sources/observations/review-queue` is available to owners and evaluators. Its strict body supports optional `sourceId`, `after` (an observation evidence UUID), `limit` (1–50, default 20) and `includeBlocked` (default false). It returns pending source observations across publishers, oldest first, with `nextCursor`. Pass that cursor as `after` to continue; a reviewed cursor remains valid. Ordering uses the original database timestamp and evidence UUID, preserving timestamp precision. The queue is a current view, not a frozen snapshot; start a fresh scan to revisit records whose source approval changed behind the cursor.
+
+Default results exclude the caller's own evidence, withdrawn sources and future publication dates. `includeBlocked: true` exposes them with `blockers` and `ready_for_review: false` for inspection. Queue readiness is not evidence verification, a truth score or permission to bypass the review API. Rejected, revoked and verified evidence is excluded. Legacy evidence without a source-observation record is outside this inbox.
+
+From Command Prompt with exactly one configured evaluator credential:
+
+```cmd
+npm.cmd run review:news
+npm.cmd run review:news -- queue-query.json
+```
+
+Example query file:
+
+```json
+{"limit":20,"includeBlocked":true}
+```
+
+This command reads one page and does not submit any review decision. After checking provenance and corroboration, use the existing evidence-review route, followed by the separate source-to-lesson workflow. Self-review is still rejected by the backend. Rebuild and restart to expose the new route; no additional database migration is required.
+
+## Remaining work
+
+Version 0.1.28 adds bounded [RSS/Atom feed retrieval](publisher-feeds.md) with checkpoints and crash-safe resubmission. Publisher-specific parsing, full-article retrieval and corroboration remain unfinished. Version 0.1.26 adds a separate [article-to-lesson model proposal and independent review path](source-learning.md), with production Hermes inference still unqualified; direct benchmark results are recorded separately in [model selection](model-selection.md). Multiple copies of a claim are not independent corroboration. Observation/publication timestamps provide provenance; current graph and knowledge APIs remain current-context tools, not historical backtest selection APIs. An old publication date must not be used to pretend recently observed content was available in an earlier experiment.
 
 No trading decision, bot fitness change, promotion, deployment or wallet operation follows ingestion. Rebuild and restart the backend to apply migration 019. Previously applied migrations remain unchanged.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

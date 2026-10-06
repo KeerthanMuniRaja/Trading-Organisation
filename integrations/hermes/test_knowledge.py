@@ -51,7 +51,7 @@ class KnowledgeTests(unittest.TestCase):
     def test_lost_response_replays_without_regenerating_and_rejects_changed_task(self):
         settings=Settings(Path('/source'),Path('/python'),'fixture','http://127.0.0.1:8000/v1','fixture-key')
         client=Mock(base='http://127.0.0.1:3000',token='fixture-token')
-        client.post.side_effect=[self.ticket(settings),{'authorised':True},TimeoutError()]
+        client.post.side_effect=[self.ticket(settings),{'authorised':True},{'recorded': True},TimeoutError()]
         proposer=Mock(return_value=plan())
         with tempfile.TemporaryDirectory() as directory:
             args=(client,settings,{'botId':'student','task':'one'},'stable-key',Path(directory))
@@ -60,6 +60,7 @@ class KnowledgeTests(unittest.TestCase):
             client.post.side_effect=[{'state':'awaiting-review'}]
             run_once(*args,proposer=proposer)
             self.assertEqual(client.post.call_args,original);proposer.assert_called_once()
+            self.assertEqual([c.args[0] for c in client.post.call_args_list].count('/v1/development/inference-reports'),1)
             with self.assertRaises(HermesError):run_once(client,settings,{'botId':'student','task':'changed'},'stable-key',Path(directory),proposer=proposer)
 
     def test_uncertain_inference_requires_reconciliation(self):

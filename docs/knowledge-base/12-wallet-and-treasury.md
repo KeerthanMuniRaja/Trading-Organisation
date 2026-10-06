@@ -1,6 +1,6 @@
 # Wallet and Treasury Policy
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](../current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](../current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 [Home](README.md) · [Governance](06-governance-and-capital.md) · [Financial scenarios](13-financial-scenarios.md) · [Reconciliation template](templates/financial-reconciliation.md)
 
@@ -122,3 +122,6 @@ Track gross and net performance separately from account balances. Set independen
 Owner reporting should show capital contributed, cumulative realised net P/L, unrealised P/L, the allocated profit base A, newly eligible profit, available and reserved Wallet 1 funds, pending Wallet 2 transfers, confirmed Wallet 2 funds, costs, exposures, and unresolved incidents.
 
 Self-improvement and recovery cannot modify this policy, the ledger history, ratio, destination, permissions, or spending limits. Approval of financial principles does not itself provide production credentials or operating budgets.
+
+<!-- documentation-navigation -->
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

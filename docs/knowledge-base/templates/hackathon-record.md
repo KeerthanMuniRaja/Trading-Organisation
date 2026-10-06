@@ -1,6 +1,6 @@
 # R&D Hackathon Record
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](../../current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](../../current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 [Home](../README.md) · [R&D lifecycle](../11-research-development-and-bot-lifecycle.md)
 
@@ -32,3 +32,6 @@ Status: template; no event is scheduled.
 - Owner-report reference:
 
 Winning this event does not grant deployment permission or authority to change examination rules.
+
+<!-- documentation-navigation -->
+[Documentation index](../../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

@@ -1,6 +1,6 @@
 # Worker attribution, diagnosis and corrective proposals
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 Version 0.1.13 adds attribution and failure analysis to **academy exams**. Portfolio trials, Hermes inference and the other departments do not yet share this new producer registry. Existing records are not backfilled with guessed worker versions.
 
@@ -46,7 +46,7 @@ The result is always `descriptive-only`, with `promotionAllowed: false`. Student
 
 Rebuild/restart the backend through migration **013** before starting updated Python departments. Normal department cycles now include remediation; the existing skill policy still defaults off. No inference provider or new dependency is required.
 
-```powershell
+```cmd
 npm run lifecycle:admin -- skill-diagnostics
 npm run lifecycle:admin -- skill-versions
 npm run lifecycle:admin -- compare-skill-versions comparison.json
@@ -62,3 +62,6 @@ The comparison file contains `baselineHash` and `candidateHash`, taken from the 
 | POST `/v1/skills/remediation/cycles` | Researcher/evaluator | Propose or independently review, using an idempotency key. |
 
 Validation and remaining deployment limitations are recorded in [verification](verification.md).
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

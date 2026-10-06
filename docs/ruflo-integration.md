@@ -1,6 +1,6 @@
 # Ruflo coordination integration
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 Status: **implemented and verified end to end on the normal Windows host** on 4 October 2026. The actual installed Ruflo created and completed a task from the backend HTTP feed, retained it across restart and avoided duplicate creation. The test also verified owner failure/recovery notifications and denied coordinator wallet access. The saved report and retained task/journal state were inspected. The core research jobs and paper demo still work independently.
 
@@ -27,7 +27,7 @@ The coordinator can also post its own structured health to `/v1/coordination/sta
 
 From the project root:
 
-```powershell
+```cmd
 Push-Location integrations/ruflo
 npm ci --ignore-scripts --omit=optional
 npm test
@@ -39,16 +39,16 @@ The actual smoke creates, reads and completes one local research task and checks
 
 The root command below additionally tests the actual backend-to-Ruflo flow, completion, restart/replay, owner notifications and denied wallet access. It uses a fresh in-memory database and generated test identities; it never loads the owner's `.env`, signing key or database. The report is saved to `integrations/ruflo/.state/last-live.json`.
 
-```powershell
+```cmd
 npm run ruflo:doctor
 npm run test:ruflo:live
 ```
 
 After the live check passes on the target host and the backend has a dedicated coordinator principal:
 
-```powershell
+```cmd
 npm run worker:coordination -- --once
-# Omit -- --once for periodic mirroring.
+REM Omit -- --once for periodic mirroring.
 ```
 
 Fresh `dev:setup` configurations include the dedicated principal. The local configuration used to build this release was extended without rotating existing credentials. Production workers must receive only their own token and API origin, not the core `.env`.
@@ -86,3 +86,6 @@ The child receives a fresh dedicated working directory, runtime paths and bounde
 The worker now reports sanitised failure codes to the owner inbox when the backend is reachable. An unreachable backend produces a local notification-delivery error. Only temporary backend HTTP failures are retried automatically; permission errors and uncertain MCP writes stop the worker. `RUFLO_STATE_DIR` optionally selects an owner-configured state directory. SIGINT/SIGTERM stop polling and release the active session after any in-flight bounded call finishes.
 
 The runtime preflight now checks pinned packages, Node 24 and the actual OS profile before creating a task intent. A missing profile is reported as `OS_PROFILE_UNAVAILABLE`; no fallback identity, trust-root substitution or policy bypass is installed.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

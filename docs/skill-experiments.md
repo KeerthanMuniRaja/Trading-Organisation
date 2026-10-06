@@ -1,6 +1,6 @@
 # Paired academy version experiments
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 ## Execution and operational evidence
 
@@ -58,7 +58,7 @@ Rebuild/restart through migration **014** before using the routes. Existing depa
 
 All writes require idempotency keys; `/work` is read-only. A repeated write returns its historical receipt, not fresh permission to operate. Read status for current support.
 
-```powershell
+```cmd
 npm run lifecycle:admin -- skill-experiments
 npm run lifecycle:admin -- skill-experiment your-reviewed-plan.json
 npm run lifecycle:admin -- cancel-skill-experiment your-cancellation.json
@@ -67,3 +67,6 @@ npm run lifecycle:admin -- cancel-skill-experiment your-cancellation.json
 Plan shape: `{baseline, candidate, researcherId, caseCount, criteria, purpose}`. Each producer uses the [existing manifest contract](skill-diagnostics.md). Supply actual declarations and an existing scoped researcher principal ID. No provider/model is selected by registration.
 
 `npm run verify:paired-skills` builds and tests a temporary in-memory backend with ephemeral credentials and actual Python-to-HTTP transport. A deliberately broken cost fixture is compared with the existing solver over eight cases: baseline 24/32, candidate 32/32, eight improvements, zero regressions. This demonstrates detection of injected errors, not learned improvement. It also verifies zero student/exam/lesson/financial writes and audit integrity. The fixture closes afterward and saves `.local/paired-skills-verification.json`; no `.env`, persistent database, model API, exchange or bank is used. See [verification](verification.md) for results.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

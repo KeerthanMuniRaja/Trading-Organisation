@@ -1,6 +1,6 @@
 # Knowledge Transfer and Retirement
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](../../current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](../../current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 [Home](../README.md) · [R&D lifecycle](../11-research-development-and-bot-lifecycle.md)
 
@@ -29,6 +29,9 @@ Status: template; no runtime deletion is authorised by filling it in.
 - Secrets excluded and retention restrictions:
 - Index and lineage references:
 - Successor retrieval or reproduction test:
+- Shared model versus bot-specific memory/context versions:
+- Disputed claims excluded from trusted reusable lessons:
+- Role-specific contribution (including non-revenue risk/control work):
 - Residual gaps preventing retirement:
 
 ## Decommissioning
@@ -40,3 +43,6 @@ Status: template; no runtime deletion is authorised by filling it in.
 - Archived identity and audit references:
 - Owner notification:
 - Any future restoration/requalification conditions:
+
+<!-- documentation-navigation -->
+[Documentation index](../../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

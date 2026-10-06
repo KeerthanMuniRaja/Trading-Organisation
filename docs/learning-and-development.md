@@ -1,6 +1,6 @@
 # Learning, existing models and organisation automation
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 Version 0.1.7 adds a factual experience-to-memory loop, versioned reflection profiles, a team supervisor and an optional Hermes R&D proposer. All new source is **unbuilt and unrun**. It implements another part of the owner's organisation; it does not claim complete autonomous growth or proven trading ability.
 
@@ -51,7 +51,7 @@ The optional worker uses the existing isolated Hermes adapter and pinned source 
 
 The owner supplies the **existing served model name and endpoint** in an R&D policy. The endpoint can be a compatible local server or hosted service; this change does not select/download/train a new foundation model. `HERMES_MODEL`, `HERMES_MODEL_BASE_URL` and the reviewed source revision must match the backend-issued profile. The provider key stays in the local scoped configuration, not in the policy or database.
 
-The backend authorises a three-minute request before inference, reserving one request against default limits of one per rolling day and ten lifetime. Hard ceilings are ten/day and one hundred lifetime. An expired/failed request still consumes its allowance. These are **authorised inference request counts**, not verified provider bills or exact API-call counts. Provider SDK retries and agent iterations can make more than one network call. Monetary cost accounting for model usage is not yet implemented.
+The backend authorises a three-minute request before inference, reserving one request against default limits of one per rolling day and ten lifetime. Hard ceilings are ten/day and one hundred lifetime. An expired/failed request still consumes its allowance. These are **authorised inference request counts**, not verified provider bills or exact API-call counts. Provider SDK retries and agent iterations can make more than one network call. Migration 022 adds immutable inference outcomes and an owner token ceiling; provider token counts remain optional worker claims. Monetary cost accounting is not implemented. See [model readiness](model-readiness.md).
 
 Immediately before inference the worker rechecks backend authorisation, target source, memory support and halt state. A policy revision or pause invalidates outstanding requests. Local state records that inference started before calling Hermes. If a process crashes with an uncertain inference outcome, rerunning does not silently call the provider again. A completed proposal is saved before submission; reruns use the same content and receipt. There is still a narrow unavoidable gap between preflight and an already-started external call: a halt cannot retroactively cancel a provider request already in flight.
 
@@ -63,7 +63,7 @@ Hermes calls remain bounded by the existing adapter's process/agent timeouts, em
 
 Startup applies additive migrations 007 and 008. They create disabled policies and empty records; they do not start learning or inference. From the project folder, the owner can inspect:
 
-```powershell
+```cmd
 npm run lifecycle:admin -- learning
 npm run lifecycle:admin -- development
 npm run lifecycle:admin -- report
@@ -73,7 +73,7 @@ To configure factual memory deliberately, register `docs/examples/learning-model
 
 After configuration and a running backend, the new supervisor starts both research and evaluation loops from **one terminal**:
 
-```powershell
+```cmd
 npm run worker:organisation -- --minutes 30
 ```
 
@@ -93,7 +93,7 @@ For optional Hermes R&D, follow its existing installation/environment instructio
 
 This is a placeholder, not a configured provider. Submit it using `lifecycle:admin -- development-policy <file>`. Explicitly start one request against an already registered target dataset with prior verified memory:
 
-```powershell
+```cmd
 npm run worker:development -- --dataset-id <UUID> --method equal_weight --request-key rd-session-0001
 ```
 
@@ -119,8 +119,11 @@ All paths are under `/v1`. Mutations require an idempotency key; memory/prefligh
 
 ## Next stages and evidence
 
-The subsequent v0.1.8 [registered experiment workflow](development-experiments.md) now provides fixed diagnostic plans and automatic aggregate review through the evaluator worker. It remains unverified and uses existing methods only; new strategy specifications, experiment isolation and autonomous recruitment remain future stages.
+The subsequent v0.1.8 [registered experiment workflow](development-experiments.md) now provides fixed diagnostic plans and automatic aggregate review through the evaluator worker. Its diagnostic paths have later regression coverage and use existing methods only; new strategy specifications, experiment isolation and autonomous recruitment remain future stages.
 
-Five backend regression cases and three Python R&D cases were added for role separation, immutable/deduplicated memories, temporal filtering, withdrawal, request quotas, independent review, no automatic recruitment, and no regeneration after uncertain outcomes. They have not been run. The modified Hermes runner and supervisor also need owner-run verification; historical Hermes/Ruflo passes are not current integration results.
+Five backend regression cases and three Python R&D cases were added for role separation, immutable/deduplicated memories, temporal filtering, withdrawal, request quotas, independent review, no automatic recruitment, and no regeneration after uncertain outcomes. Later regression and isolated organisation checks cover these implemented paths; use the dated [verification record](verification.md) for exact runs. Direct model benchmarks do not qualify the production Hermes path.
 
 Still to implement: controlled hypothesis experiments and novelty assessment, skill examinations, opportunity discovery, permissions for new departments, hackathons, the incident court, domain-specific fitness, real-world news/data ingestion, online monitoring, model comparison/selection, training or fine-tuning, governed code upgrades and production deployment. The organisation is designed for ongoing growth within evidence and resource limits; indefinite growth and successful handling of every situation cannot be promised.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

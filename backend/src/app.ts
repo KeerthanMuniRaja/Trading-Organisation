@@ -41,6 +41,7 @@ class ApiController {
   @Post('learning/sources/reviews') @Allow('evaluator') sourceLearningReview(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.learning.sourceLearning().review(r.actor,k??'',b);}
   @Post('sources/observations') @Allow('researcher','market') sourceObservation(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.org.observations().ingest(r.actor,k??'',b);}
   @Post('sources/observations/query') @Allow('owner','researcher','evaluator') sourceObservations(@Req() r:Request,@Body() b:unknown){return this.org.observations().list(r.actor,b);}
+  @Post('sources/observations/review-queue') @Allow('owner','evaluator') sourceReviewQueue(@Req() r:Request,@Body() b:unknown){return this.org.observations().reviewQueue(r.actor,b);}
   constructor(private readonly auth:OwnerAuthorization,private readonly treasury:Treasury,private readonly org:Organisation,private readonly research:Research,private readonly paper:PaperTrading,private readonly ops:Operations,private readonly portfolio:PortfolioResearch,private readonly lifecycle:ResearchLifecycle,private readonly dispatch:ResearchDispatch,private readonly report:OrganisationReport,private readonly learning:OrganisationalLearning,private readonly development:ResearchDevelopment,private readonly developmentExperiments:DevelopmentExperiments,private readonly sessions:DepartmentSessions,private readonly skills:AcademySkills,private readonly recovery:SkillRecovery,private readonly diagnostics:SkillDiagnostics,private readonly skillExperiments:SkillExperiments) {}
   @Get('skills/experiments') @Allow('owner','evaluator') skillExperimentStatus(@Req() r:Request){return this.skillExperiments.status(r.actor);}
   @Get('skills/experiments/research-approvals') @Allow('owner','evaluator') researchApprovals(@Req() r:Request){return this.skillExperiments.researchApprovals(r.actor);}
@@ -73,6 +74,8 @@ class ApiController {
   @Post('development/experiments') @Allow('owner') developmentExperiment(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.developmentExperiments.register(r.actor,k??'',b);}
   @Post('development/experiments/cycles') @Allow('evaluator') developmentExperimentCycle(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.developmentExperiments.cycle(r.actor,k??'',b);}
   @Post('development/experiments/cancellations') @Allow('owner') developmentExperimentCancel(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.developmentExperiments.cancel(r.actor,k??'',b);}
+  @Get('development/inference-usage') @Allow('owner','evaluator') inferenceUsage(@Req() r:Request){return this.development.inference().status(r.actor);}
+  @Post('development/inference-reports') @Allow('researcher') inferenceReport(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.development.inference().report(r.actor,k??'',b);}
   @Get('development') @Allow('owner','evaluator') developmentStatus(@Req() r:Request){return this.development.status(r.actor);}
   @Post('development/policy') @Allow('owner') developmentPolicy(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.development.configure(r.actor,k??'',b);}
   @Post('development/requests') @Allow('researcher') developmentRequest(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.development.request(r.actor,k??'',b);}
@@ -85,6 +88,7 @@ class ApiController {
   @Post('learning/knowledge/assessments/answers') @Allow('researcher') knowledgeAssessmentAnswers(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.learning.knowledgeAssessments().submit(r.actor,k??'',b);}
   @Post('learning/knowledge/assessments/grades') @Allow('evaluator') knowledgeAssessmentGrade(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.learning.knowledgeAssessments().grade(r.actor,k??'',b);}
   @Post('learning/knowledge/graph') @Allow('owner','evaluator') knowledgeGraph(@Req() r:Request,@Body() b:unknown){return this.learning.knowledge().graph(r.actor,b);}
+  @Post('learning/knowledge/discover') @Allow('owner','researcher','evaluator') knowledgeDiscover(@Req() r:Request,@Body() b:unknown){return this.learning.knowledge().discover(r.actor,b);}
   @Post('learning/knowledge/requests') @Allow('researcher') knowledgeRequest(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.learning.knowledge().request(r.actor,k??'',b);}
   @Post('learning/knowledge/preflight') @Allow('researcher') knowledgePreflight(@Req() r:Request,@Body() b:unknown){return this.learning.knowledge().preflight(r.actor,b);}
   @Post('learning/knowledge/proposals') @Allow('researcher') knowledgeProposal(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.learning.knowledge().submit(r.actor,k??'',b);}

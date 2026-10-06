@@ -1,6 +1,7 @@
 """Hermes proposes a bounded research candidate; the backend retains all authority."""
 from __future__ import annotations
 
+import contextvars
 from dataclasses import dataclass, field
 import json
 import math
@@ -10,6 +11,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 from urllib.parse import urlsplit
+
+import contracts
 
 PINNED_REVISION = "f97608f178d1ffeca59860195ab7da295f7c8e5f"
 RELEASE = "v2026.9.24"
@@ -72,15 +75,21 @@ class Settings:
     model: str
     base_url: str
     api_key: str = field(repr=False)
+    timeout_seconds: int = contracts.DEFAULT_TIMEOUT_SECONDS
+    engine: str = 'hermes'
 
     @classmethod
     def from_env(cls, env=None) -> "Settings":
         env = os.environ if env is None else env
         if env.get("HERMES_ENABLED") != "true":
             raise HermesError("Set HERMES_ENABLED=true explicitly to use this optional worker")
-        names = ("HERMES_SOURCE_PATH", "HERMES_PYTHON", "HERMES_MODEL", "HERMES_MODEL_BASE_URL", "HERMES_MODEL_API_KEY")
+        engine = env.get("HERMES_ENGINE", "hermes")
+        if engine not in ENGINES:
+            raise HermesError("HERMES_ENGINE must be hermes or direct")
+        # The direct engine runs no upstream agent code, so it needs no Hermes checkout or interpreter.
+        names = ("HERMES_MODEL", "HERMES_MODEL_BASE_URL", "HERMES_MODEL_API_KEY") + (("HERMES_SOURCE_PATH", "HERMES_PYTHON") if engine == "hermes" else ())
         if any(not env.get(name, "").strip() for name in names):
-            raise HermesError("Hermes source, Python, model, endpoint and model key are required")
+            raise HermesError("Model, endpoint and model key (plus Hermes source and Python for the hermes engine) are required")
         parsed = urlsplit(env["HERMES_MODEL_BASE_URL"])
         if not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise HermesError("Model endpoint must not contain credentials, query or fragment")
@@ -88,11 +97,36 @@ class Settings:
             raise HermesError("Model endpoint requires HTTPS except on loopback")
         if len(env["HERMES_MODEL"]) > 200 or len(env["HERMES_MODEL_API_KEY"]) > 4096:
             raise HermesError("Hermes configuration exceeds its limits")
-        return cls(Path(env["HERMES_SOURCE_PATH"]).resolve(), Path(env["HERMES_PYTHON"]).resolve(),
-                   env["HERMES_MODEL"], env["HERMES_MODEL_BASE_URL"], env["HERMES_MODEL_API_KEY"])
+        # Slow local hardware may need longer than the original 70 s; each task stays capped by its ticket lifetime.
+        raw_timeout = env.get("HERMES_TIMEOUT_SECONDS", str(contracts.DEFAULT_TIMEOUT_SECONDS))
+        if not raw_timeout.isdigit() or not 70 <= int(raw_timeout) <= 540:
+            raise HermesError("HERMES_TIMEOUT_SECONDS must be an integer from 70 to 540")
+        source = Path(env["HERMES_SOURCE_PATH"]).resolve() if engine == "hermes" else Path("unused-by-direct-engine")
+        python = Path(env["HERMES_PYTHON"]).resolve() if engine == "hermes" else Path("unused-by-direct-engine")
+        return cls(source, python, env["HERMES_MODEL"], env["HERMES_MODEL_BASE_URL"], env["HERMES_MODEL_API_KEY"], int(raw_timeout), engine)
+
+
+# Local engine name -> backend profile engine. A ticket is only served by the engine its owner policy names.
+ENGINES = {'hermes': 'hermes-rd-v1', 'direct': 'direct-structured-v1'}
+# Collects provider usage for the current inference; set by inference_reporting.timed_inference.
+USAGE = contextvars.ContextVar('organisation_inference_usage', default=None)
+
+
+def profile_matches(profile: dict, settings: Settings) -> bool:
+    if profile.get('name') != settings.model or str(profile.get('baseUrl', '')).rstrip('/') != settings.base_url.rstrip('/'):
+        return False
+    if profile.get('engine') != ENGINES[settings.engine]:
+        return False
+    return settings.engine == 'direct' or profile.get('sourceRevision') == PINNED_REVISION
+
+
+def engine_label(settings: Settings) -> str:
+    return 'direct-structured-v1' if settings.engine == 'direct' else 'hermes-' + PINNED_REVISION[:12]
 
 
 def verify_checkout(settings: Settings) -> None:
+    if settings.engine == 'direct':
+        return  # No upstream checkout is executed by the direct engine.
     if not settings.python.is_file() or not (settings.source / "run_agent.py").is_file():
         raise HermesError("Hermes Python environment or source checkout is missing")
     # run_agent loads a source-local .env even when HERMES_HOME is separate.
@@ -119,7 +153,7 @@ def verify_checkout(settings: Settings) -> None:
         raise HermesError("Hermes must use the clean, pinned source revision")
 
 
-def child_environment(settings: Settings, home: Path, inherited=None) -> dict:
+def child_environment(settings: Settings, home: Path, inherited=None, timeout: int = contracts.DEFAULT_TIMEOUT_SECONDS) -> dict:
     inherited = os.environ if inherited is None else inherited
     # Deliberately do not inherit API_TOKEN, PRINCIPALS_JSON, database URLs, proxy
     # settings, PYTHONPATH, other provider credentials, or the user's Hermes home.
@@ -127,7 +161,7 @@ def child_environment(settings: Settings, home: Path, inherited=None) -> dict:
     environment.update({"PATH": str(settings.python.parent), "HOME": str(home), "USERPROFILE": str(home),
                         "HERMES_HOME": str(home), "TMPDIR": str(home), "TMP": str(home), "TEMP": str(home),
                         "HERMES_MODEL_API_KEY": settings.api_key,
-                        "PYTHONIOENCODING": "utf-8", "HERMES_API_CALL_TIMEOUT": "40"})
+                        "PYTHONIOENCODING": "utf-8", "HERMES_API_CALL_TIMEOUT": str(contracts.agent_budgets(timeout)["api"])})
     return environment
 
 
@@ -173,8 +207,31 @@ def propose_capability(settings: Settings, context: dict) -> dict:
     return invoke(settings, request, lambda value: validate_capability(value, context))
 
 
+def direct_invoke(settings: Settings, request: dict, validator) -> dict:
+    """One schema-constrained chat completion: no agent loop, tools or upstream code. Validators still decide acceptance."""
+    from openai_compat import Endpoint, EndpointError, chat
+    task = contracts.task_name(request)
+    try:
+        endpoint = Endpoint.create(settings.base_url, settings.model, settings.api_key)
+        result = chat(endpoint, contracts.PROMPTS[task], json.dumps(contracts.user_payload(task, request), allow_nan=False),
+                      contracts.MAX_TOKENS[task], timeout=contracts.timeout_for(task, settings.timeout_seconds),
+                      schema=contracts.output_schema(task, request.get('context')))
+    except EndpointError as exc:
+        raise HermesError('Model endpoint failed: ' + exc.code) from None
+    sink = USAGE.get()
+    if sink is not None:
+        sink.update({k: result[k] for k in ('promptTokens', 'completionTokens', 'reportedModel') if result[k] is not None})
+    if len(result['content'].encode('utf-8')) > MAX_OUTPUT_BYTES:
+        raise HermesError('Model output exceeds the research contract')
+    return validator(strict_json(result['content']))
+
+
 def invoke(settings: Settings, request: dict, validator) -> dict:
+    if settings.engine == 'direct':
+        return direct_invoke(settings, request, validator)
     verify_checkout(settings)
+    timeout = contracts.timeout_for(contracts.task_name(request), settings.timeout_seconds)
+    request = {**request, 'timeoutSeconds': timeout}
     with tempfile.TemporaryDirectory(prefix="trading-hermes-") as directory:
         home = Path(directory)
         (home / "config.yaml").write_text("{}\n", encoding="utf-8")
@@ -184,8 +241,8 @@ def invoke(settings: Settings, request: dict, validator) -> dict:
             try:
                 completed = subprocess.run([str(settings.python), "-I", str(Path(__file__).with_name("runner.py"))],
                                            input=json.dumps(request, allow_nan=False).encode("utf-8"), stdout=output,
-                                           stderr=subprocess.DEVNULL, env=child_environment(settings, home),
-                                           cwd=home, timeout=TIMEOUT_SECONDS, check=False, shell=False)
+                                           stderr=subprocess.DEVNULL, env=child_environment(settings, home, timeout=timeout),
+                                           cwd=home, timeout=timeout, check=False, shell=False)
             except (OSError, subprocess.SubprocessError) as exc:
                 raise HermesError("Hermes research subprocess failed or timed out") from exc
             if completed.returncode != 0:

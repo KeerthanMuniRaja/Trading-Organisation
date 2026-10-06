@@ -1,17 +1,16 @@
 # Portfolio research backend connection
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
-Version 0.1.3 adds the Python-to-NestJS connection. The owner supplied successful build and backend startup logs on 4 October 2026, including the new routes. **The full Python-to-backend evaluation flow and new tests remain unverified.** Terminal execution belongs to the owner. The earlier offline academy results remain evidence for v0.1.2 only; v0.1.4 adds a separate, not-yet-run research lifecycle.
+Version 0.1.3 introduced the Python-to-NestJS connection. Later isolated HTTP and organisation checks exercised portfolio fitting and independent evaluation; see the dated [verification record](verification.md). These checks do not establish live-market performance or persistent deployment. Development commands may be run through Command Prompt; Docker verification remains deferred.
 
 ## Start from the existing workspace
 
 Dependencies and development credentials already exist here. From PowerShell:
 
-```powershell
-Set-Location 'C:\Users\KeerthanMuniRajaT\Documents\Codex\2026-10-03\i-x20\trading-organisation'
-npm run build
-if ($LASTEXITCODE -eq 0) { npm start }
+```cmd
+cd /d "C:\Users\KeerthanMuniRajaT\Documents\Codex\2026-10-03\i-x20\Nexus"
+npm run build && npm start
 ```
 
 Build compiles TypeScript; it does not run tests. Startup applies migration `004_portfolio_research.sql` to the configured local paper database, then listens on the existing configured address. Stop with Ctrl+C. Startup does not seed datasets, launch workers, fit models, or place orders. There is no new dependency install for this increment. A new checkout still needs the setup steps in the README and the isolated Python environment in [portfolio academy](portfolio-academy.md).
@@ -70,7 +69,7 @@ The score reproduces the offline lab's fractional buy-and-hold calculation: drif
 
 After registering a dataset and preparing a college bot, use their actual IDs in a second terminal:
 
-```powershell
+```cmd
 npm run worker:portfolio -- researcher --bot-id YOUR_BOT_ID --dataset-id YOUR_DATASET_UUID --method minimum_variance
 npm run worker:portfolio -- evaluator --trial-id RETURNED_TRIAL_UUID
 ```
@@ -81,7 +80,7 @@ Each launch selects only that role's credential from the existing development `.
 
 The saved command is available when testing resumes:
 
-```powershell
+```cmd
 npm run verify:portfolio
 ```
 
@@ -90,3 +89,6 @@ It compiles, runs the backend suite, runs the Python academy/bridge tests, and e
 The command stops at the first failure and writes `.local/portfolio-verification.json` plus stage logs under `.local/portfolio-verification/`. The HTTP check also writes `integrations/skfolio/.state/last-http-check.json`. A report claiming success exists only after the command actually passes; no results have been prefilled for this version.
 
 Market-data collection remains pending the owner's initial market choice and an approved provider. No provider, account, data subscription, or model was selected by this increment.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

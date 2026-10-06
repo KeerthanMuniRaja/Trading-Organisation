@@ -1,6 +1,6 @@
 # Prepare the first research department
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 Current worker requirement: v0.1.11 adds [academy skill routes](academy-skills.md) and migration 011. Rebuild/restart the backend before using updated department workers. The optional exam gate defaults off and is not enabled by starter import. The isolated organisation check explicitly enables it only in its disposable database.
 
@@ -12,7 +12,7 @@ The subsequent v0.1.10 [supervisor monitoring](department-monitoring.md) require
 
 From the project folder:
 
-```powershell
+```cmd
 npm run organisation:prepare
 ```
 
@@ -28,7 +28,7 @@ Existing plan/review files are preserved. Rerunning prepare reuses the plan and 
 
 Read `REVIEW.md` and `plan.json`. The review file gives the exact command with its actual SHA-256:
 
-```powershell
+```cmd
 npm run organisation:apply -- --approve <SHA256_FROM_REVIEW>
 ```
 
@@ -55,7 +55,7 @@ The files contain the policy revisions observed during registration. If the owne
 
 With the backend running, the owner may explicitly apply the reviewed files:
 
-```powershell
+```cmd
 npm run lifecycle:admin -- learning-policy .local/organisation-starter/learning-enable.json
 npm run lifecycle:admin -- dispatch-policy .local/organisation-starter/dispatch-enable.json
 npm run lifecycle:admin -- policy .local/organisation-starter/lifecycle-enable.json
@@ -63,7 +63,7 @@ npm run lifecycle:admin -- policy .local/organisation-starter/lifecycle-enable.j
 
 Each is a separate command; stop and inspect an error before continuing. Then, to run a finite example session:
 
-```powershell
+```cmd
 npm run worker:organisation -- --minutes 30
 ```
 
@@ -73,14 +73,17 @@ Assignments and reflections have independent limits. Completion is not guarantee
 
 Inspect progress from another terminal:
 
-```powershell
+```cmd
 npm run lifecycle:admin -- report
 npm run lifecycle:admin -- community
 npm run lifecycle:admin -- learning
 ```
 
-Ctrl+C stops the local session. Existing policy/operations commands can pause future work. The application is not continuously operating merely because the API server is running. Supervisor heartbeats are now implemented in v0.1.10 but unverified; background stale alerts, live data ingestion and autonomous creation of new techniques/departments remain separate development work.
+Ctrl+C stops the local session. Existing policy/operations commands can pause future work. The application is not continuously operating merely because the API server is running. Supervisor heartbeats have contract and isolated workflow verification; background stale alerts, live data ingestion and autonomous creation of new techniques/departments remain separate development work.
 
 ## Verification
 
 All four `npm run test:starter` contract cases passed for malformed plans, role/origin restrictions, lost-response recovery without policy writes, and refusal to bypass active policies or revoked support. Actual offline Python export, plan validation, real HTTP import/replay and a monitored research/memory session also passed. Import and activation occurred only in a temporary test database. The local plan/review exist; persistent deployment remains separate. See [verification](verification.md) for exact results and [organisation verification](organisation-verification.md) to rerun the check.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

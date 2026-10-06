@@ -1,6 +1,6 @@
 # Financial Reconciliation and Distribution Record
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](../../current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](../../current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 [Home](../README.md) · [Wallet policy](../12-wallet-and-treasury.md) · [Scenarios](../13-financial-scenarios.md)
 
@@ -59,3 +59,6 @@ Status: template; no transfer, account connection, or spending authorised.
 - Notification ID and delivery state:
 - Owner action needed:
 - Evidence links and next authorised review:
+
+<!-- documentation-navigation -->
+[Documentation index](../../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

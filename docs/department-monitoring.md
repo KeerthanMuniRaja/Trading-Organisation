@@ -1,6 +1,6 @@
 # Department supervisor sessions
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 ## Separate artifact observation stream
 
@@ -46,21 +46,20 @@ Staleness is calculated at read time. Reading status does not mutate audit recor
 
 Rebuild and restart the backend before using updated launchers; otherwise their new session routes are absent. From the project folder, after stopping the old server:
 
-```powershell
-npm run build
-if ($LASTEXITCODE -eq 0) { npm start }
+```cmd
+npm run build && npm start
 ```
 
 Startup applies migration 010. It creates empty session tables and starts no workers. Inspect from a second terminal:
 
-```powershell
+```cmd
 npm run lifecycle:admin -- workers
 npm run lifecycle:admin -- report
 ```
 
 After configuring the starter department or another approved example workflow, the existing command starts a finite monitored session:
 
-```powershell
+```cmd
 npm run worker:organisation -- --minutes 30
 ```
 
@@ -79,3 +78,6 @@ These POSTs use session/sequence replay rules instead of the general `Idempotenc
 ## Validation still needed
 
 Four backend cases passed for role exclusivity, read-only reports, monotonic counters, retry freshness, expiration/replacement fencing and notification deduplication. Six Node cases passed, including actual child exit on cancellation and heartbeat denial. `npm run test:supervisor` selects these cases. The isolated Python team integration also passed duplicate-launch rejection, multi-cycle heartbeat freshness and acknowledged shutdown. Natural expiry after an OS-level crash and persistent deployment remain unverified. See [verification](verification.md).
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

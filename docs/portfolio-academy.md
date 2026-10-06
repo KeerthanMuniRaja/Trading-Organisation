@@ -1,8 +1,8 @@
 # Portfolio academy: repository-backed research
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
-The offline academy introduced in version 0.1.2 calls **skfolio 1.4.11 itself** in an isolated Python environment. This fits portfolio allocations; it does not fine-tune a language model. It complements the backend's momentum research. Its local reports are not automatically submitted to NestJS or Ruflo and cannot confer graduation or trading access. Version 0.1.3 adds a separate [backend connection](portfolio-backend.md) with backend-calculated evaluation. The owner confirmed its compilation and API startup; the full workflow remains unverified.
+The offline academy introduced in version 0.1.2 calls **skfolio 1.4.11 itself** in an isolated Python environment. This fits portfolio allocations; it does not fine-tune a language model. It complements the backend's momentum research. Its local reports are not automatically submitted to NestJS or Ruflo and cannot confer graduation or trading access. Version 0.1.3 adds a separate [backend connection](portfolio-backend.md) with backend-calculated evaluation. Later isolated portfolio and organisation checks verified the backend workflow; see [verification](verification.md).
 
 ## Reference review and decisions
 
@@ -37,7 +37,7 @@ Both positive and negative values are retained. This is a research score, not mo
 
 The environment is installed in this workspace. From the project root:
 
-```powershell
+```cmd
 npm run academy:test
 npm run academy:run
 ```
@@ -54,21 +54,21 @@ An OS lock prevents simultaneous runners. A database constraint prevents duplica
 
 The lock targets **Windows x64, Python 3.12** and pins twenty dependencies with selected wheel SHA-256 hashes. Other platforms require their own validated lock; do not bypass hashes.
 
-```powershell
+```cmd
 python -m venv integrations/skfolio/.venv
-& integrations/skfolio/.venv/Scripts/python.exe -m pip install --only-binary=:all: --require-hashes -r integrations/skfolio/requirements.lock
-& integrations/skfolio/.venv/Scripts/python.exe -m pip check
+integrations/skfolio/.venv/Scripts/python.exe -m pip install --only-binary=:all: --require-hashes -r integrations/skfolio/requirements.lock
+integrations/skfolio/.venv/Scripts/python.exe -m pip check
 ```
 
 `dependencies.lock.json` records exact artifact URLs. The runner rejects version drift. Pinning does not establish absence of vulnerabilities. skfolio uses BSD-3-Clause; dependencies have their own licences. We call the library without copying its implementation. Preserve package licence files in any future binary distribution.
 
 Installed runtime uses local code/data. Repository removal cannot erase local copies, but reinstalling needs retained artifacts or an available package host. To cache an offline reinstall:
 
-```powershell
-& integrations/skfolio/.venv/Scripts/python.exe -m pip download --only-binary=:all: --require-hashes -r integrations/skfolio/requirements.lock -d .local/skfolio-wheels
+```cmd
+integrations/skfolio/.venv/Scripts/python.exe -m pip download --only-binary=:all: --require-hashes -r integrations/skfolio/requirements.lock -d .local/skfolio-wheels
 ```
 
-The worker stops after finishing its exercise. Continued useful learning requires new approved data or a new exercise. Next steps are verification of the new backend connection, a permitted market-data source and point-in-time ingestion. LLM selection and Kronos fine-tuning remain separate decisions.
+The worker stops after finishing its exercise. Continued useful learning requires new approved data or a new exercise. Next steps are a permitted market-data source, point-in-time ingestion and broader held-out evaluation. Language-model qualification and Kronos forecasting remain separate tracks; see [model strategy](model-strategy.md).
 
 ```mermaid
 flowchart LR
@@ -79,3 +79,6 @@ flowchart LR
   E --> F[Persistent attempts and knowledge report]
   F -. historical context only .-> G[Reviewed research knowledge]
 ```
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

@@ -1,6 +1,14 @@
 # Change Log
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](../current-status.md). Dated milestones and design proposals retain their original scope.
+## Complete documentation reconciliation — 6 October 2026
+
+Reconciled current guidance with saved 4B free-form/constrained results and retained numerical failures. Refreshed continuation instructions, workflow verification boundaries, Command Prompt examples and evaluation/reporting templates. Added a complete documentation index and navigation from every guide. Original vision, finances and dated verification remain preserved; no implementation or activation change.
+
+## Organisation/model review — 6 October 2026, v0.1.32
+
+Updated the current status index, reference map, shared-model learning graph and model strategy. Preserved the original vision and financial rules. Recorded the failed direct 2B benchmark and unqualified 4B candidate; distinguished reviewed memory from neural training and role-specific fitness from revenue-only ranking. Added corrected pair-coverage, timeout and recovery semantics to the runtime guides.
+
+> [Current implementation, validation and limits](../current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 ## Documentation refresh — 5 October 2026, backend v0.1.21
 
@@ -64,3 +72,6 @@ README, requirements, department map, knowledge graph, daily research process, l
 ### Package status
 
 Version 0.1 is preserved. This package contains 21 Markdown documents and four Mermaid diagrams. It remains a brainstorming record, not an implementation, deployment, account connection, or scheduled automation.
+
+<!-- documentation-navigation -->
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

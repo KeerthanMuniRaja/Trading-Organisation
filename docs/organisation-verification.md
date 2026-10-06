@@ -1,6 +1,6 @@
 # Verify the research organisation together
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 `npm run verify:organisation` builds the backend and runs the starter importer, HTTP API, database, Node supervisors and actual Python departments together. It requires the existing pinned skfolio environment and the bundle produced by `npm run organisation:prepare`.
 
@@ -23,3 +23,6 @@ The lifecycle retains its real 60-second cadence; the test does not rewrite data
 `npm run test:supervisor` additionally runs two actual child-process tests, checking cancellation and heartbeat denial while a child is active. These use a temporary Node child, not a model or a Python fitting process. They verify process exit; they do not establish an OS security boundary. Existing four client contract cases cover heartbeat retries, sequencing and loss handling.
 
 This proves bounded software behaviour on previously used historical examples and synthetic exams. Factual reflections are recorded experience, not model-weight updates; the exam measures a shared deterministic adapter. The check does not validate profitability, new strategy discovery, unseen holdouts, production isolation, persistent deployment, sudden OS process termination or recovery after a machine crash.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

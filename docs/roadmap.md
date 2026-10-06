@@ -1,15 +1,20 @@
 # Implementation roadmap
 
-## Current priority: the learning bot organisation
+## Current priority — v0.1.32
 
-v0.1.23 implements cross-bot reasoning, a SQL-backed knowledge graph and reusable accepted application plans. Next: evaluate real inference, measure transfer benefit on fresh tasks and ingest approved external sources with timestamps and review. These take priority over further infrastructure expansion. Reviewed plans alone do not demonstrate skill. See [bot knowledge](bot-knowledge.md).
+Extend constrained 4B evaluation to all tasks and fresh cases, then implement and verify its schema mode through Hermes. Preserve the drawdown failures and measure memory/deadlines. See [selection evidence](model-selection.md). The saved 2B run failed important tasks. Next connect one approved publisher through the existing reviewed source → lesson → transfer → fresh-assessment workflow, then add corroboration, role-specific fitness and bounded organisation scheduling. See [model strategy](model-strategy.md), [current status](current-status.md) and [remaining work](remaining-work-assessment.md).
 
+Current self-improvement means reviewed knowledge reuse and measured application; continuous fine-tuning, automatic code releases, independent department growth and live trading remain unfinished. Deterministic financial authority and preserved retirement history remain requirements.
+
+## Historical development priorities
+
+The following version-specific descriptions retain their original dates and may describe work completed later.
 
 ## v0.1.22 research approval records
 
 Owner approval/revocation records for independently evaluated candidates are implemented with exact identity checks, expiry and current policy/halt status. No worker consumes this record as execution authority. Actual release selection, deployment, rollback and stronger runtime provenance remain future work. See [research approvals](research-approvals.md).
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 ## Current priorities — v0.1.21
 
@@ -63,3 +68,6 @@ Before retirement, preserve reviewed lessons, failed hypotheses, assumptions, co
 The next data layer needs an initial market, asset class, time horizon and provider. Indian listed equities and on-chain DEX assets use different market access and settlement models. The paper core is venue-neutral; it does not assume that every reference project supports the chosen market.
 
 The institution metaphor guides responsibilities and learning. Runtime behaviour still needs explicit contracts, measurable tests and budgets. There is no established guarantee of autonomous profitability, fault-free operation, faster-than-market execution or unlimited self-improvement.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

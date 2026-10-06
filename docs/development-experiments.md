@@ -1,6 +1,6 @@
 # Registered R&D experiments
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 Version 0.1.8 adds a fixed experiment plan between a recommended Hermes proposal and any future recruitment decision. Source, migration 009 and four regression cases are written; no build, migration, tests or workers have been run for this increment.
 
@@ -49,20 +49,20 @@ The owner records how the proposed idea maps to a measurable diagnostic experime
 
 After rebuilding and restarting the server (startup applies migration 009):
 
-```powershell
+```cmd
 npm run lifecycle:admin -- experiments
 npm run lifecycle:admin -- report
 ```
 
 Copy `docs/examples/development-experiment.json` to `.local/development-experiment.json`. Replace the placeholder IDs with a recommended request, an eligible managed bot and three or more approved datasets; review the definition and thresholds. Register it:
 
-```powershell
+```cmd
 npm run lifecycle:admin -- experiment .local/development-experiment.json
 ```
 
 With curriculum, dataset pool and lifecycle/dispatch policies configured, the existing bounded worker session can produce and assess the planned work:
 
-```powershell
+```cmd
 npm run worker:organisation -- --minutes 30
 ```
 
@@ -85,4 +85,7 @@ The organisation report includes registered, pending, historically supported, no
 
 ## Next work
 
-Owner-run verification is pending. The next capability stages are executable experiment specifications for genuinely new techniques, protected evaluation datasets and contamination controls, statistical/novelty assessment, then a separate evidence-based recruitment or curriculum proposal. This increment deliberately does not turn a positive example diagnostic into automatic deployment.
+Initial pending-test statements are superseded by later regression evidence in [verification](verification.md); neither those checks nor a diagnostic result qualify live performance. The next capability stages are executable experiment specifications for genuinely new techniques, protected evaluation datasets and contamination controls, statistical/novelty assessment, then a separate evidence-based recruitment or curriculum proposal. This increment deliberately does not turn a positive example diagnostic into automatic deployment.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.

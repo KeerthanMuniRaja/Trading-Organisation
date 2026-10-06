@@ -1,6 +1,10 @@
 # Trading Organisation — Brainstorming Knowledge Base
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](../current-status.md). Dated milestones and design proposals retain their original scope.
+## Implementation update — v0.1.32
+
+This folder retains the organisation vision and working templates. Use [current implementation](../current-status.md), [model strategy and learning graph](../model-strategy.md) and [reference decisions](../reference-map.md) for current capabilities and model evidence. Shared model weights can serve distinct bots; knowledge reuse is implemented in bounded workflows, while autonomous model training and unrestricted growth are not.
+
+> [Current implementation, validation and limits](../current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 For development continuity across accounts or chats, read the current [project KT](../../KT.md) and [resume prompt](../../RESUME-PROMPT.md). This folder preserves the original design, while those files identify the latest implementation and continuation point.
 
@@ -81,3 +85,6 @@ Start with the vision, graph, and bot lifecycle. For the latest agreed financial
 All links between Markdown documents are relative. Mermaid diagrams include text explanations for readers without Mermaid support. No graph database, final model, hosting provider, or execution engine has been selected.
 
 This version supersedes version 0.2 as the current design record. Both earlier ZIPs are retained. The package contains 24 Markdown documents and five Mermaid diagrams. No GitHub repository has been created or updated.
+
+<!-- documentation-navigation -->
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
