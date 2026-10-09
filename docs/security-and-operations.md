@@ -57,4 +57,4 @@ Root dependencies and optional integrations are pinned with lockfiles. Ruflo is 
 The production dependency audits recorded in the validation report passed at the time of the build. That is a point-in-time package-advisory check, not a complete code/security audit. Recheck before releasing new images and retain required upstream notices. Optional/native packages omitted from Ruflo's installation were not exercised.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

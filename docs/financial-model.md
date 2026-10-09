@@ -46,4 +46,4 @@ There is no automatic bank top-up, borrowing, margin, short selling, or spend to
 This ledger assumes one base currency and synthetic settlement. Tax accruals, broker-specific settlement, corporate actions, FX, funding costs, externally verified deposit/fill receipts, custody reconciliation and reversals require further design before live use. P/A history must be backed up with journals and pending obligations together; restoring only wallet totals would be unsafe.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

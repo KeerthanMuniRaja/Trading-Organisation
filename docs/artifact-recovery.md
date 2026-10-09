@@ -52,4 +52,4 @@ Container cleanup is separate: `artifact_executor.py sandbox-recover` checks the
 `artifact_recovery.py`, `artifact_inspection.py`, `artifact_batch.py` and `execution_reporting.py` implement this workflow; the Node launcher supplies the researcher credential. Tests cover read-only inspection, bounded selection, mixed failures, stale runtime recovery, response loss, reporting outages, identity mismatch and no re-execution. The actual HTTP fixture verifies inspection before/after batch recovery, exactly two original solver runs, independent grading and no financial writes. See [verification](verification.md).
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

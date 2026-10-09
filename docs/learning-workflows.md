@@ -95,4 +95,4 @@ Backend tests exercise the complete source-to-assessment sequence, separate revi
 Finite publisher/Vibe collection and reviewed keyword lesson discovery now exist separately. Remaining orchestration work includes connecting these tools to workflow queues, qualified reviewer reasoning, recipient relevance selection, durable distributed inference leases, richer owner reports and operational deployment. See AUTO-01 in the [remaining-work assessment](remaining-work-assessment.md).
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

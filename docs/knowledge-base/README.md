@@ -87,4 +87,4 @@ All links between Markdown documents are relative. Mermaid diagrams include text
 This version supersedes version 0.2 as the current design record. Both earlier ZIPs are retained. The package contains 24 Markdown documents and five Mermaid diagrams. No GitHub repository has been created or updated.
 
 <!-- documentation-navigation -->
-[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

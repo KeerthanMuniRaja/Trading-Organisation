@@ -66,4 +66,4 @@ The report is `.local/paired-artifacts-verification.json`. Generated fixture sou
 Use `--sandbox-image sha256:FULL_LOCAL_IMAGE_HASH` instead of `--trust-reviewed-local-code` for the Docker adapter after an appropriate local image and engine are available. Do not treat this example as a completed Docker validation. No image is pulled or built automatically. For journal inspection, selected-journal batch recovery and backend reports, follow [the recovery guide](artifact-recovery.md).
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

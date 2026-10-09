@@ -69,4 +69,4 @@ The saved 2B direct run failed both source-lesson contracts and one assessment o
 Hermes benchmark timeout overrides now reach the adapter, but the 70-second candidate and 150-second capability caps still apply. Use `--engine hermes --timeout-seconds 300` to exercise that path; the report lists effective per-task limits. No task automatically gains more authority or a longer production lease.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

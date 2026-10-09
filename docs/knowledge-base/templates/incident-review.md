@@ -75,4 +75,4 @@ Status: template; no incident is alleged.
 - Candidate changes sent to qualification:
 
 <!-- documentation-navigation -->
-[Documentation index](../../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../../documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

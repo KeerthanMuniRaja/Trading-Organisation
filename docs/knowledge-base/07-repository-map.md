@@ -106,4 +106,4 @@ Sources: [Hermes licence](https://github.com/NousResearch/hermes-agent/blob/main
 See [runtime and independence](09-runtime-and-independence.md).
 
 <!-- documentation-navigation -->
-[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

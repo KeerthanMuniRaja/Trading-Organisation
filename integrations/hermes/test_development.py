@@ -46,7 +46,7 @@ class DevelopmentTests(unittest.TestCase):
             proposer.assert_called_once()
             report = client.post.call_args_list[2]
             self.assertEqual(report.args[0], '/v1/development/inference-reports')
-            self.assertEqual((report.args[1]['outcome'], report.args[1]['promptVersion']), ('completed', '788c3a60a187ca80'))
+            self.assertEqual((report.args[1]['outcome'], report.args[1]['promptVersion']), ('completed', 'e5ca2b31f86b9142'))
 
     def test_uncertain_inference_is_not_automatically_regenerated(self):
         settings = adapter.Settings(Path('/source'), Path('/python'), 'model', 'http://127.0.0.1:8000/v1', 'local-placeholder')

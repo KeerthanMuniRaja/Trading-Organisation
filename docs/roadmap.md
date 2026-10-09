@@ -70,4 +70,4 @@ The next data layer needs an initial market, asset class, time horizon and provi
 The institution metaphor guides responsibilities and learning. Runtime behaviour still needs explicit contracts, measurable tests and budgets. There is no established guarantee of autonomous profitability, fault-free operation, faster-than-market execution or unlimited self-improvement.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

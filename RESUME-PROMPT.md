@@ -15,4 +15,4 @@ Preserve the financial agreement: owner deposits enter Wallet 1 in full, Wallet 
 After changes, record the exact checks and remaining limitations. Historical verification entries describe their original versions; use current evidence rather than repeating obsolete pending-work claims.
 
 <!-- documentation-navigation -->
-[Documentation index](docs/documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](docs/documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

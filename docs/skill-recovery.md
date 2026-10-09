@@ -71,4 +71,4 @@ Migration **012** is additive. Rebuild/restart the backend before using these ro
 There is no automatic repair of worker code, model fine-tuning or proof that reading a corrective lesson changed behaviour. The existing Python solver is shared and deterministic. This increment adds a controlled reassessment path and preserved accountability. Automated diagnosis, versioned solver attribution, agent-written remediation plans and operational-failure appeals remain future work. Executed results are in [verification](verification.md).
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

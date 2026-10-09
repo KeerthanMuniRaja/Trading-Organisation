@@ -89,4 +89,4 @@ The distribution service may send the prescribed amount to the configured Wallet
 See the [wallet policy](12-wallet-and-treasury.md).
 
 <!-- documentation-navigation -->
-[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

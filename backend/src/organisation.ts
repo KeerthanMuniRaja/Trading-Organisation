@@ -89,6 +89,9 @@ export class Organisation {
       requireThat(lesson,'Lesson not found',404);requireThat(lesson.author!==actor.id,'Independent lesson review required',403);
       const extraction=(await tx.query(`SELECT r.decision FROM source_learning_proposals p LEFT JOIN source_learning_reviews r ON r.request_id=p.request_id WHERE p.lesson_id=$1`,[lesson.id])).rows[0];
       requireThat(!extraction||extraction.decision==='accepted','Source-derived lesson requires its dedicated independent review');
+      const incident=(await tx.query(`SELECT f.author,i.reporter FROM incident_lessons il
+        JOIN incident_findings f ON f.id=il.finding_id JOIN incidents i ON i.id=f.incident_id WHERE il.lesson_id=$1`,[lesson.id])).rows[0];
+      requireThat(!incident||(incident.author!==actor.id&&incident.reporter!==actor.id),'Incident lesson review must be independent of finding author and reporter',403);
       await verifiedEvidence(tx,lesson.evidence_id);
       await tx.query("UPDATE lessons SET status='verified',reviewer=$1 WHERE id=$2",[actor.id,lesson.id]);
       await audit(tx,actor,'lesson.verified',lesson.id,{botId:lesson.bot_id});return {id:lesson.id,status:'verified'};

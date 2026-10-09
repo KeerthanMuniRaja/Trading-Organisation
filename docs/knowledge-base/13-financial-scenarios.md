@@ -68,4 +68,4 @@ For each case, capture the starting ledger, actor and permissions, policy versio
 Include adverse and concurrent cases before any live connection. Record failures as well as successes. The [financial reconciliation template](templates/financial-reconciliation.md) can be used for paper exercises first.
 
 <!-- documentation-navigation -->
-[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

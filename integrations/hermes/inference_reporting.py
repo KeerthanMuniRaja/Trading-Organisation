@@ -18,7 +18,8 @@ def timed_inference(record, path, save, task, call, engine=ENGINE):
         value = call()
     except Exception as exc:
         record['inferenceReport'] = {**base, 'outcome': 'failed', 'latencyMs': elapsed(started),
-                                     'failureCode': 'HERMES_FAILED' if isinstance(exc, HermesError) else 'INFERENCE_FAILED'}
+                                     'failureCode': 'HERMES_FAILED' if isinstance(exc, HermesError) and engine.startswith('hermes-') else 'INFERENCE_FAILED',
+                                     **usage}
         save(path, record)
         raise
     finally:

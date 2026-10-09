@@ -16,6 +16,21 @@
 
 **Development update, v0.1.26:** [Source learning](source-learning.md) now implements a bounded article-to-lesson proposal and dedicated review path with exact quotation checks. DATA-02 remains partial: corroboration, claim/entity modelling, real inference validation and orchestration are still pending. The inventory and findings below remain the dated v0.1.25 review snapshot.
 
+## Updated handoff — v0.1.35
+
+The v0.1.34 direct production engine and optional methods rubric are implemented; v0.1.35 hardens completion checks and launcher routing. Next validate the selected engine end to end on fresh cases and exercise failures/recovery under the production task limits. Keep old numerical failures; methods assessments are a separate rubric. The older handoff below records the prior plan and is superseded where it says no direct production engine exists.
+
+## Earlier implementation handoff — 7 October 2026
+
+The next bounded development task is production parity for constrained model output, not autonomous expansion. The direct benchmark already uses contracts.output_schema through openai_compat.chat; the Hermes production runner does not yet request it.
+
+1. Inspect the pinned Hermes adapter API and add explicit, tested schema propagation only if supported; otherwise design a separately reviewed production engine. Preserve tool restrictions, role credentials, strict output validation, timeout caps, journal recovery and inference reporting.
+2. Test all five task contracts with malformed output, unsupported schema, truncation, timeout, source withdrawal and uncertain completion. A failed or interrupted attempt must not silently regenerate or switch engines.
+3. Compare fresh held-out cases and record effective engine/schema/prompt versions. Keep the original arithmetic rubric and its failures; any calculator-assisted rubric must be a new version, not a rewrite of historical scores.
+4. Require independent source/lesson quality review and a production-path paper workflow before enabling the profile. A valid JSON response and two positive synthetic pairs are insufficient.
+
+After that: connect collection and discovery to bounded workflow queues, add claim corroboration and role-specific fitness, then evaluate differentiated recruitment. Preserve non-revenue risk/control roles and retain knowledge before retirement. These are pending acceptance gates, not changes made by this documentation refresh.
+
 ## 1. Where we actually stand
 
 We have a working, governed **paper research organisation foundation**. It can register bots, run limited research, evaluate results, record lessons and experience, share reviewed knowledge, manage an example student lifecycle, preserve retired bots' history, and enforce simulated treasury rules.
@@ -240,4 +255,4 @@ Start with **AI-01 + DATA-01**, then **DATA-02 + minimal KG-01**, then **AUTO-01
 The next meaningful demonstration should show a bot receiving new external evidence, forming a reviewed lesson, teaching another bot, and being evaluated on a fresh task—with actual inference, lineage and cost records. That is the shortest path from today's governed research backend toward the self-developing organisation you described.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

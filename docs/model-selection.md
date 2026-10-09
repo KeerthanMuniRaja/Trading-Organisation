@@ -35,7 +35,7 @@ Existing artifact pins and sizes are in [local-model.lock.json](../config/local-
 Next: evaluate all five contracts in constrained mode on fresh cases, then implement and verify the same behaviour through the pinned Hermes adapter. Keep task caps, permissions, evidence review and independent numerical grading. No automatic recruitment, fitness award, live trading or owner-policy activation follows from model selection.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.
 
 ## Production path — v0.1.33
 

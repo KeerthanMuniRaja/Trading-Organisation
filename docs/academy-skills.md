@@ -60,4 +60,4 @@ POST routes require idempotency keys. Replaying an old command returns its histo
 Six backend cases cover known grading vectors, owner/role boundaries, both admission routes, answer immutability, independent evaluation, bounded attempts, expiration, policy changes, revocation and halt. Three Python cases check the independent solver and unsupported-rubric refusal. The organisation integration additionally enables this gate only in its fresh test database and requires three passed exams before reporting success. Current executed results are recorded in [verification](verification.md).
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

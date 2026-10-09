@@ -34,4 +34,4 @@ Status: template; no bot is qualified by this document alone.
 - Authority remains unchanged unless explicitly granted by governing policy.
 
 <!-- documentation-navigation -->
-[Documentation index](../../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../../documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

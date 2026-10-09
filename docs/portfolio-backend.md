@@ -91,4 +91,4 @@ The command stops at the first failure and writes `.local/portfolio-verification
 Market-data collection remains pending the owner's initial market choice and an approved provider. No provider, account, data subscription, or model was selected by this increment.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

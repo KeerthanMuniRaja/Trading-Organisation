@@ -85,4 +85,4 @@ See [the lifecycle](11-research-development-and-bot-lifecycle.md) and [operation
 The [wallet policy](12-wallet-and-treasury.md) records the accepted financial management principles. Financial operations remain inactive until a separately authorised and validated implementation exists.
 
 <!-- documentation-navigation -->
-[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

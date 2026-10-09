@@ -1,6 +1,6 @@
-"""Minimal OpenAI-compatible client for endpoint diagnostics and benchmarks. Stdlib only.
+"""Minimal OpenAI-compatible client for diagnostics, benchmarks and direct inference. Stdlib only.
 
-It is not the production inference path (that remains the pinned Hermes adapter). It never follows
+The direct engine is distinct from the pinned Hermes adapter. This client never follows
 redirects, ignores ambient proxy settings, bounds every response and never echoes provider text or keys.
 """
 from __future__ import annotations
@@ -124,7 +124,8 @@ def chat(endpoint: Endpoint, system: str, user: str, max_tokens: int, timeout: f
     value, latency_ms = _call(endpoint, 'POST', '/chat/completions', body, timeout=timeout, opener=opener)
     try:
         choice = value['choices'][0]
-        content = choice['message']['content']
+        message = choice['message']
+        content = message['content']
     except (KeyError, IndexError, TypeError):
         raise EndpointError('ENDPOINT_RESPONSE_INVALID') from None
     if not isinstance(content, str):
@@ -132,6 +133,8 @@ def chat(endpoint: Endpoint, system: str, user: str, max_tokens: int, timeout: f
     usage = value.get('usage') if isinstance(value.get('usage'), dict) else {}
     reported = value.get('model')
     return {'content': content, 'latencyMs': latency_ms,
+            'hasToolCalls': bool(message.get('tool_calls') or message.get('function_call')),
+            'refused': bool(message.get('refusal')),
             'finishReason': choice.get('finish_reason') if isinstance(choice.get('finish_reason'), str) else None,
             'promptTokens': _count(usage.get('prompt_tokens')), 'completionTokens': _count(usage.get('completion_tokens')),
             'reportedModel': reported if isinstance(reported, str) and len(reported) <= 200 else None}

@@ -1,5 +1,13 @@
 # Validation record — updated 2026-10-06
 
+## Current development update — v0.1.35, 7 October 2026
+
+The checkout now includes v0.1.34's explicit direct-structured-v1 production engine and migration 023, which adds the optional research-methods-v1 assessment rubric. Existing research-basics-v1 records/defaults remain unchanged. The direct worker requests task schemas and binds tickets to the owner-selected engine; it is separate from Hermes, not a fallback or an upgrade of the pinned Hermes path.
+
+This increment rejects direct responses unless the provider reports a normal stop with no tool calls or refusal, even when their JSON is valid. Reported tokens survive validation/completion failures in the durable failed outcome. No automatic regeneration or engine switch is added. Learning/R&D launchers now propagate HERMES_ENGINE to inference workers, while reviewer/discovery commands retain credential separation. Explicit Hermes benchmarks cannot be relabelled direct runs by ambient settings.
+
+Validation: all 59 Python tests passed; the launcher regression passed six command/role scenarios using intercepted child launches and fixture credentials. No model, backend policy, persistent service, Docker runtime or financial connection was activated. No backend code/migration changed in this increment. Full backend tests were not rerun for these Python/launcher changes.
+
 ## Version 0.1.34 — method-based assessment rubric
 
 - **Full backend regression:** build plus **120/120 tests passed with zero failures (195.342 seconds)** against migration 023 (log `.local/backend-tests-v034.log`).
@@ -41,11 +49,11 @@ Scope:
 - This demonstrates the chain end to end, not learning, market competence or Hermes-path behaviour.
 - No persistent policy, worker or service was activated; the model server was stopped afterwards.
 
-## Documentation reconciliation — v0.1.32, 6 October 2026
+## Documentation reconciliation — v0.1.32, 7 October 2026
 
 Inspected all first-party Markdown documents and current code/report metadata. The newer saved 4B reports supersede the earlier statement that no 4B report existed. The free-form report (20261006T171731Z) has 1/4 valid assessments and no complete valid pair. The version-2 constrained report (20261006T173456Z) has 2/2 valid source lessons, 4/4 valid assessments and 2/2 complete pairs: 17/32 versus 10/32 checks, with 0/16 drawdown across both arms. It uses the direct engine only; production Hermes schema support remains pending. See [model selection](model-selection.md).
 
-This refresh changes documentation only. Saved reports were inspected, not rerun. No build/test result below is claimed as a new run, and no model/service/policy/financial state was changed. Current command examples use Command Prompt; historical transcripts retain their original context. The documentation index distinguishes runtime guides, original design, templates and dated records.
+This refresh changes documentation only. Saved reports were inspected, not rerun. No build/test result below is claimed as a new run, and no model/service/policy/financial state was changed. Current command examples use Command Prompt; historical transcripts retain their original context. The documentation index distinguishes runtime guides, original design, templates and dated records. Validation on 7 October: 68 Markdown documents, 782 local link targets/section references checked with no missing targets or anchors; git diff --check passed.
 
 ## Version 0.1.32 — review fixes and model decision
 
@@ -393,4 +401,4 @@ The durable-database test separately closes and reopens a database with a **pend
 The [roadmap](roadmap.md) lists the corresponding work. These gaps do not prevent running the deterministic local foundation, and they must not be mistaken for completed capabilities.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

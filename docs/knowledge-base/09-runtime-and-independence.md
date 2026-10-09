@@ -69,4 +69,4 @@ Sources: [Hermes licence](https://github.com/NousResearch/hermes-agent/blob/main
 Detailed repository observations, including the historical Ruflo audit and its recorded remediation, are in the [repository map](07-repository-map.md).
 
 <!-- documentation-navigation -->
-[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

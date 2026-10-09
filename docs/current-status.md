@@ -1,5 +1,13 @@
 # Current implementation — v0.1.34
 
+## Current development update — v0.1.35, 7 October 2026
+
+The checkout now includes v0.1.34's explicit direct-structured-v1 production engine and migration 023, which adds the optional research-methods-v1 assessment rubric. Existing research-basics-v1 records/defaults remain unchanged. The direct worker requests task schemas and binds tickets to the owner-selected engine; it is separate from Hermes, not a fallback or an upgrade of the pinned Hermes path.
+
+This increment rejects direct responses unless the provider reports a normal stop with no tool calls or refusal, even when their JSON is valid. Reported tokens survive validation/completion failures in the durable failed outcome. No automatic regeneration or engine switch is added. Learning/R&D launchers now propagate HERMES_ENGINE to inference workers, while reviewer/discovery commands retain credential separation. Explicit Hermes benchmarks cannot be relabelled direct runs by ambient settings.
+
+Validation: all 59 Python tests passed; the launcher regression passed six command/role scenarios using intercepted child launches and fixture credentials. No model, backend policy, persistent service, Docker runtime or financial connection was activated. No backend code/migration changed in this increment. Full backend tests were not rerun for these Python/launcher changes.
+
 **v0.1.34:** [method-based assessments](assessment-methods.md) (migration 023).
 - **What changed:** under rubric `research-methods-v1`, bots choose how to compute costs, drawdown, record eligibility and action, and the backend derives the numbers. The default rubric is unchanged; learning workflows can opt in.
 - **Benchmark on local 4B:** 96% with directly relevant lessons vs 77% without, across 3 pairs.
@@ -32,11 +40,11 @@ Updated 6 October 2026. This is the current index for the documentation set. Dat
 | Coordination | Scoped Ruflo mirror and application-owned workflow records | Upstream coordination cannot change authority |
 | Operations | Owner inbox, durable outboxes/journals, bounded recovery, local artifact runner and Docker adapter | Live Docker isolation deferred; no autonomous deployment or guaranteed recovery |
 
-Migration 022 is the latest required migration. This update adds no migration or backend API. Existing reviewed lessons from retired bots remain reusable when their support is valid. A learning proposal or a benchmark never grants trading, recruitment, spending or deployment authority.
+Migration 023 is the latest required migration. This update adds no migration or backend API. Existing reviewed lessons from retired bots remain reusable when their support is valid. A learning proposal or a benchmark never grants trading, recruitment, spending or deployment authority.
 
 ## Actual model evidence
 
-Local runtime and 2B/4B GGUF files exist. The saved 2B direct benchmark contains twelve real-model calls, including two failed source-lesson outputs and one malformed assessment response. Offline corrected regrading yields one complete valid pair from two planned and no learning gain. See [model strategy](model-strategy.md) and [verification](verification.md). Newer 4B reports include a constrained direct run with 6/6 valid outputs and 2/2 complete pairs, but drawdown scored 0/16. See [selection evidence](model-selection.md). Production Hermes qualification remains open; a direct benchmark does not establish it. Model service liveness is not inferred from saved files.
+Local runtime and 2B/4B GGUF files exist. The saved 2B direct benchmark contains twelve real-model calls, including two failed source-lesson outputs and one malformed assessment response. Offline corrected regrading yields one complete valid pair from two planned and no learning gain. See [model strategy](model-strategy.md) and [verification](verification.md). Newer 4B reports include a constrained direct run with 6/6 valid outputs and 2/2 complete pairs, but drawdown scored 0/16. See [selection evidence](model-selection.md). A separate production direct engine is implemented; actual production-path qualification remains distinct from benchmark evidence. Hermes schema support remains open. Model service liveness is not inferred from saved files.
 
 Observed hardware: i7-1355U, 15.69 GiB RAM and about 1.24 GiB free at inspection. One shared endpoint with distinct bot contexts is the recommended starting point. Weight-file size is not total memory. No new download, model call, persistent worker, private configuration or financial connection was activated by v0.1.32.
 
@@ -64,4 +72,4 @@ The new targeted regression checks are recorded in [verification](verification.m
 Wallet 1 receives all owner deposits; eligible cumulative realised net profit is allocated 60/40 without redistributing the same profit. Wallet 2, bank withdrawals, ratio changes and permission changes stay outside bot authority. Preserve private .env, journals, signing keys and local state; do not publish them.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

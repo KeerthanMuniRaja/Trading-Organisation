@@ -1,5 +1,13 @@
 # Knowledge transfer: continue the trading organisation
 
+## Current development update — v0.1.35, 7 October 2026
+
+The checkout now includes v0.1.34's explicit direct-structured-v1 production engine and migration 023, which adds the optional research-methods-v1 assessment rubric. Existing research-basics-v1 records/defaults remain unchanged. The direct worker requests task schemas and binds tickets to the owner-selected engine; it is separate from Hermes, not a fallback or an upgrade of the pinned Hermes path.
+
+This increment rejects direct responses unless the provider reports a normal stop with no tool calls or refusal, even when their JSON is valid. Reported tokens survive validation/completion failures in the durable failed outcome. No automatic regeneration or engine switch is added. Learning/R&D launchers now propagate HERMES_ENGINE to inference workers, while reviewer/discovery commands retain credential separation. Explicit Hermes benchmarks cannot be relabelled direct runs by ambient settings.
+
+Validation: all 59 Python tests passed; the launcher regression passed six command/role scenarios using intercepted child launches and fixture credentials. No model, backend policy, persistent service, Docker runtime or financial connection was activated. No backend code/migration changed in this increment. Full backend tests were not rerun for these Python/launcher changes.
+
 ## Latest continuation — v0.1.34
 
 v0.1.34 (migration 023) adds the `research-methods-v1` assessment rubric:
@@ -362,4 +370,4 @@ npm run lifecycle:admin -- workers
 No result from these latest commands has been received at handover. Worker and policy commands are in [research-dispatch.md](docs/research-dispatch.md); they require explicit owner configuration. Do not run them as part of reading this document.
 
 <!-- documentation-navigation -->
-[Documentation index](docs/documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](docs/documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

@@ -69,4 +69,4 @@ Version 0.1.28 adds bounded [RSS/Atom feed retrieval](publisher-feeds.md) with c
 No trading decision, bot fitness change, promotion, deployment or wallet operation follows ingestion. Rebuild and restart the backend to apply migration 019. Previously applied migrations remain unchanged.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

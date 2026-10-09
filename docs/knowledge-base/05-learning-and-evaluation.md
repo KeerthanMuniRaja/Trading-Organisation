@@ -86,4 +86,4 @@ Periodic hackathons produce competing hypotheses, new bot proposals, reusable sk
 See [R&D lifecycle](11-research-development-and-bot-lifecycle.md), [hackathon record](templates/hackathon-record.md), and [knowledge transfer](templates/knowledge-transfer-and-retirement.md).
 
 <!-- documentation-navigation -->
-[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

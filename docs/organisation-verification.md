@@ -25,4 +25,4 @@ The lifecycle retains its real 60-second cadence; the test does not rewrite data
 This proves bounded software behaviour on previously used historical examples and synthetic exams. Factual reflections are recorded experience, not model-weight updates; the exam measures a shared deterministic adapter. The check does not validate profitability, new strategy discovery, unseen holdouts, production isolation, persistent deployment, sudden OS process termination or recovery after a machine crash.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

@@ -80,4 +80,4 @@ These POSTs use session/sequence replay rules instead of the general `Idempotenc
 Four backend cases passed for role exclusivity, read-only reports, monotonic counters, retry freshness, expiration/replacement fencing and notification deduplication. Six Node cases passed, including actual child exit on cancellation and heartbeat denial. `npm run test:supervisor` selects these cases. The isolated Python team integration also passed duplicate-launch rejection, multi-cycle heartbeat freshness and acknowledged shutdown. Natural expiry after an OS-level crash and persistent deployment remain unverified. See [verification](verification.md).
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

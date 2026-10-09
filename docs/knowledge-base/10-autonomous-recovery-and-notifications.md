@@ -95,4 +95,4 @@ Exercise worker failure, duplicate delivery, stale input, missing dependencies, 
 The agreed [wallet policy](12-wallet-and-treasury.md) also binds recovery. Do not reset allocation history, release unresolved distribution reservations, retry unknown payments blindly, draw from Wallet 2, withdraw to SBI, or expand budgets to repair a failure. Preserve pending obligations across restart. Exact loss thresholds, emergency trading actions, and approved financial remedies remain open.
 
 <!-- documentation-navigation -->
-[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

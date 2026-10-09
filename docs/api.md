@@ -1,5 +1,17 @@
 # API contract and roles
 
+## Incident learning assignments — migration 026
+
+`POST /v1/incidents/learning/assignments` (owner) assigns a reviewed lesson to recipient bots; `/links` (researcher) associates a fresh matching knowledge request; `/progress` (owner/researcher/evaluator) reads all linked review and assessment outcomes alongside current support indicators. Mutations require idempotency keys. See [contracts and assessment limits](incident-review.md#assigned-learning-and-assessment-history-migration-026).
+
+## Incident learning — migration 025
+
+`POST /v1/incidents/findings/lessons` (owner/researcher, idempotency key) takes `{findingId,botId,content}` and creates one unverified lesson from the final accepted finding of a resolved incident. The existing lesson-review route requires independence from the lesson author, finding author and reporter. Findings query includes lesson provenance. See [workflow and limits](incident-review.md#incident-to-lesson-bridge-migration-025).
+
+## Incident findings — migration 024
+
+`POST /v1/incidents/findings` proposes an evidence-supported investigation; `/reviews` records an independent acceptance or rejection; `/query` retrieves preserved history. Once findings exist, owner resolution requires the latest accepted finding and its currently valid supporting evidence. Resolution never resumes a halted system. See [incident review contracts and limits](incident-review.md).
+
 ## Inference usage — migration 022
 
 - `POST /v1/development/inference-reports` (assigned researcher, idempotency key) records one immutable outcome for a model ticket: `{requestId,outcome,failureCode?,engine,promptVersion,latencyMs?,promptTokens?,completionTokens?,reportedModel?}`.
@@ -162,4 +174,4 @@ Endpoints have bounded lists rather than pagination. External reporting, long-hi
 Existing evidence review/revocation and lesson review routes govern downstream use. No external URL is fetched by these routes. See [contracts and batch commands](source-observations.md). Migration 019 required.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

@@ -86,4 +86,4 @@ Ctrl+C stops the local session. Existing policy/operations commands can pause fu
 All four `npm run test:starter` contract cases passed for malformed plans, role/origin restrictions, lost-response recovery without policy writes, and refusal to bypass active policies or revoked support. Actual offline Python export, plan validation, real HTTP import/replay and a monitored research/memory session also passed. Import and activation occurred only in a temporary test database. The local plan/review exist; persistent deployment remains separate. See [verification](verification.md) for exact results and [organisation verification](organisation-verification.md) to rerun the check.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

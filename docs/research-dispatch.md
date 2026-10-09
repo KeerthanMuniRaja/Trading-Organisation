@@ -97,4 +97,4 @@ All mutation routes require an `Idempotency-Key`. `/portfolio/trials` accepts `a
 Four backend dispatch regression cases were added; lifecycle fixtures now use assignments. A bridge regression case covers fit reuse across changed leases. These tests, compilation, migration and worker execution are **not run**, following the owner's instruction to execute commands themselves. Earlier v0.1.3 build confirmation does not verify v0.1.4 or v0.1.5.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

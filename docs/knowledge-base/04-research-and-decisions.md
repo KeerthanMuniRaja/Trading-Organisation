@@ -82,4 +82,4 @@ Reading more sources does not automatically improve decisions. Track source depe
 Daily research can reveal a capability gap for a [new bot or hackathon challenge](11-research-development-and-bot-lifecycle.md). New observations should reach the research queue without directly changing deployed model weights or live policies.
 
 <!-- documentation-navigation -->
-[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

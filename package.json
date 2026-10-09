@@ -1,6 +1,6 @@
 {
   "name": "trading-organisation",
-  "version": "0.1.34",
+  "version": "0.1.35",
   "private": true,
   "description": "Owner-controlled trading organisation: paper-first backend and research workers",
   "engines": {
@@ -53,7 +53,18 @@
     "worker:paired-artifacts": "node --env-file=.env scripts/run-paired-artifacts.mjs",
     "worker:recover-artifacts": "node --env-file=.env scripts/recover-paired-artifacts.mjs",
     "verify:paired-artifacts": "npm run build && node scripts/verify-paired-skills.mjs --artifacts",
-    "verify:artifact-sandbox": "node scripts/verify-artifact-sandbox.mjs"
+    "verify:artifact-sandbox": "node scripts/verify-artifact-sandbox.mjs",
+    "test:model-launchers": "node --test scripts/model-launchers.test.mjs",
+    "paper:nse": "node --env-file-if-exists=.env.market scripts/nse-paper-trial.mjs",
+    "test:nse": "node --test integrations/kite/*.test.mjs",
+    "paper:replay": "node scripts/market-replay.mjs",
+    "learning:replay": "node --env-file=.env scripts/import-replay-evidence.mjs",
+    "test:replay-import": "node --test scripts/import-replay-evidence.test.mjs",
+    "model:practice": "node --env-file-if-exists=.env scripts/run-model-tool.mjs practice",
+    "knowledge:obsidian": "node scripts/obsidian-sync.mjs",
+    "test:obsidian": "node --test scripts/obsidian-sync.test.mjs scripts/obsidian-lessons.test.mjs scripts/obsidian-organisation.test.mjs",
+    "knowledge:organisation": "node --env-file=.env scripts/obsidian-organisation.mjs",
+    "knowledge:note": "node --env-file-if-exists=.env scripts/obsidian-lessons.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "0.5.8",

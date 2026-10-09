@@ -5,6 +5,18 @@ to the exact instructions a model received.
 """
 import hashlib
 
+# Original, bounded adaptation of research workflow ideas reviewed in Vibe-Trading.
+# Attribution and the precise scope of this reuse are in docs/vibe-research-practice.md.
+# Keep this in the contract module: the isolated Hermes child loads only this file.
+RESEARCH_PRACTICE_VERSION = 'research-review-practice-v1'
+RESEARCH_PRACTICE = (
+    ' Research review practice (research-review-practice-v1): consider a supporting explanation, '
+    'the strongest counterargument, missing inputs, and a condition that would falsify the proposal. '
+    'Include independent cost/timing verification and evaluation on untouched data among the proposed checks. '
+    'Mark unavailable evidence as missing; never invent metrics. Different viewpoints are reasoning aids, '
+    'not separate agents, completed reviews or proof of independence. Use only the existing output fields '
+    'and length limits. State disagreement or uncertainty instead of forcing a trading decision.')
+
 PROMPTS = {
     'candidate': (
         'You are a research candidate selector. You have no tools or financial permissions. '
@@ -52,6 +64,10 @@ PROMPTS = {
         'event-and-availability-at-or-before-cutoff, event-at-or-before-cutoff, availability-at-or-before-cutoff, all-records. '
         'action: research or wait, judged from the supplied control. No scores, numbers or claimed improvements.'),
 }
+# Both the direct inference adapter and isolated Hermes runtime read these prompts.
+# Examination prompts intentionally remain neutral and unchanged.
+for _research_task in ('knowledge', 'capability'):
+    PROMPTS[_research_task] += RESEARCH_PRACTICE
 MAX_TOKENS = {'candidate': 512, 'capability': 1024, 'knowledge': 1024, 'knowledge-assessment': 2048, 'source-lesson': 1024,
               'knowledge-assessment-methods': 768}
 CONTRACT_VERSION = 'organisation-model-tasks-v1'

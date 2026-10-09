@@ -34,4 +34,4 @@ Status: template; no event is scheduled.
 Winning this event does not grant deployment permission or authority to change examination rules.
 
 <!-- documentation-navigation -->
-[Documentation index](../../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../../documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

@@ -124,4 +124,4 @@ Owner reporting should show capital contributed, cumulative realised net P/L, un
 Self-improvement and recovery cannot modify this policy, the ledger history, ratio, destination, permissions, or spending limits. Approval of financial principles does not itself provide production credentials or operating budgets.
 
 <!-- documentation-navigation -->
-[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

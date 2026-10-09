@@ -1,8 +1,16 @@
-# Documentation index — v0.1.32
+# Documentation index — v0.1.35
 
-Updated 6 October 2026. Start with [current status](current-status.md) for implementation boundaries and [model selection](model-selection.md) for measured evidence. This index covers all 67 existing first-party Markdown documents; it is the additional navigation page.
+Research prompt evaluation: [paired practice benchmark](practice-benchmark.md), including offline preparation, bounded local inference and interruption records.
 
-The latest full backend test record is historical v0.1.30 (116 tests). The preceding review-fix validation records a successful build, 52 Python tests and 21 feed tests. This documentation-only refresh reruns neither models nor application tests. Finite workers are not a continuously operating autonomous organisation.
+Model workflow reuse: [Vibe-Trading research practice](vibe-research-practice.md) describes the versioned prompt adaptation, provenance and untested model-performance limits.
+
+New market-data experiments: [historical NSE replay](historical-replay.md) uses public data for personal research without broker credentials; [NSE live-data paper trial](nse-paper-trial.md) uses authenticated Kite quotes. Both are isolated diagnostics, not qualified organisation trading.
+
+Latest runtime changes: see [current status](current-status.md) for the v0.1.35 direct-engine completion/usage/launcher fixes and migration 023 from v0.1.34. The earlier full documentation reconciliation below retains its original scope.
+
+Updated 7 October 2026. Start with [current status](current-status.md) for implementation boundaries and [model selection](model-selection.md) for measured evidence. This index covers all 67 existing first-party Markdown documents; it is the additional navigation page.
+
+The latest full backend test record is historical v0.1.30 (116 tests). The preceding review-fix validation records a successful build, 52 Python tests and 21 feed tests. This documentation-only refresh reruns neither models nor application tests. All 782 local link targets/section references passed validation across the 68-document set; git diff --check passed. Finite workers are not a continuously operating autonomous organisation.
 
 The preferred experimental model is constrained Qwen3.5-4B Q4_K_M on the direct endpoint. Production Hermes remains unqualified, numerical assessment failures remain visible, and the disabled example does not authorise activation. Financial rules and paper-only operation are unchanged.
 

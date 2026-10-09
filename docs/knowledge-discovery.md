@@ -43,4 +43,4 @@ Combined-worker validation: **20 Python tests passed**, including six new cases 
 Validation: TypeScript build passed; the eight-test bot-knowledge backend suite passed, including retrieval ordering, retired-author preservation, HTTP roles, revoked support and transfer revalidation. Fourteen Python tests passed across knowledge, source-learning, workflow and discovery CLI tests. No real model inference or upstream runtime was activated. Rebuild/restart to expose the route; no new migration is required.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

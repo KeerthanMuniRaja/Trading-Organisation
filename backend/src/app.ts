@@ -30,6 +30,13 @@ import { SkillExperiments } from './skill-experiments.js';
 type Request = { actor:Actor; requestId:string };
 @Controller('v1')
 class ApiController {
+  @Post('incidents/learning/assignments') @Allow('owner') incidentAssignments(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.ops.incidentLearning().assign(r.actor,k??'',b);}
+  @Post('incidents/learning/links') @Allow('researcher') incidentLearningLink(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.ops.incidentLearning().link(r.actor,k??'',b);}
+  @Post('incidents/learning/progress') @Allow('owner','researcher','evaluator') incidentLearningProgress(@Req() r:Request,@Body() b:unknown){return this.ops.incidentLearning().progress(r.actor,b);}
+  @Post('incidents/findings/lessons') @Allow('owner','researcher') incidentLesson(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.ops.findings().lesson(r.actor,k??'',b);}
+  @Post('incidents/findings') @Allow('owner','researcher','evaluator') incidentFinding(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.ops.findings().propose(r.actor,k??'',b);}
+  @Post('incidents/findings/reviews') @Allow('owner','evaluator') incidentFindingReview(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.ops.findings().review(r.actor,k??'',b);}
+  @Post('incidents/findings/query') @Allow('owner','researcher','evaluator') incidentFindings(@Req() r:Request,@Body() b:unknown){return this.ops.findings().list(r.actor,b);}
   @Post('learning/workflows') @Allow('owner') learningWorkflow(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.learning.workflows().register(r.actor,k??'',b);}
   @Post('learning/workflows/progress') @Allow('owner','researcher','evaluator') learningWorkflowProgress(@Req() r:Request,@Body() b:unknown){return this.learning.workflows().progress(r.actor,b);}
   @Post('learning/workflows/links') @Allow('researcher','evaluator') learningWorkflowLink(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.learning.workflows().attach(r.actor,k??'',b);}

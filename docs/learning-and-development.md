@@ -126,4 +126,4 @@ Five backend regression cases and three Python R&D cases were added for role sep
 Still to implement: controlled hypothesis experiments and novelty assessment, skill examinations, opportunity discovery, permissions for new departments, hackathons, the incident court, domain-specific fitness, real-world news/data ingestion, online monitoring, model comparison/selection, training or fine-tuning, governed code upgrades and production deployment. The organisation is designed for ongoing growth within evidence and resource limits; indefinite growth and successful handling of every situation cannot be promised.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

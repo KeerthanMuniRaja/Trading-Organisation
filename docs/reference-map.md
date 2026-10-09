@@ -30,4 +30,4 @@ Pin adopted versions, retain source/artifacts and compatible dependencies, prese
 The [original brainstorming repository map](knowledge-base/07-repository-map.md) remains historical. This update adds original fixes and documentation; it does not vendor code from these repositories or add new dependencies.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

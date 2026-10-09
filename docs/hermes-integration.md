@@ -1,5 +1,13 @@
 # Hermes research integration
 
+## Current development update — v0.1.35, 7 October 2026
+
+The checkout now includes v0.1.34's explicit direct-structured-v1 production engine and migration 023, which adds the optional research-methods-v1 assessment rubric. Existing research-basics-v1 records/defaults remain unchanged. The direct worker requests task schemas and binds tickets to the owner-selected engine; it is separate from Hermes, not a fallback or an upgrade of the pinned Hermes path.
+
+This increment rejects direct responses unless the provider reports a normal stop with no tool calls or refusal, even when their JSON is valid. Reported tokens survive validation/completion failures in the durable failed outcome. No automatic regeneration or engine switch is added. Learning/R&D launchers now propagate HERMES_ENGINE to inference workers, while reviewer/discovery commands retain credential separation. Explicit Hermes benchmarks cannot be relabelled direct runs by ambient settings.
+
+Validation: all 59 Python tests passed; the launcher regression passed six command/role scenarios using intercepted child launches and fixture credentials. No model, backend policy, persistent service, Docker runtime or financial connection was activated. No backend code/migration changed in this increment. Full backend tests were not rerun for these Python/launcher changes.
+
 > [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 Status: optional implemented adapter, with local contract tests. The default deterministic paper demonstration needs no Hermes installation or model credentials. A direct 2B model benchmark is saved locally, but qualification through this pinned Hermes path remains unverified. See [model strategy](model-strategy.md). This is an explicitly bounded first integration, not a claim that Hermes has been trained into an advanced trader.
@@ -79,4 +87,4 @@ The stdlib suite covers malformed/model-generated commands, non-finite JSON, dup
 Before enabling inference, run against the actual pinned installation and selected provider with a paper experiment. Verify successful completion, provider timeout, a malformed reply, blocked tools, and separate evaluator completion. Inspect the real process/network boundary. Production qualification is not established by the saved direct-model reports or fixture tests. Constrained JSON is currently available in the direct benchmark only; the Hermes production path still needs equivalent implementation and validation. See [selection evidence](model-selection.md).
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

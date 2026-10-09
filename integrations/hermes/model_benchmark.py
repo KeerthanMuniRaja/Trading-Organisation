@@ -342,7 +342,8 @@ def main(argv=None, env=None, out_root=None, opener=None):
         parser.error('--structured applies to the direct engine only')
     if args.engine == 'hermes':
         from adapter import Settings
-        settings = Settings.from_env(env)
+        # The explicit benchmark engine must not be overridden by a worker's ambient setting.
+        settings = Settings.from_env({**env, 'HERMES_ENGINE': 'hermes'})
         if args.timeout_seconds is not None:
             if args.timeout_seconds < 70:
                 parser.error('Hermes needs at least 70 seconds for its process/run/API budgets')

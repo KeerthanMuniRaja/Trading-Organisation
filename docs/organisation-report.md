@@ -68,4 +68,4 @@ This is an on-demand backend report, not an email/push service, scheduled summar
 Three added regression cases in `backend/test/dispatch.test.ts` cover owner-only access/read-only behaviour, ready→queued→running→evaluation→capacity states, overlapping-window exclusion, lease-token omission, and expired/revoked/halted work visibility. No build or test was executed, respecting the owner's instruction to handle terminal execution. Source review is not runtime validation.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

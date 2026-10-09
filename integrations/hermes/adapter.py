@@ -221,6 +221,10 @@ def direct_invoke(settings: Settings, request: dict, validator) -> dict:
     sink = USAGE.get()
     if sink is not None:
         sink.update({k: result[k] for k in ('promptTokens', 'completionTokens', 'reportedModel') if result[k] is not None})
+    # JSON validity alone cannot make a partial/refused/tool-directed turn complete.
+    # Preserve reported usage above even when the response is rejected. Never retry here.
+    if result.get('finishReason') != 'stop' or result.get('hasToolCalls') or result.get('refused'):
+        raise HermesError('Model did not complete an authorised text response')
     if len(result['content'].encode('utf-8')) > MAX_OUTPUT_BYTES:
         raise HermesError('Model output exceeds the research contract')
     return validator(strict_json(result['content']))

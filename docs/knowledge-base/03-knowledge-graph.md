@@ -256,4 +256,4 @@ New financial records need currency, exact amounts, source event IDs, policy ver
 See [wallet and treasury](12-wallet-and-treasury.md), [financial scenarios](13-financial-scenarios.md), and the [reconciliation template](templates/financial-reconciliation.md).
 
 <!-- documentation-navigation -->
-[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

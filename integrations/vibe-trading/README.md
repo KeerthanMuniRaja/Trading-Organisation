@@ -1,5 +1,7 @@
 # Vibe-Trading research integration
 
+Added 8 October 2026: [research practice adaptation](../../docs/vibe-research-practice.md) supplies bounded opposing-case and validation guidance to the existing knowledge/capability model prompts. This is prompt reuse, not model-weight transfer or an activated upstream swarm.
+
 Status: one-shot read-only MCP collector, offline news-result adapter, explicit evidence submission and a resumable collect-to-submission cycle. No Vibe-Trading runtime is installed or activated by this integration.
 
 The adapter consumes the decoded JSON returned by upstream `get_stock_news`, rather than an MCP transport envelope. It reuses our source importer and its retry keys. Backend source approval, independent evidence review and lesson review remain authoritative. A local mapping does not approve a source in the backend.
@@ -101,4 +103,4 @@ npm.cmd run test:vibe
 ```
 
 <!-- documentation-navigation -->
-[Documentation index](../../docs/documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../../docs/documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

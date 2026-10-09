@@ -259,9 +259,10 @@ class ModelToolTests(unittest.TestCase):
 
     def test_hermes_timeout_override_environment_and_report_match(self):
         env = {**self.env, 'HERMES_ENABLED': 'true', 'HERMES_SOURCE_PATH': '.',
-               'HERMES_PYTHON': sys.executable, 'HERMES_TIMEOUT_SECONDS': '240'}
+               'HERMES_PYTHON': sys.executable, 'HERMES_TIMEOUT_SECONDS': '240', 'HERMES_ENGINE': 'direct'}
         captured = []
         def factory(settings):
+            self.assertEqual(settings.engine, 'hermes')
             captured.append(settings.timeout_seconds)
             return lambda call: (json.dumps(solve(call['task'], call['context'])), {
                 'latencyMs': 1, 'promptTokens': None, 'completionTokens': None,

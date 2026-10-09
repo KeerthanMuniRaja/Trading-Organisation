@@ -6,10 +6,12 @@ import sys
 import tempfile
 import threading
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import adapter
+import openai_compat
+from inference_reporting import timed_inference
 from adapter import HermesError, PINNED_REVISION, Settings, profile_matches
 from knowledge import propose_knowledge
 from knowledge_worker import run_once
@@ -62,6 +64,8 @@ class DirectEngineTests(unittest.TestCase):
         body = FakeModel.bodies[-1]
         self.assertEqual(body['response_format']['json_schema']['schema']['properties']['lessonIds']['items']['enum'], ['lesson-a'])
         self.assertEqual(body['temperature'], 0)
+        from contracts import RESEARCH_PRACTICE_VERSION
+        self.assertIn(RESEARCH_PRACTICE_VERSION, body['messages'][0]['content'])
         FakeModel.mode = 'fenced'  # constrained decoding should prevent this; if a server ignores it, validation still refuses
         with self.assertRaises(HermesError):
             propose_knowledge(settings, context)
@@ -93,6 +97,39 @@ class DirectEngineTests(unittest.TestCase):
             with self.assertRaisesRegex(HermesError, 'profile'):
                 run_once(client, settings, {'botId': 'student', 'lessonIds': ['lesson-a'], 'task': 'x'}, 'direct-key-02', Path(directory))
         self.assertEqual(client.post.call_count, 1)  # no preflight, inference or report for a mismatched engine
+
+    def test_incomplete_refused_and_tool_responses_fail_even_with_valid_json(self):
+        settings = Settings.from_env(self.env())
+        valid = {'content': '{"kind":"momentum","lookback":7}', 'finishReason': 'stop',
+                 'hasToolCalls': False, 'refused': False, 'promptTokens': 20,
+                 'completionTokens': 10, 'reportedModel': 'fixture-model', 'latencyMs': 1}
+        variants = [{'finishReason': reason} for reason in ('length', 'tool_calls', 'content_filter', None, 'unknown')]
+        variants += [{'hasToolCalls': True}, {'refused': True}, {'content': 'invalid JSON'}]
+        for change in variants:
+            with self.subTest(change=change), patch.object(openai_compat, 'chat', return_value={**valid, **change}) as chat:
+                record, saved = {}, []
+                with self.assertRaises(HermesError):
+                    timed_inference(record, Path('unused'), lambda p, r: saved.append(dict(r)), 'candidate',
+                                    lambda: adapter.invoke(settings, {'trials': []}, adapter.validate_candidate),
+                                    engine='direct-structured-v1')
+                chat.assert_called_once()  # no retry or alternate engine on rejection
+                report = saved[0]['inferenceReport']
+                self.assertEqual(report['outcome'], 'failed')
+                self.assertEqual(report['failureCode'], 'INFERENCE_FAILED')
+                self.assertEqual(report['promptTokens'], 20)
+                self.assertEqual(report['completionTokens'], 10)
+                self.assertIsNone(adapter.USAGE.get())
+        with patch.object(openai_compat, 'chat', return_value=valid):
+            self.assertEqual(adapter.invoke(settings, {'trials': []}, adapter.validate_candidate)['lookback'], 7)
+
+    def test_transport_exposes_tool_and_refusal_signals_without_executing_them(self):
+        endpoint = openai_compat.Endpoint.create(self.base, 'fixture-model', KEY)
+        for extra in ({'tool_calls': [{'id': 'x'}]}, {'function_call': {'name': 'x'}}, {'refusal': 'denied'}):
+            response = {'choices': [{'message': {'content': '{}', **extra}, 'finish_reason': 'stop'}]}
+            with patch.object(openai_compat, '_call', return_value=(response, 1)):
+                result = openai_compat.chat(endpoint, 'system', '{}', 10)
+            self.assertEqual(result['hasToolCalls'], 'refusal' not in extra)
+            self.assertEqual(result['refused'], 'refusal' in extra)
 
 
 if __name__ == '__main__':

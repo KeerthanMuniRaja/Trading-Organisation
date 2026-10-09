@@ -69,4 +69,4 @@ Status: template; no experiment has been executed.
 - Proposed next step: education / challenger review / department case / retirement lesson
 
 <!-- documentation-navigation -->
-[Documentation index](../../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../../documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

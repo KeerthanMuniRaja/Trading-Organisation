@@ -45,4 +45,4 @@ Status: template; no runtime deletion is authorised by filling it in.
 - Any future restoration/requalification conditions:
 
 <!-- documentation-navigation -->
-[Documentation index](../../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../../documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

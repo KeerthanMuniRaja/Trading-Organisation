@@ -84,4 +84,4 @@ Use plain language in the report and link to detailed records. Do not present a 
 Financial figures should link to a [financial reconciliation record](financial-reconciliation.md). Transfers and contributions must not be reported as earnings.
 
 <!-- documentation-navigation -->
-[Documentation index](../../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../../documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

@@ -69,4 +69,4 @@ Plan shape: `{baseline, candidate, researcherId, caseCount, criteria, purpose}`.
 `npm run verify:paired-skills` builds and tests a temporary in-memory backend with ephemeral credentials and actual Python-to-HTTP transport. A deliberately broken cost fixture is compared with the existing solver over eight cases: baseline 24/32, candidate 32/32, eight improvements, zero regressions. This demonstrates detection of injected errors, not learned improvement. It also verifies zero student/exam/lesson/financial writes and audit integrity. The fixture closes afterward and saves `.local/paired-skills-verification.json`; no `.env`, persistent database, model API, exchange or bank is used. See [verification](verification.md) for results.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

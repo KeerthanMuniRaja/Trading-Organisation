@@ -88,4 +88,4 @@ The worker now reports sanitised failure codes to the owner inbox when the backe
 The runtime preflight now checks pinned packages, Node 24 and the actual OS profile before creating a task intent. A missing profile is reported as `OS_PROFILE_UNAVAILABLE`; no fallback identity, trust-root substitution or policy bypass is installed.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

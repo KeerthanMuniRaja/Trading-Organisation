@@ -2,9 +2,13 @@ import { z } from 'zod';
 import { Actor, digest, parse, permit, requireThat, text, uuid } from './core.js';
 import { Database, audit } from './database.js';
 import { verifiedEvidence } from './organisation.js';
+import { IncidentReview, incidentResolutionReady } from './incident-review.js';
+import { IncidentLearning } from './incident-learning.js';
 
 export class Operations {
   constructor(private readonly db:Database) {}
+  findings(){return new IncidentReview(this.db);}
+  incidentLearning(){return new IncidentLearning(this.db);}
   integrationStatus(actor:Actor,raw:unknown) {
     permit(actor,'coordinator');
     const input=parse(z.object({state:z.enum(['healthy','degraded']),code:z.enum(['SYNCED','OS_PROFILE_UNAVAILABLE','DEPENDENCIES_UNAVAILABLE','BACKEND_UNAVAILABLE','MCP_UNAVAILABLE','RECONCILIATION_REQUIRED','CAPACITY_REACHED']),taskCount:z.number().int().min(0).max(100)}).strict().refine(v=>(v.state==='healthy')===(v.code==='SYNCED'),'Health state and code must agree'),raw);
@@ -27,6 +31,7 @@ export class Operations {
     permit(actor,'owner');const input=parse(z.object({incidentId:z.uuid(),evidenceId:z.uuid()}).strict(),raw);
     return this.db.command(actor,'resolve-incident',key,input,async tx=>{
       const incident=(await tx.query("SELECT * FROM incidents WHERE id=$1 AND status='open'",[input.incidentId])).rows[0];requireThat(incident,'Open incident not found',404);await verifiedEvidence(tx,input.evidenceId);
+      await incidentResolutionReady(tx,input.incidentId,input.evidenceId);
       await tx.query("UPDATE incidents SET status='resolved',resolution_evidence=$1 WHERE id=$2",[input.evidenceId,input.incidentId]);
       await audit(tx,actor,'incident.resolved',input.incidentId,input);return {id:input.incidentId,status:'resolved',resumeRequired:true};
     });

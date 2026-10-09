@@ -94,4 +94,4 @@ The profit-distribution ratio, recipient, permission boundary, accounting histor
 The incident court can recommend a financial-control correction but cannot give an affected bot permission to approve it. See [financial scenarios](13-financial-scenarios.md) for proposed validation cases.
 
 <!-- documentation-navigation -->
-[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

@@ -58,4 +58,4 @@ Backend tests cover citation fabrication, changed context/identity, dedicated re
 This completes a bounded extraction mechanism, not the full DATA-02 work package in the [remaining-work assessment](remaining-work-assessment.md): multi-source corroboration, entity/claim modelling, reliable automatic judgement, production Hermes qualification and continuous orchestration remain outstanding. Saved direct 4B source-lesson outputs passed their schemas, but this does not verify factual quality or the production learning path; see [model selection](model-selection.md).
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

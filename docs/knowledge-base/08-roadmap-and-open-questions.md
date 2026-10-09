@@ -88,4 +88,4 @@ This example can expose missing responsibilities and interfaces before committin
 A second design exercise should trace deposits, profit, losses, recovery, owner transfers, and interrupted distributions through the [financial scenarios](13-financial-scenarios.md). These are proposed acceptance cases, not completed application tests.
 
 <!-- documentation-navigation -->
-[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](../documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

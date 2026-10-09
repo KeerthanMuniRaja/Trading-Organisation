@@ -114,4 +114,4 @@ Withdrawal files take `{blueprintId,reason}` and are submitted with `lifecycle:a
 The assistant has written regression tests for authority, paused operation, duplicate capability declarations, zero-budget constraints, repeat polling, positive/negative review streaks, evidence revocation, knowledge preservation and retirement draining. **They have not been executed**, as the owner is handling terminal execution and has deferred testing. The current Node backend suite includes them when the owner later chooses to run it. No new test results are claimed.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

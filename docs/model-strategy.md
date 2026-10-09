@@ -79,4 +79,4 @@ The ten supplied repositories and their roles are mapped in [reference-map.md](r
 Keep pinned source, lockfiles, compatible packages, model/tokenizer artifacts and licence notices locally with backups. Repository deletion does not remove retained files, but remote model/data APIs remain external dependencies. Our organisation owns its ledger, graph, policy and journals. An upstream framework must never become the authority for Wallet 2, withdrawals, profit ratios or bot permissions.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

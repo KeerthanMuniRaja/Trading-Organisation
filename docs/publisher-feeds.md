@@ -90,4 +90,4 @@ These checks use synthetic feeds. They do not show that a real publisher's feed 
 - Alerting for repeated feed failures.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

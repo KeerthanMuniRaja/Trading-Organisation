@@ -107,4 +107,4 @@ Uniqueness currently means a case-insensitive `(department, specialty, method)` 
 The new graph adds `approved blueprint → managed student → reviewed curriculum → evaluated portfolio trials → lifecycle review → reputation/designation → retirement archive`. Blueprint, review, archive and original trial records remain linked. Current reputation excludes revoked evidence, while immutable historical reviews preserve the original decision context. A lifecycle worker is an explicit, bounded clock; no model or process is spawned merely by inserting a student record.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

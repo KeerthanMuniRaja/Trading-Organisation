@@ -75,4 +75,4 @@ The review file contains `{requestId,decision,reason}`; the bot file contains `{
 `npm run verify:knowledge` uses a fresh backend, two fixture bots, actual Python HTTP, independent review and a deterministic model stand-in. It verifies protocol behaviour and graph links, not real model reasoning. The report is `.local/knowledge-verification.json`.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

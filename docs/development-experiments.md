@@ -88,4 +88,4 @@ The organisation report includes registered, pending, historically supported, no
 Initial pending-test statements are superseded by later regression evidence in [verification](verification.md); neither those checks nor a diagnostic result qualify live performance. The next capability stages are executable experiment specifications for genuinely new techniques, protected evaluation datasets and contamination controls, statistical/novelty assessment, then a separate evidence-based recruitment or curriculum proposal. This increment deliberately does not turn a positive example diagnostic into automatic deployment.
 
 <!-- documentation-navigation -->
-[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 6 October 2026; historical records retain their original scope.
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.
