@@ -2,6 +2,7 @@ from argparse import Namespace
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
+from unittest.mock import patch
 import sys
 import tempfile
 import unittest
@@ -51,7 +52,7 @@ class FakeBackend:
 
     def api(self, role):
         def call(method, route, body=None):
-            if method == 'POST' and route != '/v1/sources/observations/review-queue':
+            if method == 'POST' and route not in ('/v1/sources/observations/review-queue', '/v1/evidence/status'):
                 key = (role, route, json.dumps(body, sort_keys=True))
                 if key not in self.done:
                     self.mutations.append((role, route, body))
@@ -61,6 +62,11 @@ class FakeBackend:
         return call
 
     def handle(self, role, route, body):
+        if route == '/v1/evidence/status':
+            return {'evidence': [{**e, 'id': i, 'kind': e.get('kind', 'news'),
+                'source_approved': e.get('source_approved', True),
+                'usable': e['status'] == 'verified' and e.get('source_approved', True)}
+                for i, e in self.evidence.items() if i in body['evidenceIds']]}
         if route == '/v1/sources/observations/review-queue':
             assert role == 'evaluator'
             rows = [{**{k: v for k, v in e.items() if k != 'author'}, 'blockers': []} for e in self.evidence.values() if e['status'] == 'unverified']
@@ -68,6 +74,10 @@ class FakeBackend:
         if route == '/v1/evidence/reviews':
             e = self.evidence[body['evidenceId']]
             assert role == 'evaluator' and e['author'] != role and e['status'] == 'unverified'
+            expected = body['expected']
+            if (e['content'] != expected['content'] or e['source_id'] != expected['sourceId']
+                    or e['title'] != expected['observation']['title'] or e['url'] != expected['observation']['url']):
+                raise RuntimeError('Stored evidence does not match')
             e['status'] = body['status']
             return body
         if route == '/v1/lessons':
@@ -78,6 +88,9 @@ class FakeBackend:
         if route == '/v1/lessons/reviews':
             lesson = self.lessons[body['lessonId']]
             assert role == 'evaluator' and lesson['author'] != role and self.evidence[lesson['evidenceId']]['status'] == 'verified'
+            expected = body.get('expected')
+            if expected and any(lesson[k] != expected[k] for k in ('content', 'evidenceId', 'botId')):
+                raise RuntimeError('Stored lesson does not match')
             lesson['status'] = 'verified'
             return {'id': lesson['id'], 'status': 'verified'}
         if route == '/v1/evidence/revocations':
@@ -137,6 +150,7 @@ class AutoLearnTests(unittest.TestCase):
         self.assertEqual({k['bot_id'] for k in knowledge}, {'news-desk', 'research-lead'})
         headlines = autolearn.read(self.state, 'verified-headlines.json', None)
         self.assertEqual((first['review']['headlines'], len(headlines)), (2, 2))
+        self.assertEqual(autolearn.headline_receipt.load(self.state / 'verified-headlines.json'), headlines)
         self.assertEqual(desk_validator()(headlines), headlines)  # ready for the trading desk's news analyst
         self.assertTrue(all('corroborated by independent reports' in k['content'] and 'not a trading signal' in k['content'] for k in knowledge))
         writes = len(backend.mutations)
@@ -180,6 +194,40 @@ class AutoLearnTests(unittest.TestCase):
         self.assertEqual(out, {'awaiting-corroboration': 1, 'no-claim-survived-recheck': 1})
         self.assertEqual(backend.evidence['e1']['status'], 'unverified')
 
+    def test_backend_mismatch_stops_approval_before_publication(self):
+        backend = FakeBackend(['e1', 'e2'])
+        autolearn.factcheck_queue(backend.api('evaluator'), self.state)
+        autolearn.analyst_extract(stub_model, 'stub', self.state, CONFIG)
+        backend.evidence['e1']['content'] = 'Different stored report'
+        with self.assertRaisesRegex(RuntimeError, 'Stored evidence'):
+            autolearn.factcheck_evidence(backend.api('evaluator'), self.state, CONFIG, NOW)
+        self.assertEqual(backend.evidence['e1']['status'], 'unverified')
+
+    def test_headlines_reconcile_external_revocation_and_source_withdrawal(self):
+        backend = FakeBackend(['e1', 'e2'])
+        cycle(backend, self.state)
+        backend.evidence['e1']['status'] = 'revoked'
+        self.assertEqual(autolearn.export_headlines(backend.api('evaluator'), self.state, CONFIG), [])
+        backend.evidence['e2']['source_approved'] = False
+        self.assertEqual(autolearn.export_headlines(backend.api('evaluator'), self.state, CONFIG), [])
+        self.assertEqual(autolearn.read(self.state, 'verified-headlines.json', None), [])
+
+    def test_headline_status_failure_clears_old_export_and_missing_rows_are_excluded(self):
+        backend = FakeBackend(['e1', 'e2'])
+        cycle(backend, self.state)
+        def unavailable(*args):
+            raise RuntimeError('Backend unavailable')
+        with self.assertRaisesRegex(RuntimeError, 'unavailable'):
+            autolearn.export_headlines(unavailable, self.state, CONFIG)
+        self.assertEqual(autolearn.read(self.state, 'verified-headlines.json', None), [])
+        self.assertFalse(autolearn.headline_receipt.receipt_path(self.state / 'verified-headlines.json').exists())
+        self.assertEqual(autolearn.export_headlines(lambda *args: {'evidence': []}, self.state, CONFIG), [])
+        backend.evidence['e1']['title'] = 'Changed title'
+        items = autolearn.export_headlines(backend.api('evaluator'), self.state, CONFIG)
+        self.assertEqual(items, [])  # the remaining report has lost its corroboration
+        items = autolearn.export_headlines(backend.api('evaluator'), self.state, {**CONFIG, 'primarySourceIds': ['src-b']})
+        self.assertEqual(len(items), 1)
+
     def test_altered_lesson_text_is_never_verified_and_a_stored_mismatch_revokes(self):
         backend = FakeBackend(['e1', 'e2'])
         cycle(backend, self.state, until='analyst-lessons')
@@ -189,11 +237,18 @@ class AutoLearnTests(unittest.TestCase):
         autolearn.write(self.state, 'proposals.json', proposals)
         stored = sorted(proposals)[1]
         backend.lessons[proposals[stored]['lessonId']]['content'] = 'BUY RELIANCE NOW'  # what was posted differs from the record
-        out = autolearn.factcheck_lessons(backend.api('evaluator'), self.state, CONFIG, NOW)
-        self.assertEqual((out['skipped'], out['verified'], out['revoked']), (1, 3, 1))
+        with self.assertRaisesRegex(RuntimeError, 'Stored lesson'):
+            autolearn.factcheck_lessons(backend.api('evaluator'), self.state, CONFIG, NOW)
         self.assertEqual(backend.lessons[proposals[first]['lessonId']]['status'], 'unverified')
-        self.assertEqual(backend.evidence[proposals[stored]['evidenceId']]['status'], 'revoked')
+        self.assertEqual(backend.lessons[proposals[stored]['lessonId']]['status'], 'unverified')
         self.assertTrue(all('BUY RELIANCE NOW' not in k['content'] for k in backend.knowledge()))
+
+    def test_contradiction_blocks_mixed_evidence_even_with_primary_or_corroborated_support(self):
+        obs = {'publishedAt': '2026-10-03T10:00:00+00:00'}
+        for support in ('corroborated', 'primary-source'):
+            with patch.object(autolearn, 'claim_basis', side_effect=[support, 'contradicted']):
+                self.assertEqual(autolearn.evidence_decision(obs, {'outcome': 'valid', 'accepted': [1, 2]},
+                    [{}, {}], [], CONFIG, NOW), ('hold', 'contradicted'))
 
 
 class OrchestrationTests(unittest.TestCase):
@@ -202,7 +257,11 @@ class OrchestrationTests(unittest.TestCase):
                   {'role': 'researcher', 'token': 'r-token'}, {'role': 'evaluator', 'token': 'e-token'}, {'role': 'owner', 'token': 'o-token'}])}
 
     def test_each_step_gets_only_its_own_credential_and_only_extraction_gets_the_model(self):
-        checker = autolearn.child_env('factcheck-lessons', self.PARENT, {})
+        checker = autolearn.child_env('factcheck-lessons', {**self.PARENT,
+            'OPENAI_API_KEY': 'unrelated', 'AWS_SECRET_ACCESS_KEY': 'unrelated',
+            'PYTHONPATH': 'injected', 'NODE_OPTIONS': 'injected', 'OWNER_TOKEN': 'unrelated'}, {})
+        for key in ('OPENAI_API_KEY', 'AWS_SECRET_ACCESS_KEY', 'PYTHONPATH', 'NODE_OPTIONS', 'OWNER_TOKEN'):
+            self.assertNotIn(key, checker)
         self.assertEqual(json.loads(checker['PRINCIPALS_JSON']), [{'role': 'evaluator', 'token': 'e-token'}])
         self.assertFalse(any(k.startswith('HERMES_') for k in checker))
         self.assertEqual(checker['PATH'], 'C:\\Windows')

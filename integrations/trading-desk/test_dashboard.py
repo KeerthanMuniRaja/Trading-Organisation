@@ -32,6 +32,8 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(data['knowledge'], {'news': None, 'results': None})
         self.assertIsNone(data['forecast'])
         self.assertEqual(data['live'], [])
+        self.assertEqual([r['model'] for r in data['models']['desk']], ['stub'])  # the control batch, keyed by its model
+        self.assertEqual(data['models']['allocator'], [])
         page = dashboard.render(data)
         self.assertIn('Not started', page)
         self.assertIn('No live paper books yet', page)
@@ -68,6 +70,24 @@ class DashboardTests(unittest.TestCase):
         page = dashboard.render(data)
         self.assertIn('"headlines": 1', page)
         self.assertNotIn('</script><', page.split('const D = ')[1].split(';\n')[0])  # data cannot close the script early
+
+    def test_research_panel_lists_tournaments_and_their_verdicts(self):
+        root = Path(self.tmp.name)
+        intraday = root / 'tournaments' / 'first-rules'
+        intraday.mkdir(parents=True)
+        (intraday / 'tournament.json').write_text(json.dumps({'name': 'first-rules', 'entrantsTried': 11, 'winner': None,
+                                                              'results': {'cash': {'validation': {'netPaise': 0}}}}), encoding='utf-8')
+        day = root / 'daily-tournaments' / 'daily-first'
+        day.mkdir(parents=True)
+        (day / 'tournament.json').write_text(json.dumps({'name': 'daily-first', 'entrantsTried': 10, 'winner': 'reversal-10d-8pct',
+                                                         'results': {'reversal-10d-8pct': {'validation': {'netPaise': 709154}}}}), encoding='utf-8')
+        (day / 'sealed.json').write_text(json.dumps({'verdict': 'failed-on-sealed-period', 'cash': {'netPaise': 0},
+                                                     'buy-and-hold': {'netPaise': -4344402}, 'winnerResult': {'netPaise': -2388278}}), encoding='utf-8')
+        rows = {r['name']: r for r in dashboard.collect('control', 'treated')['research']['tournaments']}
+        self.assertEqual(rows['first-rules']['verdict'], 'no-entrant-qualified')
+        self.assertEqual(rows['daily-first']['verdict'], 'failed-on-sealed-period')
+        self.assertEqual(rows['daily-first']['sealed'], {'cash': 0, 'buy-and-hold': -4344402, 'winner': -2388278})
+        self.assertIn('Winner failed on sealed period', dashboard.render(dashboard.collect('control', 'treated')))
 
     def test_untrusted_text_cannot_break_out_of_the_page_data(self):
         data = dashboard.collect('control', 'treated')

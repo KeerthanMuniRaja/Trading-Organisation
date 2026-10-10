@@ -3,6 +3,7 @@ import { Actor, digest, id, parse, permit, requireThat, text, uuid } from './cor
 import { audit, Database, Row, Sql } from './database.js';
 import { sharedResearchMemory } from './learning-contract.js';
 import { assertTokenCapacity } from './inference-usage.js';
+import { incidentAssignmentActive } from './incident-learning.js';
 
 const short=z.string().trim().min(1).max(500);
 const proposalSchema=z.object({summary:short,application:short,lessonIds:z.array(z.uuid()).min(1).max(5),
@@ -17,6 +18,7 @@ async function lessonRows(tx:Sql,ids:string[]){
   requireThat(rows.length===ids.length&&rows.every(r=>r.usable),'Currently verified lessons and sources required');return rows;
 }
 async function active(tx:Sql,request:Row){
+  await incidentAssignmentActive(tx,request.id);
   const policy=(await tx.query('SELECT * FROM development_policy WHERE id=1')).rows[0]!;
   requireThat(policy.enabled&&policy.revision===request.policy_revision,'Knowledge development policy changed or disabled');
   requireThat(!(await tx.query('SELECT halted FROM system_lock WHERE id=1')).rows[0]!.halted,'System halted');
@@ -70,6 +72,7 @@ export class BotKnowledge {
         JOIN development_requests d ON d.id=k.request_id
         LEFT JOIN knowledge_assessments a ON a.request_id=k.request_id LEFT JOIN knowledge_assessment_results result ON result.assessment_id=a.id
         WHERE k.bot_id=$1 AND r.decision='accepted' AND d.policy_revision=$2
+        AND NOT EXISTS(SELECT 1 FROM incident_learning_attempts t JOIN incident_learning_cancellations c ON c.assignment_id=t.assignment_id WHERE t.request_id=k.request_id)
         AND NOT EXISTS(SELECT 1 FROM bot_knowledge_lessons x JOIN lessons l ON l.id=x.lesson_id
           JOIN evidence e ON e.id=l.evidence_id JOIN sources s ON s.id=e.source_id WHERE x.request_id=k.request_id
           AND (l.status<>'verified' OR e.status<>'verified' OR NOT s.approved OR e.published_at>now()))
@@ -160,10 +163,10 @@ export class BotKnowledge {
         edges.push({from:'incident:'+finding.incident_id,to:'finding:'+finding.finding_id,type:'investigated-through'},
           {from:'finding:'+finding.finding_id,to:'lesson:'+finding.lesson_id,type:'lesson-proposed-from'});
       }
-      const assignments=(await tx.query(`SELECT id,lesson_id,task FROM incident_learning_assignments
-        WHERE bot_id=$1 ORDER BY created_at DESC,id LIMIT 101`,[bot.id])).rows;
+      const assignments=(await tx.query(`SELECT a.id,a.lesson_id,a.task,c.reason AS cancellation_reason,c.created_at AS cancelled_at FROM incident_learning_assignments a
+        LEFT JOIN incident_learning_cancellations c ON c.assignment_id=a.id WHERE a.bot_id=$1 ORDER BY a.created_at DESC,a.id LIMIT 101`,[bot.id])).rows;
       for(const a of assignments.slice(0,100)){
-        nodes.set('assignment:'+a.id,{id:'assignment:'+a.id,type:'incident-learning-assignment',task:a.task,incidentMasteryEstablished:false});
+        nodes.set('assignment:'+a.id,{id:'assignment:'+a.id,type:'incident-learning-assignment',task:a.task,cancelledAt:a.cancelled_at,cancellationReason:a.cancellation_reason,incidentMasteryEstablished:false});
         edges.push({from:'assignment:'+a.id,to:'bot:'+bot.id,type:'assigned-to'});
         if(nodes.has('lesson:'+a.lesson_id))edges.push({from:'lesson:'+a.lesson_id,to:'assignment:'+a.id,type:'assigned-through'});
       }

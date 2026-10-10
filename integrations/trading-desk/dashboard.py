@@ -87,6 +87,49 @@ def live_status(directory=None):
     return rows
 
 
+def research_status(local=None):
+    """Every tournament (5-minute and daily) with its verdict, plus pre-registered daily forward tests."""
+    local = local or DESK_LOCAL
+    rows = []
+    for kind, folder, baselines in (('5-minute', 'tournaments', ('cash',)), ('daily', 'daily-tournaments', ('cash', 'buy-and-hold'))):
+        for path in sorted((local / folder).glob('*/tournament.json')) if (local / folder).exists() else []:
+            t = read_json(path, None)
+            if not t:
+                continue
+            sealed = read_json(path.parent / 'sealed.json', None)
+            winner = t.get('winner')
+            row = {'kind': kind, 'name': t['name'], 'entrants': t.get('entrantsTried'), 'winner': winner,
+                   'winnerValidationPaise': t['results'][winner]['validation']['netPaise'] if winner else None,
+                   'verdict': sealed['verdict'] if sealed else ('awaiting-sealed-judgement' if winner else 'no-entrant-qualified')}
+            if sealed:
+                row['sealed'] = {name: sealed[name]['netPaise'] for name in baselines if name in sealed}
+                if 'winnerResult' in sealed:
+                    row['sealed']['winner'] = sealed['winnerResult']['netPaise']
+            rows.append(row)
+    forward = []
+    for folder, module_name in (('daily-forward', 'daily'), ('portfolio-forward', 'portfolio_daily')):
+        if not (local / folder).exists():
+            continue
+        module = __import__(module_name)
+        for path in sorted((local / folder).glob('*.json')):
+            try:
+                result = module.forward(path.stem, root=local / folder)
+            except (ValueError, OSError) as error:
+                result = {'name': path.stem, 'status': 'ended', 'note': str(error)[:120]}
+            if module_name == 'portfolio_daily' and result.get('results'):
+                basket = result['results']['buy-and-hold-equal']['netPaise']
+                result['aheadOfBothBaselines'] = sorted(k for k, v in result['results'].items()
+                                                        if k not in ('cash', 'buy-and-hold-equal') and v['netPaise'] > max(basket, 0))
+            forward.append({k: result.get(k) for k in ('name', 'status', 'startAfter', 'through', 'tradingDays', 'aheadOfBothBaselines', 'note')})
+    return {'tournaments': rows, 'forward': forward}
+
+
+def models_status(local=None):
+    """Every saved test result grouped by model (see model_compare.py)."""
+    import model_compare
+    return model_compare.compare(local or DESK_LOCAL)
+
+
 def collect(control, treated):
     rows = walkforward.load_rows(BATCHES / control)
     weeks = []
@@ -135,7 +178,7 @@ def collect(control, treated):
             'model': rows[0]['model'] if rows else None, 'every': rows[0]['every'] if rows else None,
             'latestWeek': f"{rows[-1]['from'][:10]} to {rows[-1]['to'][:10]}" if rows else None,
             'walkforward': comparison, 'fitness': fitness.evaluate(fitness.load([control], batches=BATCHES)) if rows else None,
-            'knowledge': knowledge_status(), 'forecast': forecast_status(), 'live': live_status(),
+            'knowledge': knowledge_status(), 'forecast': forecast_status(), 'live': live_status(), 'research': research_status(), 'models': models_status(),
             'generatedAt': datetime.now(timezone.utc).strftime('%d %b %Y, %H:%M UTC')}
 
 
@@ -260,6 +303,18 @@ footer p { font-size: 0.85rem; }
     <h2 id="know-h">Automatic knowledge</h2>
     <p>Two pipelines teach the bots with no human step. In each, an analyst bot proposes and an independent fact-checker bot, with no model, verifies by fixed rules and revokes what later proves wrong.</p>
     <div class="bots" id="knowledge"></div>
+  </section>
+
+  <section aria-labelledby="rd-h">
+    <h2 id="rd-h">Research tournaments</h2>
+    <p>Strategies compete on training data, a winner is picked on validation only, and that single winner is judged once on a sealed period nobody tuned to. Forward tests then score frozen rules only on days after they were registered.</p>
+    <div id="research"></div>
+  </section>
+
+  <section aria-labelledby="mc-h">
+    <h2 id="mc-h">Models compared</h2>
+    <p>Every saved test, grouped by the model that produced it. When a stronger model is tried, it runs the same tests, and it earns its cost only by beating both the simple baselines and the cheaper model.</p>
+    <div id="models"></div>
   </section>
 
   <section aria-labelledby="fc-h">
@@ -391,6 +446,32 @@ document.getElementById('weekly-table').innerHTML = `<thead><tr><th>Week</th><th
           r.weeks.rejected ? ['bad', 'A misreport was rejected'] : ['good', 'Running'])
       : card('Desk results → verified lessons', 'desk analyst + desk fact-checker', '—', 'Not started. It needs an approved source for desk results and organisation bots mapped to desk roles.', ['warn', 'Not started']),
   ].join('');
+})();
+
+(function research() {
+  const r = D.research || {tournaments: [], forward: []}, box = document.getElementById('research');
+  const VERDICT = {'no-entrant-qualified': 'No entrant beat the baselines', 'awaiting-sealed-judgement': 'Winner awaiting sealed test',
+    'failed-on-sealed-period': 'Winner failed on sealed period', 'failed-on-sealed-weeks': 'Winner failed on sealed weeks',
+    'beat-cash-on-sealed-weeks': 'Winner beat cash on sealed weeks', 'beat-both-baselines-on-sealed-period': 'Winner beat both baselines on sealed period'};
+  const sealed = s => s ? Object.entries(s).map(([k, v]) => `${k} ${rs(v / 100)}`).join(' · ') : '—';
+  const t = r.tournaments.length ? `<div class="panel scroll"><table><thead><tr><th>Tournament</th><th>Bars</th><th>Entrants</th><th>Validation winner</th><th>Verdict</th><th>Sealed period</th></tr></thead><tbody>${
+    r.tournaments.map(x => `<tr><td>${esc(x.name)}</td><td>${esc(x.kind)}</td><td class="n">${x.entrants ?? '—'}</td><td>${x.winner ? esc(x.winner) + ' (' + rs(x.winnerValidationPaise / 100) + ')' : 'none'}</td><td>${esc(VERDICT[x.verdict] || x.verdict)}</td><td class="n">${sealed(x.sealed)}</td></tr>`).join('')}</tbody></table></div>`
+    : `<div class="pending"><strong>No tournaments yet</strong></div>`;
+  const f = r.forward.map(x => `<p><strong>Forward test ${esc(x.name)}</strong>: ${x.status === 'running' ? `${x.tradingDays} trading days since ${esc(x.startAfter)}; ahead of both baselines: ${esc((x.aheadOfBothBaselines || []).join(', ') || 'none')}.` : esc(x.status) + (x.startAfter ? ' since ' + esc(x.startAfter) : '') + '. ' + esc(x.note || '')}</p>`).join('');
+  box.innerHTML = t + f;
+})();
+
+(function models() {
+  const m = D.models || {desk: [], allocator: [], models: []}, box = document.getElementById('models');
+  const pctOrDash = v => v == null ? '—' : (100 * v).toFixed(1) + '%';
+  const alloc = m.allocator.length ? `<div class="panel scroll"><table><thead><tr><th>AI allocator run</th><th>Model</th><th>Months (failed)</th><th>Average cash</th><th>AI net · growth · worst fall</th><th>Basket net · growth · worst fall</th><th>Beat basket?</th></tr></thead><tbody>${
+    m.allocator.map(r => `<tr><td>${esc(r.test)}</td><td>${esc(r.model)}</td><td class="n">${r.months} (${r.failedMonths})</td><td class="n">${r.averageCashPct}%</td>
+      <td class="n">${rs((r.ai.netPaise || 0) / 100)} · ${pctOrDash(r.ai.cagr)} · ${pctOrDash(r.ai.maxDrawdown)}</td>
+      <td class="n">${rs((r.basket.netPaise || 0) / 100)} · ${pctOrDash(r.basket.cagr)} · ${pctOrDash(r.basket.maxDrawdown)}</td>
+      <td>${r.beatBasket ? '<span class="chip good">Yes</span>' : '<span class="chip warn">No</span>'}</td></tr>`).join('')}</tbody></table></div>` : '';
+  const desk = m.desk.length ? `<div class="panel scroll"><table><thead><tr><th>Desk replay</th><th>Model</th><th>Weeks</th><th>Desk</th><th>Momentum</th><th>Buy and hold</th><th>Fitness verdicts</th></tr></thead><tbody>${
+    m.desk.map(r => `<tr><td>${esc(r.test)}</td><td>${esc(r.model)}</td><td class="n">${r.weeks}</td><td class="n">${rs(r.deskNetPaise / 100)}</td><td class="n">${rs(r.momentumNetPaise / 100)}</td><td class="n">${rs(r.buyAndHoldPaise / 100)}</td><td>${esc(Object.entries(r.fitness || {}).map(([k, v]) => k + ': ' + v).join('; '))}</td></tr>`).join('')}</tbody></table></div>` : '';
+  box.innerHTML = (alloc + desk) || `<div class="pending"><strong>No model results yet</strong></div>`;
 })();
 
 (function forecast() {

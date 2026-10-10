@@ -1,5 +1,27 @@
 # API contract and roles
 
+## Incident learning cancellation — migration 027
+
+Owner `POST /v1/incidents/learning/cancellations` takes `{assignmentId,reason}` and an idempotency key. Append-only cancellation blocks further linked learning progression while preserving results. Progress and graph expose cancellation; ungraded submitted assessments become invalidated when graded. See [scope and external-process limits](incident-review.md#assignment-cancellation-migration-027).
+
+## Exact evidence eligibility lookup
+
+`POST /v1/evidence/status` (owner/researcher/evaluator) accepts `{evidenceIds}` with 1–50 distinct UUIDs. It is read-only and needs no idempotency key. Returns matching records with content, source, kind, publication time, optional observation title/URL, status, `source_approved` and `usable`. Unknown IDs are omitted. Unlike the recent knowledge view, lookup is not restricted to the latest 200 records. Eligibility is point-in-time and grants no execution authority.
+
+The claims headline exporter queries this route in batches, checks stored content/provenance against reviewed snapshots, and recalculates corroboration using only currently eligible reports. It clears its previous output before reconciliation; failures leave an empty file. Export is capped at 500 evidence IDs and refuses larger sets rather than silently omitting them. Existing desktop consumers still read a snapshot: revocation after lookup, or while the exporter is idle, requires another reconciliation. This is not a continuous revocation subscription.
+
+The live paper desk additionally requires a content-bound receipt expiring five minutes after reconciliation starts and discards invalid or stale news instead of keeping the last copy. See [live news freshness](live-news-freshness.md) for compatibility and scheduling consequences.
+
+## Bound automatic evidence review
+
+`POST /v1/evidence/reviews` accepts optional `expected: {content,sourceId,kind,publishedAt,observation?}` alongside `evidenceId` and `status`. An observation expectation contains `{title,url}` and is required when binding a collected news/article/filing snapshot; it must be absent for evidence without an observation record. Content and provenance must match inside the review transaction. Publication timestamps are compared as instants. Verification also rechecks source approval and rejects future publication times, including for legacy callers without expectations. Rejection remains available after source withdrawal. Automatic news and desk workers send bound review requests; no database migration is needed.
+
+Start the updated backend before the updated workers. Older backends reject the new strict request body; workers must not retry without the binding. Idempotent command replay remains a historical receipt, not proof of current eligibility.
+
+## Bound automatic lesson review
+
+`POST /v1/lessons/reviews` accepts optional `expected: {content,evidenceId,botId}` alongside `lessonId`. All three fields must match the stored lesson inside the approval transaction, before it becomes verified. Existing independence and current evidence checks still apply. Automatic news and trading-desk learning workers use this guard; manual callers remain compatible. See [updated-code review](review-2026-10-09.md) for remaining evidence-binding and claim-verification limits.
+
 ## Incident learning assignments — migration 026
 
 `POST /v1/incidents/learning/assignments` (owner) assigns a reviewed lesson to recipient bots; `/links` (researcher) associates a fresh matching knowledge request; `/progress` (owner/researcher/evaluator) reads all linked review and assessment outcomes alongside current support indicators. Mutations require idempotency keys. See [contracts and assessment limits](incident-review.md#assigned-learning-and-assessment-history-migration-026).

@@ -12,6 +12,16 @@ export async function verifiedEvidence(tx:Sql, evidenceId:string) {
 export class Organisation {
   constructor(private readonly db:Database) {}
   observations(){return new SourceObservations(this.db);}
+  evidenceStatus(actor:Actor,raw:unknown){
+    permit(actor,'owner','researcher','evaluator');
+    const input=parse(z.object({evidenceIds:z.array(z.uuid()).min(1).max(50).refine(ids=>new Set(ids).size===ids.length)}).strict(),raw);
+    return this.db.transaction(async tx=>({evidence:(await tx.query(`SELECT e.id,e.source_id,e.kind,e.content,e.published_at,e.status,
+      s.approved AS source_approved,o.url,o.title,
+      (e.status='verified' AND s.approved AND e.published_at<=now()) AS usable
+      FROM evidence e JOIN sources s ON s.id=e.source_id LEFT JOIN source_observations o ON o.evidence_id=e.id
+      WHERE e.id=ANY($1::uuid[]) ORDER BY e.id`,[input.evidenceIds])).rows,
+      scope:'current-evidence-status',warning:'Point-in-time eligibility, not an execution authorisation.'}));
+  }
   sources(actor:Actor,key:string,raw:unknown) {
     permit(actor,'owner');const input=parse(z.object({id,name:text,url:z.url().max(2048).refine(v=>new URL(v).protocol==='https:'),approved:z.boolean()}).strict(),raw);
     return this.db.command(actor,'source',key,input,async tx=>{
@@ -33,13 +43,28 @@ export class Organisation {
     });
   }
   reviewEvidence(actor:Actor,key:string,raw:unknown) {
-    permit(actor,'owner','evaluator');const input=parse(z.object({evidenceId:z.uuid(),status:z.enum(['verified','rejected'])}).strict(),raw);
+    permit(actor,'owner','evaluator');const input=parse(z.object({evidenceId:z.uuid(),status:z.enum(['verified','rejected']),
+      expected:z.object({content:text,sourceId:id,kind:z.enum(['news','article','filing','dataset','incident','lesson']),publishedAt:timestamp,
+        observation:z.object({url:z.url().max(2048),title:z.string().min(1).max(300)}).strict().optional()}).strict().optional()}).strict(),raw);
     return this.db.command(actor,'evidence-review',key,input,async tx=>{
       const e=(await tx.query('SELECT * FROM evidence WHERE id=$1',[input.evidenceId])).rows[0];
       requireThat(e,'Evidence not found',404);requireThat(e.author!==actor.id,'Authors cannot verify their own evidence',403);
       requireThat(e.status==='unverified','Evidence already reviewed; append a correction instead');
+      if(input.expected){
+        const expected=input.expected;
+        requireThat(e.content===expected.content&&e.source_id===expected.sourceId&&e.kind===expected.kind&&
+          new Date(e.published_at).getTime()===new Date(expected.publishedAt).getTime(),'Stored evidence does not match reviewed content and provenance');
+        const observation=(await tx.query('SELECT url,title FROM source_observations WHERE evidence_id=$1',[e.id])).rows[0];
+        requireThat(observation?expected.observation&&observation.url===expected.observation.url&&observation.title===expected.observation.title:!expected.observation,
+          'Stored observation does not match reviewed title and URL');
+      }
+      if(input.status==='verified'){
+        requireThat((await tx.query('SELECT id FROM sources WHERE id=$1 AND approved=true',[e.source_id])).rows.length,'Approved source required at review');
+        requireThat(new Date(e.published_at).getTime()<=Date.now(),'Future evidence cannot be verified');
+      }
       await tx.query('UPDATE evidence SET status=$1,reviewer=$2,reviewed_at=now() WHERE id=$3',[input.status,actor.id,input.evidenceId]);
-      await audit(tx,actor,'evidence.reviewed',input.evidenceId,input);return input;
+      await audit(tx,actor,'evidence.reviewed',input.evidenceId,{evidenceId:input.evidenceId,status:input.status,contentBound:!!input.expected});
+      return {evidenceId:input.evidenceId,status:input.status};
     });
   }
   revoke(actor:Actor,key:string,raw:unknown) {
@@ -83,10 +108,11 @@ export class Organisation {
     });
   }
   verifyLesson(actor:Actor,key:string,raw:unknown) {
-    permit(actor,'owner','evaluator');const input=parse(z.object({lessonId:z.uuid()}).strict(),raw);
+    permit(actor,'owner','evaluator');const input=parse(z.object({lessonId:z.uuid(),expected:z.object({content:text,evidenceId:z.uuid(),botId:id}).strict().optional()}).strict(),raw);
     return this.db.command(actor,'lesson-review',key,input,async tx=>{
       const lesson=(await tx.query('SELECT * FROM lessons WHERE id=$1',[input.lessonId])).rows[0];
       requireThat(lesson,'Lesson not found',404);requireThat(lesson.author!==actor.id,'Independent lesson review required',403);
+      if(input.expected)requireThat(lesson.content===input.expected.content&&lesson.evidence_id===input.expected.evidenceId&&lesson.bot_id===input.expected.botId,'Stored lesson does not match reviewed content, evidence and recipient');
       const extraction=(await tx.query(`SELECT r.decision FROM source_learning_proposals p LEFT JOIN source_learning_reviews r ON r.request_id=p.request_id WHERE p.lesson_id=$1`,[lesson.id])).rows[0];
       requireThat(!extraction||extraction.decision==='accepted','Source-derived lesson requires its dedicated independent review');
       const incident=(await tx.query(`SELECT f.author,i.reporter FROM incident_lessons il

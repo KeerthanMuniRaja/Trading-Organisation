@@ -107,7 +107,7 @@ def observation_fields(raw):
     try:
         obs = {'evidenceId': str(raw['evidence_id']), 'sourceId': str(raw['source_id']),
                'sourceName': str(raw.get('source_name') or raw['source_id'])[:80], 'url': str(raw.get('url', '')),
-               'title': str(raw['title']), 'content': str(raw['content']), 'status': str(raw.get('status', 'unverified')),
+               'title': str(raw['title']), 'content': str(raw['content']), 'kind': str(raw.get('kind', 'news')), 'status': str(raw.get('status', 'unverified')),
                'publishedAt': datetime.fromisoformat(str(raw['published_at']).replace('Z', '+00:00')).isoformat()}
     except (KeyError, ValueError) as error:
         raise ValueError(f'INVALID_OBSERVATION: {type(error).__name__}') from None

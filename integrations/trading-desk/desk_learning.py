@@ -146,7 +146,10 @@ def desk_verify_evidence(api, state, config, now):
         else:
             own = expected[key]
             status = 'verified' if (report['content'], report['publishedAt']) == (own['content'], own['publishedAt']) else 'rejected'
-            api('POST', '/v1/evidence/reviews', {'evidenceId': report['evidenceId'], 'status': status})
+            reviewed = own if status == 'verified' else report
+            api('POST', '/v1/evidence/reviews', {'evidenceId': report['evidenceId'], 'status': status,
+                'expected': {'content': reviewed['content'], 'sourceId': config['sourceId'], 'kind': 'dataset',
+                             'publishedAt': reviewed['publishedAt']}})
             reviews[key] = {'status': status, 'evidenceId': report['evidenceId'], 'at': now.isoformat(),
                             **({'reason': 'reported results differ from the recomputation'} if status == 'rejected' else {})}
             counts[status] += 1
@@ -177,7 +180,9 @@ def desk_verify_lessons(api, state, config, now):
             lesson_reviews[p['lessonId']] = {'status': 'not-verified', 'at': now.isoformat()}
             counts['skipped'] += 1
         else:
-            api('POST', '/v1/lessons/reviews', {'lessonId': p['lessonId']})
+            api('POST', '/v1/lessons/reviews', {'lessonId': p['lessonId'],
+                'expected': {'content': want, 'evidenceId': reviews[p['window']]['evidenceId'],
+                             'botId': config['bots'][p['role']]}})
             lesson_reviews[p['lessonId']] = {'status': 'verified', 'content': want, 'evidenceId': reviews[p['window']]['evidenceId'],
                                              'at': now.isoformat()}
             counts['verified'] += 1

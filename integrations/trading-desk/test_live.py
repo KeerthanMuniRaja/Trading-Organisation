@@ -91,9 +91,15 @@ class LiveTests(unittest.TestCase):
             if now >= revoke_at and news.exists():
                 news.unlink()  # the fact-checker revoked the claim, so the file no longer carries it
             return live.completed(bars, now)
+        def tick(seconds):
+            clock['now'] += timedelta(seconds=seconds)
+            if news.exists():
+                live.headline_receipt.receipt_path(news).write_text(json.dumps(
+                    live.headline_receipt.receipt(news.read_bytes(), clock['now'])), encoding='utf-8')
+        tick(0)
         model = StubModel()
         result = live.run_session('news', 'RELIANCE.NS', 240, model, 'stub', fetch=fetch, clock=lambda: clock['now'],
-                                  sleep=lambda s: clock.__setitem__('now', clock['now'] + timedelta(seconds=s)),
+                                  sleep=tick,
                                   root=self.root, news_path=news)
         journal = self.journal('news')
         meetings = {e['bar'][11:16]: e for e in journal if e['type'] == 'desk-meeting'}
@@ -104,8 +110,27 @@ class LiveTests(unittest.TestCase):
         self.assertTrue(any(role == 'news-analyst' for role, _, _ in model.calls))
         news.write_text('{not json', encoding='utf-8')
         kept, problem = live.load_news(news, ['last-good'])
-        self.assertEqual(kept, ['last-good'])
+        self.assertEqual(kept, [])
         self.assertTrue(problem)
+
+    def test_news_expiry_missing_receipt_and_tampering_clear_previous_copy(self):
+        path = self.root / 'verified-headlines.json'
+        headlines = [{'publishedAt': '2026-01-05T10:00:00+05:30', 'source': 'feed',
+                      'title': 'Reviewed report', 'symbols': ['RELIANCE.NS']}]
+        path.write_text(json.dumps(headlines), encoding='utf-8')
+        now = datetime.fromisoformat('2026-01-05T10:01:00+05:30')
+        self.assertEqual(live.load_news(path, headlines, now)[0], [])
+        metadata = live.headline_receipt.receipt(path.read_bytes(), now)
+        sidecar = live.headline_receipt.receipt_path(path)
+        sidecar.write_text(json.dumps(metadata), encoding='utf-8')
+        self.assertEqual(live.load_news(path, [], now), (headlines, None))
+        self.assertEqual(live.load_news(path, headlines, now + timedelta(minutes=5))[0], [])
+        self.assertEqual(live.load_news(path, headlines, now - timedelta(seconds=1))[0], [])
+        path.write_text('[]', encoding='utf-8')
+        self.assertIn('CONTENT_MISMATCH', live.load_news(path, headlines, now)[1])
+        metadata['expiresAt'] = (now + timedelta(days=1)).isoformat()
+        sidecar.write_text(json.dumps(metadata), encoding='utf-8')
+        self.assertEqual(live.load_news(path, headlines, now)[0], [])
 
     def test_session_is_finite_waits_outside_market_hours_and_stops_on_repeated_data_errors(self):
         bars = synthetic()['bars']

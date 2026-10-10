@@ -33,6 +33,7 @@ from urllib.error import HTTPError, URLError
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import claims  # noqa: E402
+import headline_receipt
 
 STATE = claims.ROOT / '.local' / 'claims' / 'auto'
 STEPS = {'factcheck-queue': 'evaluator', 'analyst-extract': 'researcher', 'factcheck-evidence': 'evaluator',
@@ -121,12 +122,12 @@ def evidence_decision(obs, record, own_claims, clusters, config, now):
     bases = [claim_basis(c, clusters, config['primarySourceIds']) for c in own_claims]
     if not own_claims:
         return 'rejected', 'no-claim-survived-recheck'
+    if 'contradicted' in bases:
+        return 'hold', 'contradicted'
     if 'corroborated' in bases:
         return 'verified', 'corroborated'
     if 'primary-source' in bases:
         return 'verified', 'primary-source'
-    if 'contradicted' in bases:
-        return 'hold', 'contradicted'
     if now - datetime.fromisoformat(obs['publishedAt']) > timedelta(days=config['holdDays']):
         return 'rejected', f"uncorroborated-after-{config['holdDays']}-days"
     return 'hold', 'awaiting-corroboration'
@@ -137,16 +138,25 @@ def key_for(route, body):
     return 'auto-' + hashlib.sha256((route + json.dumps(body, sort_keys=True)).encode()).hexdigest()[:64]
 
 
-def http_api(base, token, opener=urlrequest.urlopen):
+class NoRedirect(urlrequest.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def http_api(base, token, opener=None):
     """api(method, route, body) -> dict. Content-derived idempotency keys make every retry safe."""
+    opener = opener or urlrequest.build_opener(NoRedirect()).open
     def api(method, route, body=None):
         headers = {'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json'}
-        if method == 'POST' and body is not None and not route.endswith(('/review-queue', '/query')):
+        if method == 'POST' and body is not None and not route.endswith(('/review-queue', '/query', '/status')):
             headers['Idempotency-Key'] = key_for(route, body)
         req = urlrequest.Request(base + route, data=None if body is None else json.dumps(body).encode(), method=method, headers=headers)
         try:
             with opener(req, timeout=15) as response:
-                return json.loads(response.read(2_000_001))
+                data = response.read(2_000_001)
+                if len(data) > 2_000_000:
+                    raise ValueError('Backend response too large')
+                return json.loads(data)
         except HTTPError as error:
             error.close()
             raise RuntimeError(f'{route} refused (HTTP {error.code})') from None
@@ -208,7 +218,9 @@ def factcheck_evidence(api, state, config, now):
         decision, reason = evidence_decision(obs, record, [c for c in own if c['evidenceId'] == obs['evidenceId']], clusters, config, now)
         entry = {'decision': decision, 'reason': reason, 'at': now.isoformat(), 'sent': False}
         if decision != 'hold':
-            api('POST', '/v1/evidence/reviews', {'evidenceId': obs['evidenceId'], 'status': decision})
+            api('POST', '/v1/evidence/reviews', {'evidenceId': obs['evidenceId'], 'status': decision,
+                'expected': {'content': obs['content'], 'sourceId': obs['sourceId'], 'kind': obs['kind'],
+                             'publishedAt': obs['publishedAt'], 'observation': {'url': obs['url'], 'title': obs['title']}}})
             entry['sent'] = True
         decisions[obs['evidenceId']] = entry
         write(state, 'decisions.json', decisions)
@@ -252,6 +264,8 @@ def analyst_lessons(api, state, config):
 
 def factcheck_lessons(api, state, config, now):
     """Evaluator, no model: verify lessons whose text equals the rules' template; revoke on mismatch or contradiction."""
+    headline_receipt.receipt_path(state / 'verified-headlines.json').unlink(missing_ok=True)
+    write(state, 'verified-headlines.json', [])
     reviews, revocations = read(state, 'lesson-reviews.json', {}), read(state, 'revocations.json', {})
     expected = {f"{c['id']}:{bot}": (lesson_text(c, obs, basis), c['evidenceId'])
                 for c, obs, basis in eligible_lessons(state, config) for bot in config['recipientBotIds']}
@@ -272,7 +286,8 @@ def factcheck_lessons(api, state, config, now):
             reviews[p['lessonId']] = {'status': 'not-verified', 'reason': 'not-eligible-or-text-differs', 'at': now.isoformat()}
             counts['skipped'] += 1
         else:
-            api('POST', '/v1/lessons/reviews', {'lessonId': p['lessonId']})
+            api('POST', '/v1/lessons/reviews', {'lessonId': p['lessonId'],
+                'expected': {'content': want[0], 'evidenceId': want[1], 'botId': key.rsplit(':', 1)[1]}})
             reviews[p['lessonId']] = {'status': 'verified', 'at': now.isoformat(), 'evidenceId': p['evidenceId'], 'content': want[0]}
             counts['verified'] += 1
         write(state, 'lesson-reviews.json', reviews)
@@ -289,18 +304,49 @@ def factcheck_lessons(api, state, config, now):
     for c in own:
         if decisions.get(c['evidenceId'], {}).get('decision') == 'verified' and claim_basis(c, clusters, config['primarySourceIds']) == 'contradicted':
             revoke(c['evidenceId'], 'Automatic fact-check: later independent reports contradict this claim')
-    counts['headlines'] = len(export_headlines(state, config))
+    counts['headlines'] = len(export_headlines(api, state, config))
     return counts
 
 
-def export_headlines(state, config):
-    """The trading desk's news-analyst input, from the fact-checker's own verified, unrevoked claims only.
-    Rewritten every cycle, so a revocation removes the headline before the next desk meeting reads the file."""
+def export_headlines(api, state, config):
+    """Reconcile exact evidence IDs before publishing. Failure leaves an empty export, not stale news."""
+    checked_at = datetime.now(timezone.utc)
+    output = state / 'verified-headlines.json'
+    headline_receipt.receipt_path(output).unlink(missing_ok=True)
+    write(state, 'verified-headlines.json', [])
     revoked = read(state, 'revocations.json', {})
+    candidates = [(c, obs, basis) for c, obs, basis in eligible_lessons(state, config) if c['evidenceId'] not in revoked]
+    ids = sorted({c['evidenceId'] for c, _, _ in candidates})
+    if len(ids) > 500:
+        raise ValueError('Headline reconciliation capacity exceeded (500 evidence records)')
+    stored = {}
+    for offset in range(0, len(ids), 50):
+        batch = ids[offset:offset + 50]
+        response = api('POST', '/v1/evidence/status', {'evidenceIds': batch})
+        rows = response.get('evidence')
+        if not isinstance(rows, list):
+            raise ValueError('Invalid evidence status response')
+        for row in rows:
+            if not isinstance(row, dict) or row.get('id') not in batch or row['id'] in stored:
+                raise ValueError('Invalid evidence status identity')
+            stored[row['id']] = row
+
+    def current(c, obs):
+        row = stored.get(c['evidenceId'], {})
+        return (row.get('usable') is True and row.get('status') == 'verified' and row.get('source_approved') is True
+                and row.get('source_id') == obs['sourceId'] and row.get('content') == obs['content']
+                and row.get('title') == obs['title'] and row.get('url') == obs['url']
+                and row.get('kind') == obs.get('kind')
+                and datetime.fromisoformat(row['published_at'].replace('Z', '+00:00')) == datetime.fromisoformat(obs['publishedAt']))
+
+    current_candidates = [(c, obs, basis) for c, obs, basis in candidates if current(c, obs)]
+    current_clusters = claims.corroborate([c for c, _, _ in current_candidates]) if current_candidates else []
     items = [{'publishedAt': obs['publishedAt'], 'source': obs['sourceName'][:80], 'title': c['statement'][:240], 'symbols': c['symbols']}
-             for c, obs, _ in eligible_lessons(state, config) if c['evidenceId'] not in revoked]
+             for c, obs, _ in current_candidates
+             if claim_basis(c, current_clusters, config['primarySourceIds']) in ('corroborated', 'primary-source')]
     items.sort(key=lambda h: (h['publishedAt'], h['title']))
     write(state, 'verified-headlines.json', items)
+    claims.save(headline_receipt.receipt_path(output), headline_receipt.receipt(output.read_bytes(), checked_at))
     return items
 
 
@@ -322,7 +368,11 @@ def child_env(step, parent_env, private, steps=None, model_steps=('analyst-extra
     mine = [p for p in principals if p.get('role') == role]
     if len(mine) != 1:
         raise ValueError(f'Configure exactly one {role} credential')
-    env = {k: v for k, v in parent_env.items() if k not in ('PRINCIPALS_JSON', 'HERMES_MODEL', 'HERMES_MODEL_BASE_URL', 'HERMES_MODEL_API_KEY')}
+    runtime_keys = {'PATH', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'PATHEXT', 'TEMP', 'TMP',
+                    'USERPROFILE', 'HOME', 'HOMEDRIVE', 'HOMEPATH', 'LOCALAPPDATA', 'APPDATA',
+                    'LANG', 'LC_ALL', 'TZ'}
+    env = {k: v for k, v in parent_env.items() if k.upper() in runtime_keys}
+    env['PYTHONUTF8'] = '1'
     env['PRINCIPALS_JSON'] = json.dumps(mine)
     env['API_URL'] = parent_env.get('API_URL') or private.get('API_URL') or 'http://127.0.0.1:3000'
     env['AUTOLEARN_STEP'] = step

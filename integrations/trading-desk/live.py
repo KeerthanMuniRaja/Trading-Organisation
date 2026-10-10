@@ -23,6 +23,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import batch  # noqa: E402
 import datasets  # noqa: E402
 import desk  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'claims'))
+import headline_receipt  # noqa: E402
 
 IST = timezone(timedelta(hours=5, minutes=30))
 LIVE = desk.ROOT / '.local' / 'trading-desk' / 'live'
@@ -158,17 +160,14 @@ class LiveBook:
                 'maxDrawdownFraction': book['maxDrawdownFraction'], 'meetingsByDay': s['meetingsByDay'], 'modelCalls': s['modelCalls']}
 
 
-def load_news(path, last):
-    """Re-read every poll so newly verified news arrives and revoked news disappears. A missing file means no
-    news yet; an unreadable or invalid one keeps the last good copy (and is journaled by the caller)."""
+def load_news(path, last, now=None):
+    """Live news needs a fresh content-bound receipt; failure discards the previous copy."""
     if not path.exists():
         return [], None
     try:
-        if path.stat().st_size > 5_000_000:
-            raise ValueError('NEWS_FILE_TOO_LARGE')
-        return desk.validate_headlines(json.loads(path.read_text(encoding='utf-8'))), None
-    except (ValueError, OSError) as error:
-        return last, f'{type(error).__name__}: {str(error)[:60]}'
+        return desk.validate_headlines(headline_receipt.load(path, now)), None
+    except (ValueError, OSError, TypeError, KeyError) as error:
+        return [], f'{type(error).__name__}: {str(error)[:60]}'
 
 
 def run_session(name, symbol, minutes, llm, model, *, every=12, max_meetings_per_day=6, fetch=fetch_recent,
@@ -187,7 +186,7 @@ def run_session(name, symbol, minutes, llm, model, *, every=12, max_meetings_per
             now = clock()
             if in_session(now):
                 if news_path:
-                    headlines, problem = load_news(news_path, headlines)
+                    headlines, problem = load_news(news_path, headlines, now)
                     if problem:
                         live.log({'type': 'news-error', 'at': now.isoformat(), 'reason': problem, 'keptHeadlines': len(headlines)})
                 try:

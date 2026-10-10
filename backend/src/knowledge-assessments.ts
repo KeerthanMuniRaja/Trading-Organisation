@@ -9,6 +9,7 @@ type Case={id:string;challenge:Challenge};
 async function support(tx:Sql,requestId:string){
   const r=(await tx.query(`SELECT d.*,k.bot_id,r.decision,b.state,c.enabled,c.revision,
     (SELECT halted FROM system_lock WHERE id=1) AS halted,
+    EXISTS(SELECT 1 FROM incident_learning_attempts t JOIN incident_learning_cancellations c ON c.assignment_id=t.assignment_id WHERE t.request_id=d.id) AS cancelled,
     NOT EXISTS(SELECT 1 FROM bot_knowledge_lessons x JOIN lessons l ON l.id=x.lesson_id
       JOIN evidence e ON e.id=l.evidence_id JOIN sources s ON s.id=e.source_id WHERE x.request_id=d.id
       AND (l.status<>'verified' OR e.status<>'verified' OR NOT s.approved OR e.published_at>now())) AS supported
@@ -17,7 +18,7 @@ async function support(tx:Sql,requestId:string){
     CROSS JOIN development_policy c WHERE d.id=$1 AND c.id=1`,[requestId])).rows[0];
   requireThat(r&&r.decision==='accepted','Accepted knowledge transfer required');return r;
 }
-function usable(r:Row){return r.supported&&r.enabled&&r.revision===r.policy_revision&&r.state!=='retired'&&!r.halted;}
+function usable(r:Row){return !r.cancelled&&r.supported&&r.enabled&&r.revision===r.policy_revision&&r.state!=='retired'&&!r.halted;}
 async function load(tx:Sql,id:string){
   const a=(await tx.query('SELECT *,expires_at>now() AS fresh FROM knowledge_assessments WHERE id=$1',[id])).rows[0];
   requireThat(a,'Assessment not found',404);return a;

@@ -44,6 +44,9 @@ class FakeBackend:
         if route == '/v1/evidence/reviews':
             e = self.evidence[body['evidenceId']]
             assert role == 'evaluator' and e['author'] != role and e['status'] == 'unverified'
+            expected = body.get('expected')
+            if expected and any(e[k] != expected[k] for k in ('content', 'sourceId', 'kind', 'publishedAt')):
+                raise RuntimeError('Stored evidence does not match')
             e['status'] = body['status']
             return body
         if route == '/v1/lessons':
@@ -137,9 +140,9 @@ class DeskLearningTests(unittest.TestCase):
         self.cycle(backend, until='report')
         first = next(iter(backend.evidence.values()))
         first['content'] = first['content'].replace('Desk net after modelled costs', 'Desk net (guaranteed)')
-        out = dl.desk_verify_evidence(backend.api('evaluator'), self.state, CONFIG, NOW)
-        self.assertEqual((out['verified'], out['revoked']), (2, 1))
-        self.assertEqual(first['status'], 'revoked')
+        with self.assertRaisesRegex(RuntimeError, 'Stored evidence'):
+            dl.desk_verify_evidence(backend.api('evaluator'), self.state, CONFIG, NOW)
+        self.assertEqual(first['status'], 'unverified')
 
     def test_configuration_is_validated(self):
         path = Path(self.tmp.name) / 'c.json'

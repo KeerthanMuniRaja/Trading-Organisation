@@ -29,6 +29,16 @@ Query is read-only and needs no idempotency key. It returns ordered findings, th
 
 ## Limits and remaining work
 
+### Assignment cancellation (migration 027)
+
+The owner can call `POST /v1/incidents/learning/cancellations` with `{assignmentId,reason}` and an idempotency key. Cancellation is permanent and append-only: previous assignments, attempts, reviews and scores remain available. The same command key replays its receipt; a different cancellation command cannot overwrite the reason. An audit event enters the owner notification queue. Cancellation remains possible during a halt or after evidence withdrawal.
+
+Cancelled assignments reject new attempt links. Already-linked knowledge requests cannot preflight, submit a proposal or accept a review. Their assessment work retrieval, creation and submission fail current-eligibility checks. Answers submitted before cancellation can still be independently graded, but the outcome is `invalidated`; existing grades remain historical. Cancelled requests are excluded from new requests' automatically retrieved prior plans.
+
+Progress includes `assignment_state` (`active`, `cancelled`, `recipient-retired`, `support-withdrawn`), cancellation reason and time. Cancellation takes precedence over other states. `active` does not mean completed, unhalted or model-qualified: consult attempt assessments and `context_current` separately. Graph assignment nodes retain cancellation metadata.
+
+This cancels linked application work, not an already-running external model process. It cannot refund inference costs, erase text a worker has already received, revoke the underlying lesson for all bots, or block an unrelated request created under existing research permissions. No automatic replacement assignment is created; the existing unique lesson/recipient rule remains. A future replacement workflow must explicitly preserve lineage rather than delete cancelled records.
+
 ### Assigned learning and assessment history (migration 026)
 
 An owner can assign a verified incident lesson to 1–20 distinct active recipient bots per request, up to 100 per lesson. Assignments are unique per lesson and recipient. The author bot is excluded because this workflow uses cross-bot knowledge transfer. Each assignment freezes a task of up to 500 characters and records an audit notification. A failed batch leaves no partial assignments.
@@ -63,4 +73,4 @@ Incidents with no structured finding retain the previous owner-resolution path u
 
 No remediation code runs from these text fields. Acceptance neither changes bot fitness or permissions nor retires bots or moves money. Automatic case assignment, independently verified remediation execution, and automatic selection of learning recipients remain future work. The lesson bridge preserves provenance in SQL and the knowledge graph; it does not run autonomous training.
 
-Migrations 024–026 are applied by the normal database migration mechanism. Tests use an isolated in-memory database; they do not activate this workflow in a running deployment.
+Migrations 024–027 are applied by the normal database migration mechanism. Tests use an isolated in-memory database; they do not activate this workflow in a running deployment.
