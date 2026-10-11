@@ -81,5 +81,43 @@ class EvaluateTests(unittest.TestCase):
             self.assertIn(report['portfolio-manager']['verdict'], ('insufficient-evidence', 'no-detectable-skill', 'adds-value', 'worse-than-baseline'))
 
 
+class SubmitTests(unittest.TestCase):
+    def test_counts_go_to_the_backend_with_the_right_baseline_and_stable_retry_keys(self):
+        cards = {'trend-analyst': {'judged': 86, 'wins': 5, 'losses': 8, 'failed': 0},
+                 'portfolio-manager': {'judged': 86, 'wins': 0, 'losses': 2, 'failed': 0},
+                 'news-analyst': {'judged': 0, 'wins': 0, 'losses': 0, 'failed': 0}}
+        facts = {'periodFrom': '2026-08-14', 'periodTo': '2026-10-08', 'models': ['Qwen3.5-4B-Q4_K_M']}
+        payloads = fitness.submissions(cards, {'trend-analyst': 'org-trend', 'portfolio-manager': 'org-pm', 'news-analyst': 'org-news'},
+                                       'eight-weeks-v1', facts)
+        self.assertEqual([(p['role'], p['baseline']) for p in payloads],
+                         [('portfolio-manager', 'always-hold'), ('trend-analyst', 'always-neutral')])  # never-consulted roles skipped
+        self.assertNotIn('verdict', payloads[0])  # the backend decides the verdict from the counts
+        with self.assertRaisesRegex(ValueError, 'one model'):
+            fitness.submissions(cards, {'trend-analyst': 'x'}, 't', {**facts, 'models': ['a', 'b']})
+
+        sent = []
+
+        class Response:
+            def __init__(self, body): self.body = body
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self, n): return json.dumps(self.body).encode()
+
+        def opener(req, timeout):
+            sent.append((req.full_url, req.headers['Idempotency-key'], json.loads(req.data)))
+            return Response({'id': 'r1', 'verdict': 'insufficient-evidence', 'duplicate': False})
+        env = {'API_URL': 'http://127.0.0.1:3000', 'PRINCIPALS_JSON': json.dumps([{'role': 'evaluator', 'token': 'secret-token'},
+                                                                                  {'role': 'researcher', 'token': 'other'}])}
+        results = fitness.submit(payloads, env, opener)
+        fitness.submit(payloads, env, opener)
+        self.assertEqual([r['role'] for r in results], ['portfolio-manager', 'trend-analyst'])
+        self.assertTrue(all(url.endswith('/v1/bots/fitness') for url, _, _ in sent))
+        self.assertEqual(sent[0][1], sent[2][1])  # a retry reuses the same idempotency key
+        with self.assertRaisesRegex(ValueError, 'exactly one evaluator'):
+            fitness.submit(payloads, {**env, 'PRINCIPALS_JSON': json.dumps([{'role': 'researcher', 'token': 'x'}])}, opener)
+        with self.assertRaisesRegex(ValueError, 'origin'):
+            fitness.submit(payloads, {**env, 'API_URL': 'http://evil.example.com'}, opener)
+
+
 if __name__ == '__main__':
     unittest.main()

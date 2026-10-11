@@ -19,6 +19,7 @@ import argparse
 import glob
 import json
 from math import comb
+import os
 from pathlib import Path
 import sys
 
@@ -130,9 +131,84 @@ def load(batch_names, batches=BATCHES):
     return windows
 
 
+def batch_facts(batch_names, batches=BATCHES):
+    """The period covered and the model(s) that produced the decisions, from the batch rows themselves."""
+    rows = []
+    for name in batch_names:
+        for path in glob.glob(str(batches / name / '*.json')):
+            file = Path(path).name
+            if file in ('summary.json', 'lessons.json', 'comparison.json') or file.endswith('.decisions.json'):
+                continue
+            rows.append(json.loads(Path(path).read_text(encoding='utf-8')))
+    return {'periodFrom': min(r['from'][:10] for r in rows), 'periodTo': max(r['to'][:10] for r in rows),
+            'models': sorted({r['model'] for r in rows})}
+
+
+def submissions(bots, mapping, test_name, facts):
+    """Backend fitness reports for the mapped desk roles. Counts only: the backend computes p-values and verdicts."""
+    if len(facts['models']) != 1:
+        raise ValueError('Pool only batches from one model: a fitness record belongs to one model')
+    out = []
+    for role, bot_id in sorted(mapping.items()):
+        card = bots.get(role)
+        if not card or not card['judged']:
+            continue
+        out.append({'botId': bot_id, 'role': role, 'baseline': 'always-hold' if role == 'portfolio-manager' else 'always-neutral',
+                    'testName': test_name, 'periodFrom': facts['periodFrom'], 'periodTo': facts['periodTo'],
+                    'judged': card['judged'], 'wins': card['wins'], 'losses': card['losses'], 'failed': card['failed'],
+                    'model': facts['models'][0]})
+    return out
+
+
+def evaluator_backend(env):
+    """API origin and the single evaluator credential, from the environment or the private .env (never printed)."""
+    import re
+    values = {k: env.get(k) for k in ('API_URL', 'PRINCIPALS_JSON')}
+    path = desk.ROOT / '.env'
+    if not all(values.values()) and path.exists():
+        for line in path.read_text(encoding='utf-8').splitlines():
+            key, _, value = line.partition('=')
+            if key in values and not values[key]:
+                values[key] = value.strip()
+    base = (values['API_URL'] or 'http://127.0.0.1:3000').rstrip('/')
+    if not re.match(r'^(https://[^/@?#]+|http://(127\.0\.0\.1|localhost)(:\d+)?)$', base):
+        raise ValueError('Invalid backend API origin')
+    evaluators = [p for p in json.loads(values['PRINCIPALS_JSON'] or '[]') if p.get('role') == 'evaluator']
+    if len(evaluators) != 1 or not evaluators[0].get('token'):
+        raise ValueError('Configure exactly one evaluator credential')
+    return base, evaluators[0]['token']
+
+
+def submit(payloads, env, opener=None):
+    """POST each report once; content-derived idempotency keys make a retry after a lost answer safe."""
+    import hashlib
+    from urllib import request as urlrequest
+    from urllib.error import HTTPError, URLError
+    base, token = evaluator_backend(env)
+    opener = opener or urlrequest.urlopen
+    results = []
+    for body in payloads:
+        data = json.dumps(body, sort_keys=True)
+        req = urlrequest.Request(base + '/v1/bots/fitness', data=data.encode(), method='POST', headers={
+            'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json',
+            'Idempotency-Key': 'fitness-' + hashlib.sha256(data.encode()).hexdigest()[:64]})
+        try:
+            with opener(req, timeout=15) as response:
+                results.append({**json.loads(response.read(65537)), 'role': body['role']})
+        except HTTPError as error:
+            error.close()
+            raise RuntimeError(f"Fitness report for {body['role']} refused (HTTP {error.code})") from None
+        except (URLError, OSError, ValueError):
+            raise RuntimeError(f"Fitness report for {body['role']} was not acknowledged; rerun to recover safely") from None
+    return results
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--batch', action='append', required=True, help='Repeatable; results are pooled')
+    parser.add_argument('--submit-bot', action='append', default=[],
+                        help='role=organisationBotId; sends that role\'s counts to the backend fitness record (evaluator credential)')
+    parser.add_argument('--test-name', help='Name recorded with submitted reports (default: the batch names)')
     args = parser.parse_args(argv)
     if not all(batch_name.replace('-', '').replace('_', '').isalnum() for batch_name in args.batch):
         raise SystemExit('Batch names: letters, digits, _ or -')
@@ -147,6 +223,14 @@ def main(argv=None):
     for role, card in report['bots'].items():
         print(f"{role:20s} {card['verdict']:22s} accuracy {card['accuracy']} vs baseline {card['baselineAccuracy']} "
               f"(wins {card['wins']}, losses {card['losses']}, p={card['pValue']})")
+    if args.submit_bot:
+        mapping = dict(item.split('=', 1) for item in args.submit_bot if '=' in item)
+        unknown = set(mapping) - set(report['bots'])
+        if unknown or not mapping:
+            raise SystemExit(f'Map known roles to organisation bot ids, e.g. trend-analyst=ORG_ID (unknown: {sorted(unknown)})')
+        payloads = submissions(report['bots'], mapping, args.test_name or '+'.join(args.batch), batch_facts(args.batch))
+        for result in submit(payloads, os.environ):
+            print(f"submitted {result['role']}: backend verdict {result['verdict']} (report {result['id']})")
 
 
 if __name__ == '__main__':
