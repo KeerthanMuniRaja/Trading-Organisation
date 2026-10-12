@@ -28,10 +28,19 @@ def dataset_key(dataset):
     return hashlib.sha256(json.dumps(dataset, sort_keys=True, allow_nan=False).encode()).hexdigest()[:16]
 
 
-def save(path, value):
+def save(path, value, attempts=20):
+    """Atomic write. On Windows a scanner or indexer can briefly lock the file; retry instead of losing the run."""
+    import time
     temporary = path.with_suffix('.tmp')
     temporary.write_text(json.dumps(value, indent=2), encoding='utf-8')
-    os.replace(temporary, path)
+    for attempt in range(attempts):
+        try:
+            os.replace(temporary, path)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(0.05 * (attempt + 1))
 
 
 def run_batch(paths, llm, out, *, every, max_decisions, max_calls, model, run=desk.run_desk, forecaster=None, headlines=None):

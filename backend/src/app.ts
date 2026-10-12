@@ -26,10 +26,16 @@ import { AcademySkills } from './skills.js';
 import { SkillRecovery } from './skill-recovery.js';
 import { SkillDiagnostics } from './skill-diagnostics.js';
 import { SkillExperiments } from './skill-experiments.js';
+import { EvidenceClaims, EvidenceClaimsController } from './evidence-claims.js';
+import { BotFitness, BotFitnessController } from './bot-fitness.js';
+import { TradeSignals, TradeSignalsController } from './trade-signals.js';
 
 type Request = { actor:Actor; requestId:string };
 @Controller('v1')
 class ApiController {
+  @Post('incidents/learning/claims') @Allow('researcher') incidentLearningClaim(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.ops.incidentLearning().claim(r.actor,k??'',b);}
+  @Post('incidents/learning/cancellations') @Allow('owner') incidentLearningCancel(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.ops.incidentLearning().cancel(r.actor,k??'',b);}
+  @Post('evidence/status') @Allow('owner','researcher','evaluator') evidenceStatus(@Req() r:Request,@Body() b:unknown){return this.org.evidenceStatus(r.actor,b);}
   @Post('incidents/learning/assignments') @Allow('owner') incidentAssignments(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.ops.incidentLearning().assign(r.actor,k??'',b);}
   @Post('incidents/learning/links') @Allow('researcher') incidentLearningLink(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.ops.incidentLearning().link(r.actor,k??'',b);}
   @Post('incidents/learning/progress') @Allow('owner','researcher','evaluator') incidentLearningProgress(@Req() r:Request,@Body() b:unknown){return this.ops.incidentLearning().progress(r.actor,b);}
@@ -175,7 +181,7 @@ class ErrorFilter implements ExceptionFilter {
 export async function createApp(config:Config,db:Database,quiet=false) {
   const auth=new OwnerAuthorization(db,config);
   const services=[{provide:OwnerAuthorization,useValue:auth},{provide:Treasury,useValue:new Treasury(db,config,auth)},{provide:Organisation,useValue:new Organisation(db)},{provide:Research,useValue:new Research(db)},{provide:PaperTrading,useValue:new PaperTrading(db,config)},{provide:Operations,useValue:new Operations(db)},{provide:PortfolioResearch,useValue:new PortfolioResearch(db)},{provide:ResearchLifecycle,useValue:new ResearchLifecycle(db)},{provide:ResearchDispatch,useValue:new ResearchDispatch(db)},{provide:OrganisationReport,useValue:new OrganisationReport(db)},{provide:OrganisationalLearning,useValue:new OrganisationalLearning(db)},{provide:ResearchDevelopment,useValue:new ResearchDevelopment(db)},{provide:DevelopmentExperiments,useValue:new DevelopmentExperiments(db)},{provide:DepartmentSessions,useValue:new DepartmentSessions(db)}];
-  @Module({imports:[ThrottlerModule.forRoot([{ttl:60000,limit:120}])],controllers:[ApiController],providers:[...services,{provide:AcademySkills,useValue:new AcademySkills(db)},{provide:SkillRecovery,useValue:new SkillRecovery(db)},{provide:SkillDiagnostics,useValue:new SkillDiagnostics(db)},{provide:SkillExperiments,useValue:new SkillExperiments(db)},{provide:APP_GUARD,useClass:ThrottlerGuard}]})
+  @Module({imports:[ThrottlerModule.forRoot([{ttl:60000,limit:120}])],controllers:[ApiController,EvidenceClaimsController,BotFitnessController,TradeSignalsController],providers:[...services,{provide:EvidenceClaims,useValue:new EvidenceClaims(db)},{provide:BotFitness,useValue:new BotFitness(db)},{provide:TradeSignals,useValue:new TradeSignals(db,config)},{provide:AcademySkills,useValue:new AcademySkills(db)},{provide:SkillRecovery,useValue:new SkillRecovery(db)},{provide:SkillDiagnostics,useValue:new SkillDiagnostics(db)},{provide:SkillExperiments,useValue:new SkillExperiments(db)},{provide:APP_GUARD,useClass:ThrottlerGuard}]})
   class RootModule {}
   const app=await NestFactory.create(RootModule,{logger:quiet?false:['error','warn','log'],bodyParser:false});
   app.use(helmet());app.use(json({limit:'512kb',strict:true}));

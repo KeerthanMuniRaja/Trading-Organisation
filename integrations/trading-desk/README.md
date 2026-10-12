@@ -100,6 +100,16 @@ integrations\skfolio\.venv\Scripts\python.exe integrations\trading-desk\fitness.
 
 Reports are saved to `.local/trading-desk/fitness/`.
 
+**Onto the organisation's bot records.** Add `--submit-bot role=ORG_BOT_ID` (repeatable) to send each mapped role's counts to the backend's [bot fitness records](../../docs/bot-fitness.md) with the single evaluator credential:
+- **Counts only:** the report sends judged decisions, wins, losses, failed calls, the period and the model. The backend computes the p-value and verdict itself.
+- **Baselines:** analysts are judged against always-neutral, the manager against always-hold.
+- **One model per record:** pooling batches from different models is refused, because a fitness record belongs to one model.
+- **Safe retries:** content-derived idempotency keys make a retry after a lost answer safe.
+
+```cmd
+integrations\skfolio\.venv\Scripts\python.exe integrations\trading-desk\fitness.py --batch eight-weeks-v1 --submit-bot trend-analyst=ORG_ID --submit-bot portfolio-manager=ORG_ID
+```
+
 ## Strategy tournament (the desk's hackathon)
 
 `tournament.py` lets registered strategy entrants compete on the cached weeks of all eight shares. It is built so that a lucky winner cannot pass as skill:
@@ -123,6 +133,358 @@ integrations\skfolio\.venv\Scripts\python.exe integrations\trading-desk\tourname
 - **The sealed weeks were not opened**, because there was no winner to judge. They remain available to a later tournament with new entrants, such as a Kronos forecaster or a stronger model's desk.
 
 Results are saved in `.local/trading-desk/tournaments/<name>/`.
+
+## Daily-bar research (longer horizons)
+
+The 5-minute work showed that about 30 bps per round trip swamps every intraday signal. `daily.py` asks the next question: over days and months, where price moves dwarf costs, does any simple rule beat simply **holding the share**? Years of daily bars also give samples large enough to mean something.
+
+- **Realistic delivery costs** on a discount broker (illustrative; confirm with your broker):
+  - STT 0.1% each side and stamp duty 0.015% on buys;
+  - exchange and SEBI fees, with 18% GST on them;
+  - a ₹15.93 depository charge per sell and 5 bps slippage each side.
+
+  Fills are at the next day's open, with whole shares and ₹50,000 notional per share.
+- **Entrants:**
+  - 3-, 6- and 12-month momentum, rebalanced monthly;
+  - 20/100 and 50/200 moving-average crossovers;
+  - two short-term reversal rules;
+  - a near-52-week-high rule.
+
+  Cash and **buy-and-hold** are the baselines.
+- **The same tournament discipline:**
+  - Chronological periods: training, then the next year for validation, then the final year **sealed**.
+  - A winner must beat **both** cash and buy-and-hold on validation.
+  - The sealed year is judged once, and any change to entrants or data is refused.
+
+```cmd
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\daily.py fetch --years 5
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\daily.py run --name daily-first
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\daily.py finalise --name daily-first
+```
+
+`fetch` is the only network step: one download of adjusted daily bars per universe share, kept in `.local/trading-desk/daily/`. Adjusted prices fold dividends into returns.
+
+**First daily tournament, 9 October 2026** (`daily-first`).
+- **Data:** 8 shares, 1,236 trading days each (11 October 2021 to 9 October 2026), ₹50,000 notional per share.
+- **Periods:** training to 9 October 2024, validation for the following year, then a sealed final year.
+
+| Entrant | Training (3 years) | Validation (1 year) |
+| --- | ---: | ---: |
+| Buy and hold | +₹3,01,929 | −₹7,755 |
+| 50/200 average crossover | +₹1,93,869 | −₹24,566 |
+| 6-month momentum | +₹1,71,568 | −₹8,193 |
+| Reversal: buy after an 8% fall over 10 days, sell 10 days later | +₹37,631 | **+₹7,092** |
+| Cash | ₹0 | ₹0 |
+
+- **Selection:** the reversal rule was the only entrant to beat both baselines on validation, so it was selected.
+- **Sealed year** (9 October 2025 to 9 October 2026), judged once:
+  - reversal **−₹23,883** (worst drawdown 27%);
+  - buy-and-hold −₹43,444 (worst drawdown 40%);
+  - cash ₹0.
+- **Verdict: `failed-on-sealed-period`.** The rule lost less than holding the shares, but it lost money, so it did not beat cash.
+
+**Forward test (pre-registered).** Every past year has now been seen, so the only honest test left is data that did not exist when a rule was chosen. `register` freezes the rules and records the latest cached day. The freeze covers the costs, the simulator and each entrant's code and settings, identified by a fingerprint. `forward` then scores each rule only on trading days after that day. If any rule changes, the test refuses to continue, so nobody can tune a rule after seeing its results.
+
+```cmd
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\daily.py fetch --refresh
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\daily.py forward --name forward-from-2026-10-09
+```
+
+`forward-from-2026-10-09` was registered on 9 October 2026 (rules `cdb333cd8656580b`, 10 entrants, 8 shares). Re-run `fetch --refresh` from time to time to add new days. A few weeks prove nothing; months begin to.
+
+**Reading:** no simple rule showed a durable edge. The reversal rule is out of the market most of the time. That helped in two falling years, but it earned about an eighth of buy-and-hold's return over the three rising training years. This pattern is regime exposure, not skill. Over these five years, the most valuable thing was not trading during the falls, and no rule here predicted them.
+
+## Portfolio and risk research (the whole universe at once)
+
+`portfolio_daily.py` studies how to hold all eight shares without deep losses.
+
+- **Rules:**
+  - buy-and-hold of equal amounts;
+  - equal weights rebalanced monthly;
+  - weights inversely proportional to 60-day volatility;
+  - the 3 strongest shares over 6 months;
+  - equal weights that move to cash while an equal-weight index of the universe is below its 200-day average.
+- **Trading:** rules decide on the first trading day of each month from completed days only. They trade at the next open in whole shares, sells before buys, with daily.py's delivery costs, including the depository charge on every sell. Capital is ₹4,00,000.
+- **Honesty:** the daily tournament already used every past period, so the report is labelled **`seen`**, which means descriptive, not proof. Clean evidence comes only from the pre-registered forward test.
+
+```cmd
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\portfolio_daily.py report
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\portfolio_daily.py forward --name portfolio-forward-from-2026-10-09
+```
+
+**Report, 9 October 2026** (5 years, seen):
+
+| Rule | 5-year CAGR | Worst drawdown | Costs (5 years) | Sealed year |
+| --- | ---: | ---: | ---: | ---: |
+| Top-3 momentum (6 months) | 10.2% | 22.5% | ₹20,213 | −₹45,059 |
+| Buy and hold, equal amounts | 9.2% | 17.5% | ₹1,236 | −₹43,335 |
+| Inverse volatility | 9.0% | 18.0% | ₹8,334 | −₹50,891 |
+| Equal weight, monthly | 8.8% | 16.7% | ₹6,341 | −₹42,135 |
+| Equal weight with trend filter | 6.9% | 17.3% | ₹6,946 | −₹29,310 |
+
+- **Diversification is the robust protection.** In the sealed year, the worst single-share drawdown was 40%, against 16.9% for the equal basket.
+- **No allocation rule clearly beat simply holding the basket:**
+  - momentum earned slightly more over five years, with deeper drawdowns and sixteen times the costs;
+  - the trend filter lost least in the two falling years and gave up return in the rising ones.
+- **Forward test:** these rules were pre-registered as `portfolio-forward-from-2026-10-09` (rules `6e16a708addc8427`) and are scored only on days after 9 October 2026.
+
+## AI allocator (can the model beat the basket?)
+
+`ai_allocator.py` tests the language model where costs do not dominate: once a month, one call allocates the whole basket.
+
+- **Brief:** for each share, returns over 1, 3, 6 and 12 months, 60-day volatility, drawdown from the 52-week high, and whether the price is above its 200-day average.
+- **Decision:** the model gives each share a long-only weight of 0–25%. **Code does the arithmetic:** cash is the remainder, and a total above 100% is scaled down proportionally and recorded. The first version asked the model for weights summing to exactly 100, and the 4B model's first reply failed that check, so arithmetic moved into code, as with the assessment rubric. Rejected replies are saved for diagnosis.
+- **No look-ahead through the model's memory:** shares appear as letters A–H in a run-specific order, with no names, dates or price levels. The model cannot recognise the period, so it cannot recall what happened next.
+- **Same terms:** trades go through `portfolio_daily.py`'s simulator, costs and capital, and the report puts the AI next to the basket and every allocation rule.
+- **Failures:** a failed or invalid month keeps the previous weights, or cash at the start, and is recorded.
+- **Resumable:** saved months are reused, a call budget stops runs safely, and a run is bound to its model, prompt version and start date.
+
+```cmd
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\ai_allocator.py replay --name ai-monthly --from 2022-10-10
+```
+
+This needs the local model server. Four years is about 48 model calls, about 45 seconds each on the laptop (roughly 35 minutes).
+
+**AI forward test.** A replay can only show how a model handles anonymised history. The cleanest evidence is the AI deciding on months that had not happened when it was registered:
+
+```cmd
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\ai_allocator.py register --name ai-forward-qwen4b
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\daily.py fetch --refresh
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\ai_allocator.py forward --name ai-forward-qwen4b
+```
+
+- **`register`** freezes the model and prompt version and records the latest cached day.
+- **`forward`** decides each new month from data up to that month's first trading day only. It reuses saved months, then scores the whole record against the basket and every rule.
+- **A switch ends the record:** a different model or prompt version ends the test, so a new model cannot inherit an old record. It needs its own registration, and both records can then be compared in `model_compare.py`.
+
+## Portfolio risk monitor
+
+`risk_monitor.py` is a rule-based risk officer for the whole equal-weight basket. It **reports and never trades**. From completed days only, it measures five things, each with fixed caution and alert limits that were set in advance and not fitted to history:
+
+| Measure | Caution | Alert |
+| --- | --- | --- |
+| Fall from the 1-year peak | 10% | 20% |
+| 20-day volatility against its 1-year median | 1.5× | 2× |
+| Shares above their 200-day average | 3 of 8 or fewer | 1 of 8 or none |
+| Average pairwise 60-day correlation | 0.6 | 0.8 |
+| Worst one-day fall in the last 20 days | 3% | 5% |
+
+The day takes the most severe level, with reasons in plain words.
+- **`today`** records the state in `.local/trading-desk/risk-monitor/journal.json`, with one entry per trading day.
+- **`history`** shows the basket's return over the following month for each level. Those days were already seen, so it is descriptive only.
+
+```cmd
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\risk_monitor.py today
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\risk_monitor.py history
+```
+
+**9 October 2026: `alert`.**
+- **Fall from peak:** the basket is 15.1% below its 1-year peak (caution).
+- **Breadth:** only 1 of 8 shares is above its 200-day average (alert).
+- **Everything else normal:** volatility is 1.2× its median, average correlation is 0.18 (diversification working), and the worst day in the last 20 was a 1.7% fall.
+
+This is a slow, broad decline, not a panic.
+
+**History check** (963 days, seen data):
+
+| Level | Days | Basket return over the next month | Share of days followed by a loss |
+| --- | ---: | ---: | ---: |
+| Normal | 711 | +0.94% | 38% |
+| Caution | 191 | −0.50% | 55% |
+| Alert | 61 | +2.08% | 36% |
+
+- **Alerts did not come before further losses.** The month after an alert rose 2.1% on average, because deep, broad falls were often close to a rebound.
+- **Weak evidence:** the 61 alert days come from only a few episodes, so this is thin.
+- **What follows:** the monitor describes risk; it is **not a sell signal**. Selling on alerts would have hurt, consistent with the trend filter giving up returns in recoveries. Use it to size new risk carefully and to tell the owner the state, not to exit automatically.
+
+## 4B model vs a stronger teacher (October 2026)
+
+**Setup.** The local Qwen3.5-4B allocator made 49 monthly decisions, from October 2022 to October 2026, with no failures. For comparison, Claude Opus acted as a teacher on the **same anonymised briefs**:
+- **One assistant per month**, so no teacher could see later months, whose figures would reveal what happened next.
+- **No access to the backtest results:** none of the teachers had seen them.
+- **Same rules, simulator and costs:** they followed the same instructions and were scored exactly like the model.
+
+`allocator_review.py` attributes every month's gap to the basket into **cash drag**, **selection** (which shares were tilted) and **costs**, and groups months by market breadth.
+
+| 4 years, ₹4,00,000, real costs | Net | Growth a year | Worst fall | Costs |
+| --- | ---: | ---: | ---: | ---: |
+| **Holding the basket** | **₹1,57,073** | **8.8%** | **17.0%** | ₹1,175 |
+| 4B picks, fully invested | ₹1,56,893 | 8.8% | 19.8% | ₹18,201 |
+| Opus teacher | ₹1,14,287 | 6.6% | 19.1% | ₹18,091 |
+| 4B as decided | ₹1,11,136 | 6.5% | 18.3% | ₹13,283 |
+
+**What the attribution shows** (averages per month):
+- **The 4B model's gap** to the basket was −0.15%. Of that, **cash drag was −0.22%** (it held about 20% cash, 40% in broad downtrends, which were then followed by rebounds). Selection was **+0.06%**, slightly positive, and costs were −0.05%.
+- **Before costs, the teacher was better:** +0.81% against +0.61% for the model and +0.76% for the basket. It stayed nearly fully invested (3.9% cash on average) and beat the model in 29 of 49 months.
+- **After real costs, neither beat simply holding.** Monthly re-tilting cost both about fifteen times what the basket paid, and both ended well below it.
+
+**Conclusions:**
+1. **Information is the bottleneck, not model size.** On price-only facts at a monthly horizon, a much stronger model did not find an edge that survives costs. Training the 4B model to imitate the teacher would not help, because the teacher does not beat the basket either.
+2. **Transferable rules:**
+   - stay fully invested;
+   - express views only as small tilts;
+   - trade only when a view changes materially.
+
+   These apply to any model. They were found on these same years, so they must be confirmed on new months, which is what the forward tests are for.
+3. **Where an edge could come from:** new information, such as verified news claims, fundamentals or Kronos forecasts. Each can now be tested against the basket with the same harness.
+4. **Kept for the future:** `teacher-opus.json` holds the teacher's answers, and `teacher-training.jsonl` holds brief, teacher answer, model answer and outcome for each month. Both sit beside the run and are training and evaluation data for any future model, with no dates or share names.
+
+## Teaching the 4B model (curriculum)
+
+The teacher's picks do not beat the basket, so the goal is not to copy them. The goal is to teach the **habits** that cost the 4B model money: cash drag and turnover. `curriculum.py` does this **without touching model weights**. The lessons are a prompt, so a future model can be given the same curriculum.
+
+**How it stays honest:**
+1. **Study months only.** `build` reads the first `--study` months of the teacher comparison. It writes a frozen lesson plan with every number computed by code, and worked examples from study months where the teacher beat the student (the widest margin in each market state). Held-out months cannot change it, and a test proves this.
+2. **The taught prompt also shows `currentWeights`** (what the bot holds now), so it can actually trade less. It has its own fingerprint, so taught and untaught runs never mix. The untaught prompt is unchanged.
+3. **Held-out test.** `replay` lets the same model allocate only the months after the study period, starting from cash. `compare` scores those months only, every entrant from the same day, cash and costs:
+   - the taught bot;
+   - the untaught bot;
+   - the untaught bot's picks fully invested (the "rule instead of teaching" alternative);
+   - the teacher;
+   - the basket.
+
+   It also reports cash and turnover habits.
+4. **Then a forward test.** A curriculum that helps on held-out months is registered with `register` and judged on new months with `forward`.
+
+```cmd
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\curriculum.py build --run ai-monthly-qwen4b-v2 --study 24 --name lessons-v1
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\curriculum.py replay --curriculum lessons-v1 --name ai-taught-qwen4b-v1
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\curriculum.py compare --curriculum lessons-v1 --name ai-taught-qwen4b-v1
+```
+
+`lessons-v1` (built 13 October 2026) studied months 1–24, October 2022 to September 2024. Its examples are months 1 and 20, and 25 held-out months start on 1 October 2024. In the study months:
+- the student kept **13.8% cash**, costing about **0.34% a month**, more than its stock choices added (+0.11%);
+- the teacher kept 0.6% cash;
+- the student traded **18.4%** of the portfolio a month, against the teacher's **12.1%**.
+
+**Month-by-month verdict.** Totals can come from one lucky month, so `compare` also counts the held-out months in which each bot beat the equal-weight basket after estimated costs. It leaves out the first month, which is entered from cash. It applies the bot-fitness exact sign test: 20 or more decisive months, p < 0.05. With `--submit-bot ORG_BOT_ID`, the taught bot's counts go to the backend bot-fitness record as role `portfolio-allocator`, baseline `equal-weight-basket`, using the evaluator credential. The backend computes the verdict and the lifecycle recommendation. Nothing is sent without that flag.
+
+**Result of `lessons-v1`.** Run `ai-taught-qwen4b-v1`: 25 held-out months, October 2024 to October 2026, Qwen3.5-4B, no failed months. The held-out months were a falling market.
+
+| From the same cash and costs, ₹4,00,000 | Net | A year | Worst fall | Costs |
+| --- | ---: | ---: | ---: | ---: |
+| **Taught 4B bot** | **−₹31,656** | **−4.1%** | **12.6%** | ₹3,840 |
+| Top-3 momentum rule | −₹42,387 | −5.5% | 22.5% | ₹6,435 |
+| Basket, buy and hold | −₹51,189 | −6.7% | 16.9% | ₹958 |
+| Untaught bot's picks, fully invested | −₹57,995 | −7.6% | 19.8% | ₹7,755 |
+| Teacher (Opus) | −₹58,338 | −7.6% | 19.2% | ₹7,279 |
+| Trend filter (all in, or all cash below the 200-day average) | −₹59,734 | −7.8% | 14.9% | ₹3,532 |
+| Untaught 4B bot | −₹61,346 | −8.0% | 17.3% | ₹5,501 |
+
+How to read it:
+1. **The lessons helped the same model.** Compared with the untaught bot on the same months:
+   - it lost ₹29,690 less;
+   - its turnover fell from 19.1% to 12.3% a month;
+   - its worst fall dropped from 17.3% to 12.6%.
+2. **The gain came mostly from defence.** As shares fell below their 200-day averages, it held more cash: 36.6% on average, peaking at 70% in March 2025. It also kept small positions in the shares still in uptrends. It beat the plain all-or-nothing trend filter, so it was not just copying one rule.
+3. **Not yet proof of skill.** Month by month it was ahead of the basket in 12 months and behind in 12 (p = 0.58, no detectable skill). The total comes from avoiding a few large falls. In rising markets, the same cash habit cost money: that was the study period's main lesson.
+4. **The next test is a forward test.** Register the curriculum so it is judged on months that have not happened yet:
+
+   ```cmd
+   curriculum.py register --curriculum lessons-v1 --name ai-taught-forward-v1
+   ```
+
+   Then run it monthly. A curriculum that adapts cash to market breadth should show its value across both rising and falling months before any real money depends on it.
+
+**Trial ledger** (from Qanat's trial-accounting pattern): every distinct curriculum judged on a held-out period is appended to `.local/trading-desk/curriculum/trials.jsonl`. When the same months have judged more than one curriculum, the report says how many and warns that the best of several tries looks better than it is.
+
+The study months contained no broad downtrend, and the lesson says so instead of pretending its cash rule was tested.
+
+### What the reference repositories add to the teaching (13 October 2026)
+
+`docs/knowledge-base/07-repository-map.md` lists ten repositories. Before anything a repository offers is taught to the bot, it must beat the basket on the same simulator, costs and capital. Only the parts that need no new downloads were tried:
+
+| Repository | What was taken | Result | Taught to the bot? |
+| --- | --- | --- | --- |
+| skfolio (installed) | Hierarchical Risk Parity advisor, max 25% per share, 1-year window, monthly (`quant_advisor.py`) | 4 years: 5.7% a year vs basket 9.2%. Held-out 2 years: −9.4% vs −6.7% | **No**, it would teach a losing habit |
+| Awesome Systematic Trading (catalogue) | 12-1 month momentum factor, as a gentle tilt (18.75% / 6.25%), fixed in advance | 4 years: 8.4% vs 9.2%. Held-out: −8.1% vs −6.7% | **No** |
+| Qanat (pattern) | Trial ledger for held-out months | In use | Not applicable (a control, not a signal) |
+| Kronos | Forecast analyst code already exists (`forecast.py`) | Not run: needs PyTorch and model weights (owner approval to download) | Pending |
+| Freqtrade / FreqAI, Vibe-Trading | Retraining and skill patterns: the curriculum is a versioned, testable skill | Pattern only | Not applicable |
+| NautilusTrader, Hummingbot | Order execution and crypto venues | Not relevant to paper monthly allocation | Not applicable |
+| Hermes, Ruflo | Agent runtime and coordination (already integrated) | Not applicable | Not applicable |
+
+For the record, from 2022-10-03 to 2026-10-09 on ₹4,00,000:
+
+| Entrant | Net | Growth a year | Worst drawdown |
+| --- | ---: | ---: | ---: |
+| Basket buy-and-hold | ₹1,65,116 | 9.2% | 17.0% |
+| Inverse volatility | ₹1,62,286 | 9.0% | 17.9% |
+| Momentum tilt | ₹1,49,656 | 8.4% | 18.3% |
+| Risk parity (HRP) | ₹97,943 | 5.7% | 21.3% |
+
+Because no price-only tool beat holding, the curriculum teaches **habits** (stay invested, small tilts, low turnover), not any tool's picks. An edge, if one exists, needs new information: verified news claims, fundamentals, or Kronos once installed and proven.
+
+```cmd
+integrations\skfolio\.venv\Scripts\python.exe integrations\trading-desk\quant_advisor.py evaluate --from 2022-10-03 --from 2024-10-01
+``` Files are in `.local/trading-desk/curriculum/`. The replay needs the local model server, about one call per held-out month.
+
+## Information gathering: lead traders and information chains (validated before use)
+
+Gathering information builds wealth only if the information arrives **before** the price moves and actually predicts something. So every new kind of information is first tested against the basket, with the same no-hindsight rules, before any bot relies on it. Neither tool below contacts the internet. Choosing sources and confirming that their terms allow this use is the owner's decision (docs: "Information access and reuse must respect source terms").
+
+**Following lead traders (`participants.py`).** This is the participant-activity department from the organisation design. The exchanges publish every **bulk deal** (one client trading over 0.5% of a company in a day) and **block deal**, with the client's name, side, quantity and price.
+
+1. **Collect:** save the exchange's deal report CSVs in `.local/trading-desk/participants/inbox/`. A file whose name contains "block" is read as block deals. `ingest` merges them without duplicates, keeps the source file name, and counts unreadable rows instead of guessing.
+2. **Measure:** for each deal, `study` takes the follower's return from the **next session's open**, because deals are published after the close, over about one month, minus the basket's return. Copying a sale means staying out.
+3. **Choose leaders without hindsight:** a client becomes a candidate "leader" only from deals **before** `--split`. It needs at least 3 events, more months ahead of the basket than behind, and a positive average. Leaders are then judged only on deals **after** the split, with the bot-fitness sign test. Following all deals is the baseline in both periods.
+4. **Coverage:** price data currently covers the eight shares, so deals in other companies are counted as "without price data". A wider price download would widen the study, but needs the owner's approval.
+
+```cmd
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\participants.py ingest
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\participants.py study --split 2025-01-01
+```
+
+**Information chains (`chains.py`, `impact_links.json`).** This implements the knowledge design's transmission map, driver → affected companies, with every inference labelled.
+- **The links:** `impact_links.json` holds nine reviewed links, each with its reason. Examples:
+  - crude oil → Reliance;
+  - repo rate and loan quality → the four banks;
+  - rupee and IT spending → Infosys;
+  - tobacco tax → ITC;
+  - power demand → NTPC;
+  - foreign flows → all eight.
+- **What a link says:** a driver *may affect* a share. It never says the direction.
+- **`expand`:** adds linked shares to the fact-checker's verified headlines, titled `[inferred link: <driver>]`. The output is in the desk's headline format, so the news analyst reads it unchanged.
+- **`study`:** asks whether each link carries information. After headlines about a driver, do the linked shares move further from the basket over the next 5 sessions than their usual median move? It measures from the next open and applies the sign test.
+- **What happens to links:** a link that shows no effect should be removed, and a new link must pass `study` before bots use it.
+
+```cmd
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\chains.py expand --headlines .local\claims\auto\verified-headlines.json
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\chains.py study --headlines <dated headline history>.json
+```
+
+**Source plan (13 October 2026).** The owner left the choice of sources to the developer and deferred collection ("Not now"), so nothing has been downloaded. When collection starts, it comes first from primary, official sources:
+1. the exchange's bulk and block deal reports, for `participants.py`;
+2. exchange company announcements, such as results, orders and board decisions. The fact-checker can trust these as primary sources (`primarySourceIds`).
+
+After those: one Indian business-news RSS feed, for the claims pipeline and `chains.py`, and the daily foreign- and domestic-institution flows. Each source is registered and approved in the backend before use, and its terms are checked first.
+
+**Still missing:**
+- **An approved Indian news source:** the RSS reader, fact-checker and claims pipeline are built, but no publisher is chosen yet.
+- **Headline history** for `chains.py study`.
+- **Exchange deal files** for `participants.py`.
+- **Other disclosures:** insider-trading and substantial-acquisition disclosures, and daily foreign- and domestic-institution flows, can be added the same way once a source is approved.
+
+## Switching models: what carries over, and the comparison
+
+Nothing here trains model weights, so almost everything carries over to a future model unchanged:
+- verified knowledge in the backend (evidence, lessons, claims), which reaches bots as context;
+- the cached market data;
+- every test: desk replays, fitness, tournaments, forward tests and the allocator;
+- the decision logs;
+- all rules, limits and fact-checkers.
+
+**What does not carry over:**
+- **Fine-tuned weights:** if the 4B model were fine-tuned, that knowledge would stay locked inside it. This is why the project does not fine-tune it.
+- **Track-record lessons:** lessons describing a bot's own past calls describe the old model's behaviour, so they should be re-earned after a switch. Market facts and verified news stay valid.
+
+To switch, point the three `HERMES_MODEL*` settings at the new model, run the model checks, and rerun the same tests. Results are keyed by model, so nothing mixes. `model_compare.py` then lists every saved result by model, so old and new appear side by side on identical tests:
+
+```cmd
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\model_compare.py
+```
+
+It writes `.local/trading-desk/model-comparison.json`. Compare only rows of the same test: the same batch data and desk version, or the same allocator start and prompt. A model earns its cost only by beating both the simple baselines and the cheaper model.
 
 ## Learning from experience (walk-forward)
 
@@ -334,6 +696,11 @@ The 51 tests cover:
   - Fine-tuning windows that never span gaps and are normalised on their lookback only.
 
 The live and dataset tests need the replay environment, which has the market-data library.
+
+The curriculum tests (`test_curriculum`) check three things:
+- lessons and examples ignore held-out months;
+- the untaught prompt fingerprint is unchanged;
+- a taught run sees its current weights and is compared from the same start and costs.
 
 ## Limits
 
