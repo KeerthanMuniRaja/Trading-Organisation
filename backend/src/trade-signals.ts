@@ -23,6 +23,7 @@ const text = (max: number) => z.string().trim().min(1).max(max);
 const proposalSchema = z.object({
   botId: id, symbol, action: z.enum(['enter-long', 'exit', 'no-action']), horizonDays: z.number().int().min(1).max(365),
   conviction: z.enum(['low', 'medium', 'high']), probabilityPct: z.number().int().min(1).max(99).optional(),
+  targetWeightPct: z.number().int().min(1).max(100).optional(),
   thesis: text(600), invalidation: text(300).optional(), expiresAt: timestamp,
   evidenceIds: z.array(z.uuid()).max(10).default([]),
   model: text(120).optional(), promptVersion: text(64).optional(),
@@ -69,9 +70,9 @@ export class TradeSignals {
       if (old) return { id: String(old.id), duplicate: true };
       const signalId = uuid();
       await tx.query(`INSERT INTO trade_signals(id,bot_id,symbol,action,horizon_days,conviction,probability_pct,thesis,invalidation,expires_at,
-        model,prompt_version,author,content_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        model,prompt_version,author,content_hash,target_weight_pct) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
         [signalId, input.botId, input.symbol, input.action, input.horizonDays, input.conviction, input.probabilityPct ?? null, input.thesis,
-          input.invalidation ?? null, input.expiresAt, input.model ?? null, input.promptVersion ?? null, actor.id, hash]);
+          input.invalidation ?? null, input.expiresAt, input.model ?? null, input.promptVersion ?? null, actor.id, hash, input.targetWeightPct ?? null]);
       for (const evidenceId of input.evidenceIds) await tx.query('INSERT INTO trade_signal_evidence VALUES($1,$2)', [signalId, evidenceId]);
       await audit(tx, actor, 'trade.signal.proposed', signalId, { botId: input.botId, symbol: input.symbol, action: input.action, conviction: input.conviction });
       return { id: signalId, duplicate: false };
@@ -115,8 +116,15 @@ export class TradeSignals {
               + await sum("SELECT COALESCE(SUM(reserved_paise),0)::text AS value FROM orders WHERE bot_id=$1 AND status='reserved'", [signal.bot_id]);
             const limits: [string, bigint][] = [['order-limit', this.config.maxOrder], ['bot-budget', BigInt(bot.budget) - own],
               ['available-capital', await available(tx)], ['exposure-limit', this.config.maxExposure - await balance(tx, 'POSITION') - allReserved]];
-            const [binding, room] = limits.reduce((a, b) => (b[1] < a[1] ? b : a));
-            const allowance = room * BigInt(Math.round(SIZE[signal.conviction as keyof typeof SIZE] * 100)) / 100n;
+            let [binding, room] = limits.reduce((a, b) => (b[1] < a[1] ? b : a));
+            let allowance = room * BigInt(Math.round(SIZE[signal.conviction as keyof typeof SIZE] * 100)) / 100n;
+            if (signal.target_weight_pct !== null) {
+              // never more than the stated share of the bot's budget in this instrument, counting what it already holds or reserved
+              const inSymbol = await sum('SELECT COALESCE(SUM(cost_paise),0)::text AS value FROM positions WHERE bot_id=$1 AND symbol=$2', [signal.bot_id, signal.symbol])
+                + await sum("SELECT COALESCE(SUM(reserved_paise),0)::text AS value FROM orders WHERE bot_id=$1 AND symbol=$2 AND status='reserved'", [signal.bot_id, signal.symbol]);
+              const toTarget = BigInt(bot.budget) * BigInt(signal.target_weight_pct) / 100n - inSymbol;
+              if (toTarget < allowance) [binding, allowance] = ['target-weight', toTarget];
+            }
             quantity = allowance > 0n ? allowance / perShare : 0n;
             if (quantity < 1n) { quantity = null; reasons.push('size-below-one-share', binding); }
             else { outcome = 'accepted'; side = 'buy'; reasons.push(`sized-by-${binding}`, `conviction-${signal.conviction}`); }
@@ -181,7 +189,7 @@ export class TradeSignals {
         FROM trade_signals s LEFT JOIN trade_signal_reviews r ON r.signal_id=s.id LEFT JOIN trade_signal_outcomes o ON o.signal_id=s.id
         WHERE ($1::text IS NULL OR s.bot_id=$1) ORDER BY s.created_at DESC,s.id DESC LIMIT $2`, [botId ?? null, input.limit])).rows;
       const signals = rows.map(r => ({ id: String(r.id), botId: r.bot_id, symbol: r.symbol, action: r.action, horizonDays: r.horizon_days,
-        conviction: r.conviction, probabilityPct: r.probability_pct, thesis: r.thesis, invalidation: r.invalidation,
+        conviction: r.conviction, probabilityPct: r.probability_pct, targetWeightPct: r.target_weight_pct, thesis: r.thesis, invalidation: r.invalidation,
         expiresAt: new Date(r.expires_at).toISOString(), evidenceIds: r.evidence_ids, model: r.model, promptVersion: r.prompt_version,
         review: r.review_outcome ? { outcome: r.review_outcome, reasons: r.reasons, side: r.side, quantity: r.quantity, referencePricePaise: r.reference } : null,
         outcome: r.correct === null || r.correct === undefined ? null : { moveBps: r.move_bps, correct: r.correct, brier: r.brier === null ? null : Number(r.brier) } }));

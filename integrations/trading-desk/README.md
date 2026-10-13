@@ -419,6 +419,43 @@ Because no price-only tool beat holding, the curriculum teaches **habits** (stay
 integrations\skfolio\.venv\Scripts\python.exe integrations\trading-desk\quant_advisor.py evaluate --from 2022-10-03 --from 2024-10-01
 ``` Files are in `.local/trading-desk/curriculum/`. The replay needs the local model server, about one call per held-out month.
 
+## Regime study: which behaviour pays in which market (13 October 2026)
+
+`regime_study.py` asks whether any rule's edge over the basket holds in every kind of market or only in some. It needs no model and no network. Each month, every rule's weights are decided from completed days only and held to the next month. The month is grouped by breadth at the decision: how many of the eight shares were above their 200-day average. Returns are gross, to isolate behaviour. Covers 50 months, August 2022 to September 2026: 28 broad uptrend, 16 mixed, 6 broad downtrend.
+
+| Rule, average monthly excess over the basket (months ahead/behind) | Broad uptrend | Mixed | Broad downtrend | All |
+| --- | ---: | ---: | ---: | ---: |
+| Top-3 momentum (6 months) | +0.42% (20/8) | +0.37% (8/8) | −0.56% (4/2) | +0.28% (32/18) |
+| Trend filter (cash below 200-day average) | 0.00% | +0.54% (3/2) | −1.50% (2/4) | −0.01% |
+| Holding cash | −1.07% | +0.04% | −1.50% | −0.77% |
+| Inverse volatility | +0.06% | −0.13% | +0.16% | +0.01% |
+| Momentum 12-1 tilt | −0.02% | −0.03% | −0.06% | −0.03% |
+
+Findings:
+1. **Cash in broad downtrends has been wrong on this basket.** After breadth fell to 0–2, the basket rebounded on average, so cash trailed by 1.5% a month. This agrees with the risk-monitor finding that alerts were followed by gains. `lessons-v1`'s untested rule ("hold more cash when 6 or more of 8 shares are below their 200-day average") is exactly this. The sample is only 6 months, so it is a warning, not a verdict. The taught bot's held-out gain came mostly from cutting single weakening shares in mixed months, not from broad cash.
+2. **Top-3 momentum is the most consistent rule, and it survives real costs, but it is not proven.**
+   - After costs it beat the basket in every window checked: from August 2022 (+₹37,641), from October 2022 (+₹26,615), and in the falling held-out stretch (+₹8,802).
+   - Its worst fall was deeper: 22.6% against 17%.
+   - Its 32 to 18 monthly record has p = 0.03. That is not significant after allowing for 6 rules compared (Bonferroni threshold 0.008).
+   - It is already part of the pre-registered portfolio forward test (`portfolio-forward-from-2026-10-09`), so new months will judge it without any choice made after the fact.
+3. **Hypothesis for a future lesson (`lessons-v2`), not yet tested:** stay invested in broad downtrends, tilt toward 6-month momentum leaders, and accept somewhat deeper falls. It was formed after seeing all 50 months, including `lessons-v1`'s held-out stretch. So it may only be judged in a new forward test, never on those months (see the trial ledger).
+
+```cmd
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\regime_study.py
+```
+
+## Into the backend's trade-proposal path (`signals_bridge.py`)
+
+Bot decisions become structured proposals in the backend (`/v1/trading/signals`, see `docs/trade-signals.md`). There they get the deterministic risk review, sizing and outcome scoring, whichever model made them.
+- **A monthly allocation:** each share raised by 3 or more points becomes `enter-long`, with its new weight as the target. The risk review never sizes beyond it. A share cut to zero becomes `exit`.
+- **A desk meeting:** buy, sell and hold become `enter-long`, `exit` and an explicit `no-action`. Conviction and invalidation come from the strongest analyst who agrees.
+
+The allocator states no invalidation of its own, so the bridge writes a fixed one and labels it "Rule-derived". Each proposal is sent with the credential bound to its own bot. Proposals cite verified evidence and expire within days, so only current decisions, such as the forward test, can be sent. Use `--dry-run` to see them first.
+
+```cmd
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\signals_bridge.py allocator --run ai-taught-forward-v1 --bot ORG_BOT_ID --evidence EVIDENCE_ID --dry-run
+```
+
 ## Information gathering: lead traders and information chains (validated before use)
 
 Gathering information builds wealth only if the information arrives **before** the price moves and actually predicts something. So every new kind of information is first tested against the basket, with the same no-hindsight rules, before any bot relies on it. Neither tool below contacts the internet. Choosing sources and confirming that their terms allow this use is the owner's decision (docs: "Information access and reuse must respect source terms").

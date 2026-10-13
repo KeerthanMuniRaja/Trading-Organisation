@@ -40,6 +40,7 @@ A proposal is rejected for any of these:
 
 How accepted trades are sized:
 - **Longs** take the tightest of four limits: order limit, the bot's remaining budget, available capital, and remaining organisation exposure. That is scaled by conviction (high 100%, medium 50%, low 25%) and divided by the ask, including slippage and fees. The reason names the binding limit, such as `sized-by-available-capital`.
+- **A stated `targetWeightPct`** (migration 033) caps a long at that share of the bot's budget in the instrument, counting what the bot already holds or has reserved there. The reason then reads `sized-by-target-weight`.
 - **Exits** sell the bot's whole unreserved position.
 
 An accepted review is an **order intent**, not an order. The bot still reserves it through `POST /v1/paper/orders`, which re-checks every limit at that moment.
@@ -60,7 +61,10 @@ Every bot is scored the same way:
 - A proposal cannot outlive its horizon.
 - A track record is descriptive: promotion, retirement and budgets remain owner and lifecycle decisions. Bot fitness (`/v1/bots/fitness`) remains the significance test.
 
-## Next connections
+## Connections
 
-- **Desk and allocator bots:** emit proposals instead of acting directly. The trading-desk and allocator research tools already produce the needed fields: stance, conviction, reasons, invalidation.
+- **Desk and allocator bots:** [`integrations/trading-desk/signals_bridge.py`](../integrations/trading-desk/signals_bridge.py) turns their decisions into proposals.
+  - **A monthly allocation:** a weight raised by 3 or more points becomes `enter-long` with that weight as `targetWeightPct`; a weight cut to zero becomes `exit`.
+  - **A desk meeting:** buy, sell and hold become `enter-long`, `exit` and `no-action`. Conviction and invalidation come from the strongest analyst who agrees.
+  - **Sending:** each proposal goes with the credential bound to its own bot. Proposals expire within days, so only current decisions can be sent; replays are dry-run only.
 - **Outcome evidence:** comes from approved daily-close records once a market data source is approved (MARKET-01).

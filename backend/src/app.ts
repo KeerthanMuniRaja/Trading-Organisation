@@ -29,6 +29,9 @@ import { SkillExperiments } from './skill-experiments.js';
 import { EvidenceClaims, EvidenceClaimsController } from './evidence-claims.js';
 import { BotFitness, BotFitnessController } from './bot-fitness.js';
 import { TradeSignals, TradeSignalsController } from './trade-signals.js';
+import { PaperPerformance, PaperPerformanceController } from './paper-performance.js';
+import { Departments, DepartmentsController } from './departments.js';
+import { Hackathons, HackathonsController } from './hackathons.js';
 
 type Request = { actor:Actor; requestId:string };
 @Controller('v1')
@@ -181,7 +184,7 @@ class ErrorFilter implements ExceptionFilter {
 export async function createApp(config:Config,db:Database,quiet=false) {
   const auth=new OwnerAuthorization(db,config);
   const services=[{provide:OwnerAuthorization,useValue:auth},{provide:Treasury,useValue:new Treasury(db,config,auth)},{provide:Organisation,useValue:new Organisation(db)},{provide:Research,useValue:new Research(db)},{provide:PaperTrading,useValue:new PaperTrading(db,config)},{provide:Operations,useValue:new Operations(db)},{provide:PortfolioResearch,useValue:new PortfolioResearch(db)},{provide:ResearchLifecycle,useValue:new ResearchLifecycle(db)},{provide:ResearchDispatch,useValue:new ResearchDispatch(db)},{provide:OrganisationReport,useValue:new OrganisationReport(db)},{provide:OrganisationalLearning,useValue:new OrganisationalLearning(db)},{provide:ResearchDevelopment,useValue:new ResearchDevelopment(db)},{provide:DevelopmentExperiments,useValue:new DevelopmentExperiments(db)},{provide:DepartmentSessions,useValue:new DepartmentSessions(db)}];
-  @Module({imports:[ThrottlerModule.forRoot([{ttl:60000,limit:120}])],controllers:[ApiController,EvidenceClaimsController,BotFitnessController,TradeSignalsController],providers:[...services,{provide:EvidenceClaims,useValue:new EvidenceClaims(db)},{provide:BotFitness,useValue:new BotFitness(db)},{provide:TradeSignals,useValue:new TradeSignals(db,config)},{provide:AcademySkills,useValue:new AcademySkills(db)},{provide:SkillRecovery,useValue:new SkillRecovery(db)},{provide:SkillDiagnostics,useValue:new SkillDiagnostics(db)},{provide:SkillExperiments,useValue:new SkillExperiments(db)},{provide:APP_GUARD,useClass:ThrottlerGuard}]})
+  @Module({imports:[ThrottlerModule.forRoot([{ttl:60000,limit:120}])],controllers:[ApiController,EvidenceClaimsController,BotFitnessController,TradeSignalsController,PaperPerformanceController,DepartmentsController,HackathonsController],providers:[...services,{provide:Hackathons,useValue:new Hackathons(db)},{provide:EvidenceClaims,useValue:new EvidenceClaims(db)},{provide:BotFitness,useValue:new BotFitness(db)},{provide:TradeSignals,useValue:new TradeSignals(db,config)},{provide:PaperPerformance,useValue:new PaperPerformance(db)},{provide:Departments,useValue:new Departments(db)},{provide:AcademySkills,useValue:new AcademySkills(db)},{provide:SkillRecovery,useValue:new SkillRecovery(db)},{provide:SkillDiagnostics,useValue:new SkillDiagnostics(db)},{provide:SkillExperiments,useValue:new SkillExperiments(db)},{provide:APP_GUARD,useClass:ThrottlerGuard}]})
   class RootModule {}
   const app=await NestFactory.create(RootModule,{logger:quiet?false:['error','warn','log'],bodyParser:false});
   app.use(helmet());app.use(json({limit:'512kb',strict:true}));

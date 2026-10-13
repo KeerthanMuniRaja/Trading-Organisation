@@ -67,6 +67,10 @@ test('the risk review is deterministic: code sizes accepted trades and records e
     assert.equal((await f.signals.review(evaluator, key(), { signalId: high.id })).duplicate, true);
     const medium = await f.signals.propose(trader, key(), { ...f.long, conviction: 'medium', thesis: 'Smaller conviction' });
     assert.equal((await f.signals.review(evaluator, key(), { signalId: medium.id })).quantity, '25');
+    // a stated target weight caps the size: 20% of the 1000000-paise budget is 200000 paise, 20 shares at 10000
+    const targeted = await f.signals.propose(trader, key(), { ...f.long, targetWeightPct: 20, thesis: 'Raise to 20% of the book' });
+    const capped = await f.signals.review(evaluator, key(), { signalId: targeted.id });
+    assert.deepEqual([capped.quantity, capped.reasons[0]], ['20', 'sized-by-target-weight']);
     // the accepted intent goes through paper trading, which re-checks every limit itself
     const order = await f.paper.reserve(trader, key(), { botId: 'bot-one', symbol: 'DEMO', side: 'buy', quantity: 50, evidenceId: f.e.evidenceId });
     assert.equal(order.state, 'reserved');
