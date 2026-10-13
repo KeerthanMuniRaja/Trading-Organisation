@@ -1,5 +1,13 @@
 # Knowledge transfer: continue the trading organisation
 
+## Live paper testing — from 15 October 2026
+
+Daily operation is in the [live testing runbook](docs/live-testing.md).
+- **Before the open:** `npm run readiness` gives a go/no-go.
+- **After 16:00 IST:** `npm run cycle` runs the day's work.
+
+The model-free [rule bot](docs/trade-signals.md#the-rule-bot-a-model-free-member) keeps proposals flowing without the local model. Owner activation: `npm run rulebot -- plan | credential --yes | apply --yes`.
+
 ## Current development update — v0.1.35, 7 October 2026
 
 The checkout now includes v0.1.34's explicit direct-structured-v1 production engine and migration 023, which adds the optional research-methods-v1 assessment rubric. Existing research-basics-v1 records/defaults remain unchanged. The direct worker requests task schemas and binds tickets to the owner-selected engine; it is separate from Hermes, not a fallback or an upgrade of the pinned Hermes path.
