@@ -14,7 +14,8 @@ import { available, balance } from './treasury.js';
 // After the horizon an independent evaluator records the realised price, and the backend scores the call, so every bot
 // builds a calibrated track record (accuracy by conviction, Brier score of its stated probabilities).
 
-export const RULES_VERSION = 'signal-risk-v1';
+// v2 (SPECIALIST-01): an opposing challenge citing verified evidence sizes a high-conviction long as medium.
+export const RULES_VERSION = 'signal-risk-v2';
 export const COST_BPS = 30; // round-trip trading cost: a long call must beat it to count as right
 const QUOTE_FRESH_MS = 60_000;
 const SIZE = { high: 1, medium: 0.5, low: 0.25 } as const;
@@ -32,6 +33,7 @@ const proposalSchema = z.object({
   .refine(v => v.action === 'no-action' || v.evidenceIds.length > 0, 'A trade proposal must cite verified evidence')
   .refine(v => new Set(v.evidenceIds).size === v.evidenceIds.length, 'Evidence listed twice');
 const reviewSchema = z.object({ signalId: z.uuid() }).strict();
+const challengeSchema = z.object({ signalId: z.uuid(), stance: z.enum(['oppose', 'support-with-caveat']), argument: text(600), evidenceId: z.uuid().optional() }).strict();
 const outcomeSchema = z.object({ signalId: z.uuid(), exitPricePaise: z.string().regex(/^[1-9]\d{0,15}$/), observedAt: timestamp, evidenceId: z.uuid() }).strict();
 const querySchema = z.object({ botId: id.optional(), limit: z.number().int().min(1).max(200).default(50) }).strict();
 
@@ -117,7 +119,12 @@ export class TradeSignals {
             const limits: [string, bigint][] = [['order-limit', this.config.maxOrder], ['bot-budget', BigInt(bot.budget) - own],
               ['available-capital', await available(tx)], ['exposure-limit', this.config.maxExposure - await balance(tx, 'POSITION') - allReserved]];
             let [binding, room] = limits.reduce((a, b) => (b[1] < a[1] ? b : a));
-            let allowance = room * BigInt(Math.round(SIZE[signal.conviction as keyof typeof SIZE] * 100)) / 100n;
+            // an independent challenger's evidenced objection halves a high-conviction long (deterministic, recorded)
+            let conviction = signal.conviction as keyof typeof SIZE;
+            const objection = (await tx.query(`SELECT 1 FROM trade_signal_challenges c JOIN evidence e ON e.id=c.evidence_id JOIN sources s ON s.id=e.source_id
+              WHERE c.signal_id=$1 AND c.stance='oppose' AND e.status='verified' AND s.approved=true LIMIT 1`, [signal.id])).rows.length;
+            if (objection && conviction === 'high') { conviction = 'medium'; reasons.push('evidenced-objection-sized-as-medium'); }
+            let allowance = room * BigInt(Math.round(SIZE[conviction] * 100)) / 100n;
             if (signal.target_weight_pct !== null) {
               // never more than the stated share of the bot's budget in this instrument, counting what it already holds or reserved
               const inSymbol = await sum('SELECT COALESCE(SUM(cost_paise),0)::text AS value FROM positions WHERE bot_id=$1 AND symbol=$2', [signal.bot_id, signal.symbol])
@@ -127,7 +134,7 @@ export class TradeSignals {
             }
             quantity = allowance > 0n ? allowance / perShare : 0n;
             if (quantity < 1n) { quantity = null; reasons.push('size-below-one-share', binding); }
-            else { outcome = 'accepted'; side = 'buy'; reasons.push(`sized-by-${binding}`, `conviction-${signal.conviction}`); }
+            else { outcome = 'accepted'; side = 'buy'; reasons.push(`sized-by-${binding}`, `conviction-${conviction}`); }
           }
         } else if (fresh && !reasons.length) {
           const held = (await tx.query('SELECT quantity::text AS q FROM positions WHERE bot_id=$1 AND symbol=$2', [signal.bot_id, signal.symbol])).rows[0];
@@ -145,6 +152,28 @@ export class TradeSignals {
           fresh ? quote.observed_at : null, RULES_VERSION, actor.id])).rows[0]!;
       await audit(tx, actor, 'trade.signal.reviewed', signal.id, { outcome, reasons, side, quantity: quantity?.toString() ?? null });
       return { ...reviewView(row), duplicate: false };
+    });
+  }
+
+  /** An independent challenger (a different bot) argues against, or qualifies, a proposal before it is reviewed. */
+  challenge(actor: Actor, key: string, raw: unknown) {
+    permit(actor, 'trader', 'researcher');
+    const input = parse(challengeSchema, raw);
+    requireThat(!!actor.botId, 'Challenges are made under a bot identity', 403);
+    return this.db.command(actor, 'trade-signal-challenge', key, input, async tx => {
+      const signal = (await tx.query('SELECT bot_id,author,expires_at FROM trade_signals WHERE id=$1', [input.signalId])).rows[0];
+      requireThat(signal, 'Signal not found', 404);
+      requireThat(signal.bot_id !== actor.botId && signal.author !== actor.id, 'A bot cannot challenge its own proposal', 403);
+      requireThat(!(await tx.query('SELECT 1 FROM trade_signal_reviews WHERE signal_id=$1', [input.signalId])).rows.length, 'Challenges must come before the review');
+      requireThat(new Date(signal.expires_at).getTime() > Date.now(), 'The proposal has expired');
+      if (input.evidenceId) requireThat((await verifiedEvidenceIds(tx, [input.evidenceId])).length === 1, 'Cited evidence must be verified and from an approved source');
+      const old = (await tx.query('SELECT id FROM trade_signal_challenges WHERE signal_id=$1 AND challenger_bot_id=$2', [input.signalId, actor.botId])).rows[0];
+      requireThat(!old, 'This bot has already challenged the proposal');
+      const challengeId = uuid();
+      await tx.query(`INSERT INTO trade_signal_challenges(id,signal_id,challenger_bot_id,stance,argument,evidence_id,author) VALUES($1,$2,$3,$4,$5,$6,$7)`,
+        [challengeId, input.signalId, actor.botId, input.stance, input.argument, input.evidenceId ?? null, actor.id]);
+      await audit(tx, actor, 'trade.signal.challenged', input.signalId, { challengerBotId: actor.botId, stance: input.stance, evidenced: !!input.evidenceId });
+      return { id: challengeId };
     });
   }
 
@@ -190,10 +219,16 @@ export class TradeSignals {
         WHERE ($1::text IS NULL OR s.bot_id=$1) ORDER BY s.created_at DESC,s.id DESC LIMIT $2`, [botId ?? null, input.limit])).rows;
       const signals = rows.map(r => ({ id: String(r.id), botId: r.bot_id, symbol: r.symbol, action: r.action, horizonDays: r.horizon_days,
         conviction: r.conviction, probabilityPct: r.probability_pct, targetWeightPct: r.target_weight_pct, thesis: r.thesis, invalidation: r.invalidation,
-        expiresAt: new Date(r.expires_at).toISOString(), evidenceIds: r.evidence_ids, model: r.model, promptVersion: r.prompt_version,
+        createdAt: new Date(r.created_at).toISOString(), expiresAt: new Date(r.expires_at).toISOString(), evidenceIds: r.evidence_ids,
+        model: r.model, promptVersion: r.prompt_version,
         review: r.review_outcome ? { outcome: r.review_outcome, reasons: r.reasons, side: r.side, quantity: r.quantity, referencePricePaise: r.reference } : null,
         outcome: r.correct === null || r.correct === undefined ? null : { moveBps: r.move_bps, correct: r.correct, brier: r.brier === null ? null : Number(r.brier) } }));
-      return { signals, trackRecord: trackRecord(signals),
+      const ids = signals.map(s => s.id);
+      const challenges = ids.length ? (await tx.query(`SELECT signal_id,challenger_bot_id,stance,argument,evidence_id FROM trade_signal_challenges
+        WHERE signal_id=ANY($1::uuid[]) ORDER BY created_at`, [ids])).rows : [];
+      const withChallenges = signals.map(s => ({ ...s, challenges: challenges.filter(c => String(c.signal_id) === s.id).map(c => ({ challengerBotId: c.challenger_bot_id,
+        stance: c.stance, argument: c.argument, evidenceId: c.evidence_id ? String(c.evidence_id) : null })) }));
+      return { signals: withChallenges, trackRecord: trackRecord(signals), challengerRecord: challengerRecord(withChallenges),
         note: 'A track record is descriptive; promotion, retirement and budgets stay owner and lifecycle decisions.' };
     }, false);
   }
@@ -215,6 +250,22 @@ export function trackRecord(signals: Scored[]) {
   });
 }
 
+type Challenged = { outcome: { correct: boolean } | null; challenges: { challengerBotId: string; stance: string }[] };
+/** Challengers are scored like proposers: an opposition is right when the call was wrong; a supported-with-caveat
+ *  challenge is right when the call was right. A challenger that is never right adds noise, not value. */
+export function challengerRecord(signals: Challenged[]) {
+  const bots = new Map<string, { scored: number; right: number; opposed: number }>();
+  for (const s of signals) {
+    if (!s.outcome) continue;
+    for (const c of s.challenges) {
+      const cur = bots.get(c.challengerBotId) ?? { scored: 0, right: 0, opposed: 0 };
+      const right = c.stance === 'oppose' ? !s.outcome.correct : s.outcome.correct;
+      bots.set(c.challengerBotId, { scored: cur.scored + 1, right: cur.right + (right ? 1 : 0), opposed: cur.opposed + (c.stance === 'oppose' ? 1 : 0) });
+    }
+  }
+  return [...bots.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([botId, r]) => ({ botId, ...r, accuracy: Number((r.right / r.scored).toFixed(3)) }));
+}
+
 function reviewView(r: Record<string, any>) {
   return { signalId: String(r.signal_id), outcome: r.outcome, reasons: r.reasons, side: r.side ?? null,
     quantity: r.quantity === null ? null : String(r.quantity), referencePricePaise: r.reference_price_paise === null ? null : String(r.reference_price_paise),
@@ -229,6 +280,7 @@ type Request = { actor: Actor };
 export class TradeSignalsController {
   constructor(private readonly signals: TradeSignals) {}
   @Post('trading/signals') @Allow('trader', 'researcher') propose(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) { return this.signals.propose(r.actor, k ?? '', b); }
+  @Post('trading/signals/challenges') @Allow('trader', 'researcher') challenge(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) { return this.signals.challenge(r.actor, k ?? '', b); }
   @Post('trading/signals/reviews') @Allow('owner', 'evaluator') review(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) { return this.signals.review(r.actor, k ?? '', b); }
   @Post('trading/signals/outcomes') @Allow('owner', 'evaluator') outcome(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) { return this.signals.outcome(r.actor, k ?? '', b); }
   @Post('trading/signals/query') @Allow('owner', 'researcher', 'evaluator', 'trader') query(@Req() r: Request, @Body() b: unknown) { return this.signals.query(r.actor, b); }

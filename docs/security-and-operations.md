@@ -46,7 +46,15 @@ For a stalled research job, inspect its experiment and incident records; a later
 
 ## Local data and backups
 
-Stop the API cleanly before copying a PGlite database directory. Back up the entire directory together with the matching source/migration version, never just balance rows. Store credentials and signing material separately using access controls appropriate to their authority. A local durable restart test has passed; backup restore drills and live PostgreSQL disaster recovery remain untested.
+Use the backup tool ([`scripts/backup.mjs`](../scripts/backup.mjs), tests in `scripts/backup.test.mjs`) rather than copying folders by hand.
+
+| Command | What it does |
+| --- | --- |
+| `npm.cmd run backup -- create` | Refuses while the API is running. Writes `.local/backups/backup-<time>/` with `database.tar.gz` (PGlite `dumpDataDir`) and `manifest.json`: schema versions and checksums, row counts, ledger balances, and the audit-chain head. It refuses to back up a database whose audit chain is broken or whose journals are unbalanced. It never includes `.env`, credentials or signing keys, which must be stored separately under access controls appropriate to their authority. |
+| `npm.cmd run backup -- verify <dir>` | Restores the archive **in memory** and re-checks the archive hash, the audit hash chain, every journal balance, the counts, the balances, and migration compatibility with the current code |
+| `npm.cmd run backup -- restore <dir> <new-dir>` | Verifies first, then writes only into a new or empty directory. The live database is never overwritten. Point `DATABASE_PATH` at the new directory to use it. |
+
+**Restore drill, 13 October 2026.** The live paper database was backed up (6.7 MB, 107 audit events, schema 1–36) and verified: valid, audit chain intact, balances identical. Live PostgreSQL disaster recovery is still untested; use `pg_dump` for `DATABASE_URL` deployments.
 
 For PostgreSQL, provision a least-privilege application identity and a separate migration role before deployment. The current application runs migrations at startup; multi-instance startup and migration coordination need validation. Retain migration checksums and append a new migration instead of modifying an applied one.
 

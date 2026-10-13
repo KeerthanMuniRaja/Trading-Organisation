@@ -1,0 +1,68 @@
+# The organisation cycle, point-in-time knowledge and compute accounting
+
+Three pieces that make the organisation run on its own and stay auditable. They need no model unless stated.
+
+## One finite cycle (AUTO-01): `npm.cmd run cycle`
+
+[`scripts/organisation-cycle.mjs`](../scripts/organisation-cycle.mjs) runs these steps in order. Each step is a separate process with a time limit.
+
+| Step | What it does | Needs |
+| --- | --- | --- |
+| `backend-health` | Stops the cycle if the API is down | backend running |
+| `market-data` | Refreshes daily prices for the eight shares | internet (Yahoo) |
+| `news-<feed>` | One poll of every **enabled** feed in `.local/feed-*.json`. Each feed's own poll interval is respected. | internet (approved publishers) |
+| `claims-and-fact-check` | Claim analyst (model) plus fact-checker (no model), via `autolearn.py --cycles 1` | `--with-model`, local model server, `.local/claims/autolearn.json` |
+| `chain-links` | Adds inferred driver links to the verified headlines | verified headlines exist |
+| `forward-daily-rules`, `forward-portfolio` | Scores the pre-registered forward tests on new days | none |
+| `paper-snapshot` | Records today's per-bot P&L mark (evaluator credential) | backend |
+| `alerts` | Evaluates alert rules and delivers new alerts | backend |
+
+**Resuming:** a daily journal (`.local/cycles/<day>.json`) makes reruns resume. Finished steps are skipped, and only failed or skipped ones run again. `--force` reruns everything.
+
+**First live run (13 October 2026):**
+- 55 new news items from three publishers;
+- prices refreshed to 13 October;
+- forward tests scored;
+- today's P&L mark recorded;
+- no alerts raised.
+
+A same-day rerun repeated nothing.
+
+### Self-recovery (RECOVERY-01)
+
+| Mechanism | Behaviour |
+| --- | --- |
+| **Runbook retries** | Network steps (market data, news feeds) retry twice, waiting 30 s and then 90 s. Other steps do not retry. |
+| **Postconditions** | A step counts as done only if its own report says so. `market-data` is **degraded** when the data steward kept previous data for any share. A feed is **failed** when it reports a fetch or parse failure, even if the process exited cleanly. |
+| **Failure streaks** | `.local/cycles/streaks.json` counts consecutive failed cycles per step. A success or a degraded run resets the count. |
+| **Escalation** | On the **3rd consecutive failure**, the step is reported once as a **warning** incident (`POST /v1/incidents`, evaluator credential). That raises the `incident-open` alert. It is never critical, because a critical incident would halt new risk. If the backend itself is down, the escalation goes to `.local/alerts/outbox.jsonl` instead. A new streak after a recovery can escalate again. |
+
+Restarting is not counted as repair. Escalations stay open until someone resolves the incident.
+
+**The cycle never trades, funds or changes limits.** Scheduling it is the owner's choice: a scheduled task, or `--minutes`-style sessions.
+
+## What was known when (KG-01): `POST /v1/knowledge/as-of`
+
+[`backend/src/knowledge-asof.ts`](../backend/src/knowledge-asof.ts) answers `{asOf, symbol?, botId?}` with:
+- the evidence received by the cutoff;
+- each item's **status at the cutoff**: unverified, verified, rejected, revoked or source-revoked, and whether a bot could use it;
+- claim decisions taken by then;
+- the bot's lessons verified by then.
+
+**How it is rebuilt:** evidence keeps only its current status, so the timeline comes from the append-only, hash-chained audit log. A change after the cutoff is **listed but not applied**, so a past decision is judged on what could have been known.
+
+**A test caught a hindsight leak and it was fixed:** the bot filter had included lessons created after the cutoff.
+
+## Compute accounting (COST-01): `POST /v1/compute/usage`
+
+[`backend/src/compute-usage.ts`](../backend/src/compute-usage.ts) combines two sources of model usage:
+- usage that workers report per bot (`POST /v1/compute/usage/reports`, append-only, deduplicated);
+- the backend's own model tickets, attributed to a bot when the request names one and otherwise labelled `unattributed`.
+
+It totals tokens, calls and latency per bot and per department. The owner may set a daily token budget per department (`POST /v1/compute/budgets`, owner only). The `compute-over-budget` alert fires when a department exceeds its budget, and resolves when the department is back under it or the budget is removed. Budgets inform the owner; they do not throttle.
+
+## Security (SEC-01)
+
+- **`npm.cmd run scan:secrets`** scans everything git would publish for keys, tokens and forbidden paths before a push. The repository scanned clean on 13 October 2026.
+- **`backend/test/injection.test.ts`** plants hostile instructions in news, theses, rationales and contest entries, and shows that none of them changes authority, limits, review outcomes or sizing.
+- See the [threat model](threat-model.md).

@@ -106,9 +106,26 @@ def fetch(symbols, years=5, cache=DAILY, refresh=False):
         dataset = {'schemaVersion': 1, 'symbol': symbol, 'interval': '1d', 'priceBasis': 'adjusted', 'source': 'yahoo-via-yfinance',
                    'providerVersion': yf.__version__, 'retrievedAt': datetime.now(timezone.utc).isoformat(), 'bars': bars}
         validate(dataset)
-        path.write_text(json.dumps(dataset), encoding='utf-8')
-        results.append({'symbol': symbol, 'state': 'downloaded', 'bars': len(bars), 'from': bars[0]['date'], 'to': bars[-1]['date']})
+        results.append(store(path, dataset, cache))
     return results
+
+
+def store(path, dataset, cache=DAILY):
+    """The data steward decides: a rejected download leaves the previous file in place (fail closed); an accepted one
+    archives the version it replaces, by fingerprint, so earlier results stay reproducible."""
+    import data_steward
+    old = json.loads(path.read_text(encoding='utf-8')) if path.exists() else None
+    peers = [json.loads(p.read_text(encoding='utf-8')) for p in sorted(cache.glob('*-1d.json')) if p != path]
+    quality = data_steward.review(dataset, old, peers)
+    bars = dataset['bars']
+    summary = {'symbol': dataset['symbol'], 'bars': len(bars), 'from': bars[0]['date'], 'to': bars[-1]['date'],
+               'quality': quality['verdict'], 'fingerprint': quality['fingerprint']}
+    if quality['verdict'] == 'reject':
+        return {**summary, 'state': 'kept-previous' if old else 'rejected', 'issues': quality['issues']}
+    if old and data_steward.fingerprint(old) != quality['fingerprint']:
+        summary['archived'] = data_steward.archive(path, old, cache / 'history').name
+    path.write_text(json.dumps(dataset), encoding='utf-8')
+    return {**summary, 'state': 'downloaded', **({'warnings': quality['issues']} if quality['issues'] else {})}
 
 
 def load(symbols, cache=DAILY):

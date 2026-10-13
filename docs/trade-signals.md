@@ -45,6 +45,38 @@ How accepted trades are sized:
 
 An accepted review is an **order intent**, not an order. The bot still reserves it through `POST /v1/paper/orders`, which re-checks every limit at that moment.
 
+## Independent challengers (SPECIALIST-01, migration 041)
+
+Before a proposal is reviewed, **another bot** may challenge it with `POST /v1/trading/signals/challenges` (trader or researcher bot credential):
+- the stance is `oppose` or `support-with-caveat`;
+- it states an argument and can cite verified evidence;
+- each bot may challenge once, never its own proposal, and only before the review.
+
+Rules `signal-risk-v2`:
+- An **opposing challenge with verified evidence** sizes a high-conviction long as medium, and records `evidenced-objection-sized-as-medium`.
+- Unevidenced objections stay visible but change nothing.
+
+**Scoring challengers.** The query shows each signal's challenges and a `challengerRecord`:
+- an opposition is right when the proposer's call turned out wrong;
+- a supported-with-caveat challenge is right when it turned out right.
+
+So challengers must earn their place like any other bot.
+
+**From the desk.** The trading desk supplies challengers naturally. `signals_bridge.dissent()` turns every analyst whose view opposed the manager's buy or sell into an `oppose` challenge, in its own words and under its own bot identity.
+
+## Closing the loop automatically: the signal scorer
+
+[`integrations/trading-desk/signal_scorer.py`](../integrations/trading-desk/signal_scorer.py) runs in the organisation cycle (step `score-signals`). It finds every reviewed proposal whose horizon has passed and that has no outcome. For each one it takes **two identities**:
+
+| Step | Identity | What happens |
+| --- | --- | --- |
+| 1 | The **price reporter** (researcher) | Submits the closing price of the first session at or after the horizon as evidence. The price comes from the steward-checked daily cache and is attributed to the owner-approved source `market-yahoo-daily`. A bar counts only once its session closed at least 30 minutes ago. |
+| 2 | The **price checker** (evaluator) | Re-reads that bar itself. It verifies the evidence only if the stored text matches exactly (content-bound review), then records the outcome. |
+
+The backend then scores the call. That fills the bot's track record and its challengers' records, which in turn feed fitness, releases and alerts. Scoring the same proposal twice is not possible.
+
+`scripts/signal-loop.test.mjs` proves the whole path end to end: the real compiled backend with test credentials, plus the real Python scorer.
+
 ## Scoring rule
 
 Every bot is scored the same way:

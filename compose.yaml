@@ -1,0 +1,31 @@
+# Paper-mode backend in a hardened container. Usage (from WSL or a Linux VM, in the project folder):
+#   docker compose up -d --build     start (reads credentials and limits from .env at run time)
+#   docker compose ps                health
+#   docker compose down              stop (data stays in the paper-data volume)
+# The port is published on localhost only; put a TLS reverse proxy in front before exposing it beyond the machine.
+services:
+  backend:
+    build: .
+    image: trading-organisation-backend:local
+    env_file: .env
+    environment:
+      APP_MODE: paper
+      HOST: 0.0.0.0
+      PORT: "3000"
+      DATABASE_PATH: /data/paper
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - paper-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 256
+    mem_limit: 1g
+    restart: unless-stopped
+    stop_grace_period: 20s
+volumes:
+  paper-data: {}

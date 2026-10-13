@@ -61,6 +61,32 @@ class MeetingTests(unittest.TestCase):
         self.assertEqual((sell['action'], sell['conviction'], sell['invalidation']), ('exit', 'low', 'The desk risk stop is hit.'))
 
 
+class DissentTests(unittest.TestCase):
+    def test_analysts_against_the_managers_action_become_challengers_under_their_own_identity(self):
+        record = MeetingTests.record(None, 'buy', {'trend-analyst': ('bullish', 'high'), 'news-analyst': ('bearish', 'high'),
+                                                   'reversion-analyst': ('bearish', 'low')})
+        bots = {'trend-analyst': 'trend-bot', 'news-analyst': 'news-bot'}  # reversion has no organisation identity here
+        out = sb.dissent(record, bots)
+        self.assertEqual([(c['botId'], c['stance']) for c in out], [('news-bot', 'oppose')])
+        self.assertTrue(out[0]['argument'].startswith('news-analyst is bearish (high conviction): r'))
+        self.assertEqual(sb.dissent(MeetingTests.record(None, 'hold', {'news-analyst': ('bearish', 'high')}), bots), [])  # nothing to oppose
+
+        sent = []
+
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+            def read(self, n): return json.dumps({'id': 'c1'}).encode()
+
+        def opener(req, timeout):
+            sent.append((req.full_url, req.headers['Authorization'], json.loads(req.data)))
+            return Response()
+        env = {'API_URL': 'http://127.0.0.1:3000', 'PRINCIPALS_JSON': json.dumps([{'role': 'researcher', 'botId': 'news-bot', 'token': 'news-token'}])}
+        sb.submit_challenges('sig-1', out, env, opener)
+        self.assertEqual(sent[0][:2], ('http://127.0.0.1:3000/v1/trading/signals/challenges', 'Bearer news-token'))
+        self.assertEqual(sent[0][2]['signalId'], 'sig-1')
+
+
 class SubmitTests(unittest.TestCase):
     def test_each_proposal_uses_the_credential_bound_to_its_bot(self):
         sent = []

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture, config, owner, researcher, evaluator, trader, market, key } from './helpers.js';
-import { TradeSignals, scoreCall, trackRecord, COST_BPS } from '../src/trade-signals.js';
+import { TradeSignals, scoreCall, trackRecord, challengerRecord, COST_BPS } from '../src/trade-signals.js';
 import { Database } from '../src/database.js';
 import { createApp } from '../src/app.js';
 
@@ -127,6 +127,38 @@ test('outcomes are scored only after the horizon, by an independent evaluator, i
     assert.equal(mine.signals.find(s => s.id === fresh.id)!.review!.outcome, 'accepted');
     assert.throws(() => f.signals.query(trader, { botId: 'another-bot' }), says(/own signals/));
   } finally { await f.db.close(); }
+});
+
+test('an independent challenger argues before review; an evidenced objection halves a high-conviction size', async () => {
+  const f = await setup(); try {
+    await f.org.bot(owner, key(), { id: 'skeptic', name: 'Skeptic', department: 'desk', specialty: 'challenge', method: 'reasoning', contribution: 'Challenger', budgetPaise: '0' });
+    const skeptic = { id: 'skeptic-worker', role: 'researcher' as const, botId: 'skeptic' };
+    const high = await f.signals.propose(trader, key(), f.long);
+    assert.throws(() => f.signals.challenge(evaluator, key(), { signalId: high.id, stance: 'oppose', argument: 'x' })); // evaluators review, not argue
+    await assert.rejects(() => f.signals.challenge(trader, key(), { signalId: high.id, stance: 'oppose', argument: 'Second thoughts' }), says(/own proposal/));
+    await f.signals.challenge(skeptic, key(), { signalId: high.id, stance: 'oppose', argument: 'Results due next week; drawdown risk', evidenceId: f.e.evidenceId });
+    await assert.rejects(() => f.signals.challenge(skeptic, key(), { signalId: high.id, stance: 'oppose', argument: 'Again' }), says(/already challenged/));
+    const reviewed = await f.signals.review(evaluator, key(), { signalId: high.id });
+    assert.deepEqual([reviewed.quantity, reviewed.reasons], ['25', ['evidenced-objection-sized-as-medium', 'sized-by-available-capital', 'conviction-medium']]);
+    assert.equal(reviewed.rulesVersion, 'signal-risk-v2');
+    await assert.rejects(() => f.signals.challenge({ ...skeptic, id: 'other', botId: 'bot-two' }, key(), { signalId: high.id, stance: 'oppose', argument: 'Late' }),
+      says(/before the review/));
+
+    // an objection without evidence is recorded and visible, but does not change the size
+    const another = await f.signals.propose(trader, key(), { ...f.long, thesis: 'Second idea' });
+    await f.signals.challenge(skeptic, key(), { signalId: another.id, stance: 'oppose', argument: 'I just do not like it' });
+    assert.equal((await f.signals.review(evaluator, key(), { signalId: another.id })).quantity, '50');
+    const view = await f.signals.query(owner, {});
+    assert.equal(view.signals.find(s => s.id === another.id)!.challenges[0]!.argument, 'I just do not like it');
+  } finally { await f.db.close(); }
+});
+
+test('challengers are scored: an opposition is right when the call was wrong', () => {
+  const record = challengerRecord([
+    { outcome: { correct: false }, challenges: [{ challengerBotId: 'skeptic', stance: 'oppose' }] },
+    { outcome: { correct: true }, challenges: [{ challengerBotId: 'skeptic', stance: 'oppose' }, { challengerBotId: 'ally', stance: 'support-with-caveat' }] },
+    { outcome: null, challenges: [{ challengerBotId: 'skeptic', stance: 'oppose' }] }]);
+  assert.deepEqual(record, [{ botId: 'ally', scored: 1, right: 1, opposed: 0, accuracy: 1 }, { botId: 'skeptic', scored: 2, right: 1, opposed: 2, accuracy: 0.5 }]);
 });
 
 test('signal routes are registered and guarded by role', async () => {

@@ -92,6 +92,42 @@ def from_meeting(record, symbol, bot_id, evidence_ids, now, model=None):
             'invalidation': (best['invalidation'] if best and best['invalidation'] != 'n/a' else 'The desk risk stop is hit.')[:300]}
 
 
+def dissent(record, analyst_bots):
+    """Challenges from a desk meeting: every analyst whose valid view opposes the manager's buy or sell files an
+    'oppose' challenge, in its own words, under its own bot identity. Holds have nothing to oppose."""
+    against = {'buy': 'bearish', 'sell': 'bullish'}.get(record.get('action'))
+    out = []
+    for role, log in sorted(record['bots'].items()):
+        if against and role in analyst_bots and log.get('outcome') == 'valid' and log['opinion']['stance'] == against:
+            reasons = '; '.join(str(r) for r in log['opinion'].get('reasons', [])[:3])
+            out.append({'botId': analyst_bots[role], 'stance': 'oppose',
+                        'argument': f"{role} is {against} ({log['opinion']['conviction']} conviction): {reasons}"[:600]})
+    return out
+
+
+def submit_challenges(signal_id, challenges, env, opener=None):
+    """Each challenge goes with the credential bound to its own analyst bot."""
+    from urllib import request as urlrequest
+    from urllib.error import HTTPError, URLError
+    opener = opener or urlrequest.urlopen
+    sent = []
+    for c in challenges:
+        base, token = credential(env, c['botId'])
+        body = json.dumps({'signalId': signal_id, 'stance': c['stance'], 'argument': c['argument']}, sort_keys=True)
+        req = urlrequest.Request(base + '/v1/trading/signals/challenges', data=body.encode(), method='POST', headers={
+            'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json',
+            'Idempotency-Key': 'challenge-' + hashlib.sha256((c['botId'] + body).encode()).hexdigest()[:64]})
+        try:
+            with opener(req, timeout=15) as response:
+                sent.append({**json.loads(response.read(65537)), 'botId': c['botId']})
+        except HTTPError as error:
+            error.close()
+            raise RuntimeError(f"Challenge by {c['botId']} refused (HTTP {error.code})") from None
+        except (URLError, OSError, ValueError):
+            raise RuntimeError(f"Challenge by {c['botId']} was not acknowledged; rerun to recover safely") from None
+    return sent
+
+
 def credential(env, bot_id):
     """API origin and the one credential bound to this bot (trader or researcher), from the environment or .env."""
     values = {k: env.get(k) for k in ('API_URL', 'PRINCIPALS_JSON')}

@@ -30,6 +30,29 @@ A **department** is a charter with:
 - Every change to a department is audited.
 - A closed department can be reopened through a new approved proposal with a fresh charter.
 
+## Bot births: opportunity-driven growth (LIFE-01)
+
+Code: [`backend/src/bot-births.ts`](../backend/src/bot-births.ts) (migration 040). Tests: `backend/test/bot-births.test.ts`.
+
+**Proposing.** A research or evaluator bot proposes a new specialist with `POST /v1/bots/births/proposals`. It gives:
+- the bot's id and name;
+- an **active** registered department;
+- specialty and method;
+- its contribution and the opportunity it addresses;
+- a **measurable success criterion**, such as "beats always-neutral, sign test over 20+ disagreements";
+- 1–10 pieces of verified evidence.
+
+**Novelty.** It uses the same capability key as manual creation, `department:specialty:method`. A proposal that duplicates any of these is refused:
+- an existing bot;
+- a lifecycle blueprint;
+- another pending proposal.
+
+`GET /v1/bots/births` lists similar bots so the owner can weigh up overlap.
+
+**Owner decision.** `POST /v1/bots/births/decisions` is owner only.
+- **Approval** re-checks that the department is still active and the capability still new. It then creates the bot in **school with zero budget**, mentored by the department lead unless the owner names another mentor. Trading still requires the academy's qualification.
+- **Rejection** keeps the record and frees the capability for a better-argued proposal.
+
 ## What it does not do
 
 - **It moves no money.** Budgets are ceilings, and bots never set or change them.

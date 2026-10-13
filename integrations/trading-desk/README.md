@@ -419,6 +419,26 @@ Because no price-only tool beat holding, the curriculum teaches **habits** (stay
 integrations\skfolio\.venv\Scripts\python.exe integrations\trading-desk\quant_advisor.py evaluate --from 2022-10-03 --from 2024-10-01
 ``` Files are in `.local/trading-desk/curriculum/`. The replay needs the local model server, about one call per held-out month.
 
+## Data steward: no bad download replaces good data (MARKET-01)
+
+`daily.py fetch --refresh` no longer overwrites price files blindly. `data_steward.py` reviews every new download against the previous version and the other shares:
+
+| Check | Verdict | Why |
+| --- | --- | --- |
+| A close-to-close move beyond 20% in one session | **reject** | Most likely an unadjusted split or bonus, or a bad print. Large NSE shares rarely move that much. |
+| History rewritten: more than 4 adjustment steps, or a blip shorter than 5 sessions | **reject** | Dividends and splits rescale the past in a few clean steps. Anything else means the past changed. |
+| History shrank by more than 5 bars | **reject** | Data was lost |
+| Last bar more than 7 days old | warning | Stale feed |
+| Sessions missing where most other shares traded | warning | Provider gap |
+
+**A rejected download leaves the previous file untouched** (state `kept-previous`). An accepted one archives the version it replaces in `.local/trading-desk/daily/history/<symbol>-1d-<fingerprint>.json`, so any earlier result can be reproduced on the exact data it used. Every refresh reports each file's quality and fingerprint.
+
+**Check on 13 October 2026:** all eight cached files pass, with no extreme moves, no gaps and current data. The 2024 Reliance 1:1 bonus, for example, is correctly adjusted, so earlier research ran on clean prices.
+
+```cmd
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\data_steward.py report
+```
+
 ## Regime study: which behaviour pays in which market (13 October 2026)
 
 `regime_study.py` asks whether any rule's edge over the basket holds in every kind of market or only in some. It needs no model and no network. Each month, every rule's weights are decided from completed days only and held to the next month. The month is grouped by breadth at the decision: how many of the eight shares were above their 200-day average. Returns are gross, to isolate behaviour. Covers 50 months, August 2022 to September 2026: 28 broad uptrend, 16 mixed, 6 broad downtrend.

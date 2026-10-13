@@ -20,7 +20,25 @@ The healthy supervising process enforces a default 10-second deadline per arm (c
 
 These controls do not restrict filesystem or network access under the current OS identity, limit memory/disk consumption, protect the parent from hostile code, or guarantee descendant cleanup after an OS/parent crash. Solvers must not spawn descendants. Temporary working directories and isolated Python import flags are not a security boundary. Strong OS isolation and independently trusted execution evidence remain prerequisites for unattended generated-code execution and release approval.
 
-A Docker Linux adapter was added in v0.1.16. It requires a full local `sha256:` image ID, makes no pulls, enforces Linux/cgroup-v2 prerequisites and checks the effective runtime guard. It requests no network or host mounts, a read-only root, non-root UID/GID, dropped capabilities, no-new-privileges, seccomp, CPU/memory/PID limits and bounded tmpfs. There is no fallback to trusted-local execution. Live verification remains deferred because Docker Desktop did not establish a usable engine; mocked transport and runtime-guard tests are not live isolation proof.
+A Docker Linux adapter was added in v0.1.16. It requires a full local `sha256:` image ID, makes no pulls, enforces Linux/cgroup-v2 prerequisites and checks the effective runtime guard. It requests no network or host mounts, a read-only root, non-root UID/GID, dropped capabilities, no-new-privileges, seccomp, CPU/memory/PID limits and bounded tmpfs. There is no fallback to trusted-local execution.
+
+**Live verification passed on 13 October 2026.** Earlier attempts failed because hardware virtualisation was off in the laptop's firmware, so Docker Desktop never had a working engine. After the owner enabled it, the setup was:
+- Ubuntu 24.04 in WSL 2: systemd, cgroup v2, kernel 6.18;
+- Docker Engine 29.1.3 (`docker.io`), installed inside Ubuntu rather than Docker Desktop;
+- the official `python:3.12-slim` image, pinned as `sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1`.
+
+`verify_artifact_sandbox.py`, run inside Ubuntu, reported `passed`:
+- the effective privilege, filesystem, network and resource guards held, and the solver contract passed;
+- a write to the root filesystem and an external connection were both refused;
+- a 0.5-second timeout fired, and the container was confirmed removed.
+
+No sandbox containers were left behind. The report is in `.local/artifact-sandbox-verification.json`. Run it again with:
+
+```cmd
+wsl -d Ubuntu-24.04 -u root -- bash -c "cd /mnt/c/Users/<you>/.../Nexus/integrations/skfolio && python3 verify_artifact_sandbox.py --image sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1"
+```
+
+This is local containment evidence, not remote attestation (`remoteAttestation: false`).
 
 Version 0.1.17 added durable ownership records before creation, nonce labels, exact container/image/name matching and removal by verified container ID. Cleanup uncertainty blocks new execution. `artifact_executor.py sandbox-recover` recovers recorded stale/failed operations; explicit absence acknowledgement is needed for uncertain creation. Recovery runs when invoked or on a later operation, not as a continuous reaper. Parent death does not guarantee immediate cleanup.
 
