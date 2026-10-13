@@ -33,3 +33,17 @@ Workers run only an authorised release, so moving to a stronger model is a contr
 The test `a model switch: evaluate, canary beside the active release, activate, then roll back in one step` plays exactly this out, from a 4B release to an Opus release.
 
 The worker gate refuses to run if the registry cannot be reached. An unverified version is never treated as allowed.
+
+## Qualifications expire (SCHOOL-01)
+
+An evaluation is valid for **180 days**. Staging a release as canary or active needs an evaluation newer than that. An active release whose newest evaluation is older raises the `release-evaluation-expired` alert until it is re-tested on recent data. Markets change, so a qualification earned long ago must be re-earned.
+
+## Enforced in the trading path (migration 043)
+
+Release control does not depend on workers remembering to call the gate. **The backend enforces it at proposal time:**
+- **After a release is registered,** `POST /v1/trading/signals` accepts a proposal only when its `model` and `promptVersion` match the bot's active release or a canary. Anything else is refused with *not an authorised release*.
+- **Registered but nothing live:** a bot with releases but none active or in canary cannot propose at all.
+- **Never registered:** bots that have never registered a release work as before.
+- **Stamping:** each proposal records the `releaseId` that made it. The bot's scorecard splits scored calls `byRelease`, so a canary's **live** accuracy can be compared with the active release's before you promote it.
+
+(The code fingerprint is checked by the worker gate. Proposals carry only the model and prompt version.)

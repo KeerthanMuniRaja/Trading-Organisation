@@ -5,6 +5,8 @@ import { Database, Sql, audit } from './database.js';
 import { verifiedEvidence } from './organisation.js';
 import { available, balance, journal } from './treasury.js';
 
+const priceEvidence=z.object({evidenceId:z.uuid(),pricePaise:z.string().regex(/^[1-9][0-9]{0,13}$/),observedAt:timestamp}).strict();
+
 export class PaperTrading {
   constructor(private readonly db:Database,private readonly config:Config) {}
   quote(actor:Actor,key:string,raw:unknown) {
@@ -23,7 +25,17 @@ export class PaperTrading {
     permit(actor,'trader');requireThat(actor.botId===botId,'Credential is bound to another bot',403);
     const bot=(await tx.query("SELECT *,budget_paise::text AS budget FROM bots WHERE id=$1 AND state='paper' AND lifecycle_managed=false",[botId])).rows[0];requireThat(bot,'Bot is not qualified for paper trading',403);return bot;
   }
-  private async price(tx:Sql,ticker:string,side:'buy'|'sell') {
+  // End-of-day execution: instead of a live quote, a fill may use a price stated in verified evidence from an approved
+  // source (e.g. the next session's open, reported and independently verified). The same slippage, fees and limits apply.
+  private async evidencePrice(tx:Sql,ticker:string,e:{evidenceId:string;pricePaise:string;observedAt:string}) {
+    const row=(await tx.query('SELECT e.content,e.status,s.approved FROM evidence e JOIN sources s ON s.id=e.source_id WHERE e.id=$1',[e.evidenceId])).rows[0];
+    requireThat(row&&row.status==='verified'&&row.approved===true,'Price evidence must be verified and from an approved source');
+    requireThat(String(row.content).includes(`NSE:${ticker} `)&&String(row.content).includes(` ${e.pricePaise} paise`),'Price evidence does not state this price for this share');
+    const at=Date.parse(e.observedAt);requireThat(at<=Date.now()+60000&&at>=Date.now()-7*86400000,'Price evidence must be from the last 7 days');
+    return BigInt(e.pricePaise);
+  }
+  private async price(tx:Sql,ticker:string,side:'buy'|'sell',evidence?:{evidenceId:string;pricePaise:string;observedAt:string}) {
+    if(evidence){const base=await this.evidencePrice(tx,ticker,evidence);return side==='buy'?base+ceilBps(base,this.config.slippageBps):base*(10000n-BigInt(this.config.slippageBps))/10000n;}
     const quote=(await tx.query('SELECT q.*,q.ask::text AS a,q.bid::text AS b FROM quotes q JOIN sources s ON s.id=q.source_id WHERE q.symbol=$1 AND s.approved=true',[ticker])).rows[0];
     requireThat(quote&&Math.abs(Date.now()-new Date(quote.observed_at).getTime())<=60000,'Fresh approved quote required');
     return side==='buy'?BigInt(quote.a)+ceilBps(BigInt(quote.a),this.config.slippageBps):BigInt(quote.b)*(10000n-BigInt(this.config.slippageBps))/10000n;
@@ -36,10 +48,11 @@ export class PaperTrading {
     requireThat(!invalidLessons.rows.length&&!invalidEvaluation.rows.length,'Qualification evidence has been revoked');
   }
   reserve(actor:Actor,key:string,raw:unknown) {
-    permit(actor,'trader');const input=parse(z.object({botId:id,symbol,side:z.enum(['buy','sell']),quantity:z.number().int().min(1).max(1000000),evidenceId:z.uuid()}).strict(),raw);
+    permit(actor,'trader');const input=parse(z.object({botId:id,symbol,side:z.enum(['buy','sell']),quantity:z.number().int().min(1).max(1000000),evidenceId:z.uuid(),
+      priceEvidence:priceEvidence.optional()}).strict(),raw);
     return this.db.command(actor,'reserve-order',key,input,async tx=>{
       const bot=await this.tradingBot(tx,actor,input.botId);await verifiedEvidence(tx,input.evidenceId);
-      const price=await this.price(tx,input.symbol,input.side),gross=bounded(price*BigInt(input.quantity)),fee=ceilBps(gross,this.config.feeBps);
+      const price=await this.price(tx,input.symbol,input.side,input.priceEvidence),gross=bounded(price*BigInt(input.quantity)),fee=ceilBps(gross,this.config.feeBps);
       let reserved=0n;
       if(input.side==='buy') {
         await this.permitNewRisk(tx,bot.id);reserved=bounded(gross+fee);
@@ -59,11 +72,11 @@ export class PaperTrading {
     });
   }
   fill(actor:Actor,key:string,raw:unknown) {
-    permit(actor,'trader');const input=parse(z.object({orderId:z.uuid()}).strict(),raw);
+    permit(actor,'trader');const input=parse(z.object({orderId:z.uuid(),priceEvidence:priceEvidence.optional()}).strict(),raw);
     return this.db.command(actor,'fill-order',key,input,async tx=>{
       const order=(await tx.query('SELECT *,quantity::text AS qty,reserved_paise::text AS reserved FROM orders WHERE id=$1',[input.orderId])).rows[0];requireThat(order,'Order not found',404);
       const bot=await this.tradingBot(tx,actor,order.bot_id);requireThat(order.status==='reserved','Order is not reserved');await verifiedEvidence(tx,order.evidence_id);
-      const price=await this.price(tx,order.symbol,order.side),quantity=BigInt(order.qty),gross=bounded(price*quantity),fee=ceilBps(gross,this.config.feeBps);
+      const price=await this.price(tx,order.symbol,order.side,input.priceEvidence),quantity=BigInt(order.qty),gross=bounded(price*quantity),fee=ceilBps(gross,this.config.feeBps);
       const position=(await tx.query('SELECT quantity::text,cost_paise::text FROM positions WHERE bot_id=$1 AND symbol=$2',[order.bot_id,order.symbol])).rows[0];
       let positionQty=BigInt(position?.quantity??0),positionCost=BigInt(position?.cost_paise??0),journalId:string;
       if(order.side==='buy') {

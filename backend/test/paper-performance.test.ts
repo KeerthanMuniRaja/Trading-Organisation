@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture, config, owner, evaluator, researcher, trader, market, key } from './helpers.js';
 import { PaperPerformance, curveStats, indiaDay } from '../src/paper-performance.js';
+import { OwnerAlerts } from '../src/alerts.js';
 import { Database } from '../src/database.js';
 import { createApp } from '../src/app.js';
 
@@ -37,6 +38,46 @@ test('per-bot profit and loss comes from the ledger and open positions are marke
     const own = await new PaperPerformance(f.db).report(trader); // a trader sees only its own bot, without organisation totals
     assert.deepEqual(own.bots.map(b => b.botId), ['bot-one']);
     assert.equal(own.organisation, null);
+  } finally { await f.db.close(); }
+});
+
+test('verified daily closes mark positions when they are newer than the last quote, and only move forward', async () => {
+  const f = await fixture(); try {
+    const e = await f.evidence();
+    await f.deposit('500000');
+    await f.org.bot(owner, key(), { id: 'bot-one', name: 'bot-one', department: 'desk', specialty: 'one', method: 'test', contribution: 'Marks fixture', budgetPaise: '1000000' });
+    await f.db.transaction(tx => tx.query("UPDATE bots SET state='paper' WHERE id='bot-one'"));
+    await f.paper.quote(market, key(), { symbol: 'DEMO', bidPaise: '10000', askPaise: '10000', observedAt: new Date().toISOString(), sourceId: e.sourceId });
+    const order = await f.paper.reserve(trader, key(), { botId: 'bot-one', symbol: 'DEMO', side: 'buy', quantity: 10, evidenceId: e.evidenceId });
+    await f.paper.fill(trader, key(), { orderId: order.id });
+    const close = async (price: string, at: string) => {
+      const id = (await f.org.evidence(researcher, key(), { sourceId: e.sourceId, kind: 'dataset', content: `Daily close of NSE:DEMO on ${at.slice(0, 10)}: ${price} paise.`, publishedAt: at })).id as string;
+      await f.org.reviewEvidence(evaluator, key(), { evidenceId: id, status: 'verified' });
+      return { evidenceId: id, pricePaise: price, observedAt: at };
+    };
+    const perf = new PaperPerformance(f.db);
+    const position = async () => (await perf.report(owner)).bots[0]!.openPositions[0]!;
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString(), soon = new Date().toISOString(); // after the quote
+
+    await perf.mark(evaluator, key(), { symbol: 'DEMO', priceEvidence: await close('9000', yesterday) });
+    assert.deepEqual([(await position()).valuation, (await position()).marketValuePaise], ['latest-approved-bid', '100000']); // the quote is newer
+    const later = await close('12500', soon);
+    await perf.mark(evaluator, key(), { symbol: 'DEMO', priceEvidence: later });
+    const marked = await position();
+    assert.deepEqual([marked.valuation, marked.marketValuePaise, marked.unrealisedPaise, marked.stale], ['verified-close', '125000', '25000', false]);
+
+    assert.equal((await perf.mark(evaluator, key(), { symbol: 'DEMO', priceEvidence: later })).duplicate, true); // same mark, any key
+    await assert.rejects(() => perf.mark(evaluator, key(), { symbol: 'DEMO', priceEvidence: { ...later, pricePaise: '13000' } }), /does not state this price/);
+    await assert.rejects(async () => perf.mark(evaluator, key(), { symbol: 'DEMO', priceEvidence: await close('9500', yesterday) }), /move forward/);
+    assert.throws(() => perf.mark(trader, key(), { symbol: 'DEMO', priceEvidence: later }));
+    assert.deepEqual((await perf.marks(trader)).marks.map(m => [m.symbol, m.pricePaise]), [['DEMO', '12500']]);
+    await assert.rejects(() => f.db.transaction(tx => tx.query('DELETE FROM price_marks')));
+
+    // with the live quote gone stale, the fresh verified close still prices the position: no stale-price alert
+    await f.db.transaction(tx => tx.query("UPDATE quotes SET observed_at=now()-interval '3 days'"));
+    const raised = (await new OwnerAlerts(f.db, f.cfg).cycle(owner, key())).raised.map(a => a.rule);
+    assert.ok(!raised.includes('stale-position-prices'), raised.join());
+    assert.equal((await f.ops.verifyAudit(owner)).valid, true);
   } finally { await f.db.close(); }
 });
 

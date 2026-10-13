@@ -43,7 +43,37 @@ How accepted trades are sized:
 - **A stated `targetWeightPct`** (migration 033) caps a long at that share of the bot's budget in the instrument, counting what the bot already holds or has reserved there. The reason then reads `sized-by-target-weight`.
 - **Exits** sell the bot's whole unreserved position.
 
-An accepted review is an **order intent**, not an order. The bot still reserves it through `POST /v1/paper/orders`, which re-checks every limit at that moment.
+An accepted review is an **order intent**, not an order.
+
+**Execution (PAPER-01, migration 042).** The proposing bot executes the intent with `POST /v1/trading/signals/executions` and `{signalId}`, using its own trader credential.
+- **One order, permanently linked.** The intent becomes exactly one paper order and fill, linked to the proposal: proposal → order → fill → realised P&L for sells. This goes through the paper engine, which re-checks limits, quote freshness, qualification and evidence at that moment.
+- **Retries resume; they never double-trade.** Every idempotency key derives from the signal, so a retry after a lost answer or a failed fill resumes the same order.
+- **A failed fill keeps its reservation.** With a stale price, the same call succeeds once fresh quotes arrive. If the price moved beyond the reservation, cancel the order and re-propose.
+- **Visibility.** The signal query shows each signal's execution.
+
+## End-of-day execution at verified prices (no live feed needed)
+
+The paper engine normally fills at a live approved quote no older than 60 seconds. Without a paid real-time feed, no such quote exists. Faking freshness, by labelling yesterday's close as "now", would be dishonest. A daily or monthly organisation can instead trade **end of day**, the way the backtests already do:
+
+1. **Review at a verified close.** `POST /v1/trading/signals/reviews` may include `priceEvidence {evidenceId, pricePaise, observedAt}` when no fresh quote exists. The evidence must be verified, from an approved source, state `NSE:<share> … <price> paise`, and be at most 7 days old. Sizing and the reference price use it, and the review records `priced-from-verified-close`.
+2. **Fill at a verified later price.** `POST /v1/trading/signals/executions` may include `priceEvidence` for the next session's open. It must be observed **after the review that accepted the trade**, so it can never be chosen with hindsight. The paper engine re-checks that evidence itself, then applies the same slippage, fees, limits, journals and positions as a live fill.
+
+The prices come from the steward-checked daily data. One identity reports them as evidence and an independent one verifies them, as the signal scorer already does. Existing calls without `priceEvidence` behave exactly as before.
+
+**The end-of-day trader** ([`integrations/trading-desk/eod_trader.py`](../integrations/trading-desk/eod_trader.py)) runs as the cycle step `eod-trading`, after market data and news and before scoring.
+
+| Step | What happens |
+| --- | --- |
+| **Mark** | Every share's latest settled close is reported, verified and recorded as its valuation mark ([verified marks](paper-performance.md#verified-end-of-day-marks-paper-02-migration-044)), so open positions show real P&L. |
+| **Review** | Proposals awaiting review (`pending: 'unreviewed'`) are priced at the latest settled close. The price reporter (researcher) submits it, the price checker (evaluator) verifies an exact match, and the evaluator reviews at that price. |
+| **Execute** | Accepted, unexecuted proposals (`pending: 'unexecuted'`) take the first session **open strictly after the review**, reported and verified the same way. The proposing bot then executes with its own bot-bound trader credential. |
+
+**When a proposal waits instead.** It is reported as waiting, and nothing is guessed, when:
+- its next open is not in the data yet;
+- its bot has no credential configured;
+- the price would be older than 7 days.
+
+`scripts/eod-loop.test.mjs` proves it end to end against the real backend. Today's proposal is reviewed at the verified close and waits for tomorrow's open. An earlier-accepted proposal fills at the verified next open. A second run repeats nothing.
 
 ## Independent challengers (SPECIALIST-01, migration 041)
 
@@ -63,6 +93,37 @@ Rules `signal-risk-v2`:
 So challengers must earn their place like any other bot.
 
 **From the desk.** The trading desk supplies challengers naturally. `signals_bridge.dissent()` turns every analyst whose view opposed the manager's buy or sell into an `oppose` challenge, in its own words and under its own bot identity.
+
+## The rule bot: a model-free member
+
+Without the local model running, no bot proposes anything, so the whole pipeline sits idle. [`integrations/trading-desk/rule_bot.py`](../integrations/trading-desk/rule_bot.py) is an organisation member that needs no model. It runs the best rule from the studies, **top-3 momentum**: hold the three shares with the strongest 126-session (about 6-month) return, in equal thirds, and rebalance monthly.
+
+| Step | What happens |
+| --- | --- |
+| **Rank** | From the steward-checked daily cache, settled bars only. Shares with less than 126 sessions of history are left out. |
+| **Cite** | The price reporter (researcher) submits the full ranking, with its closes and a combined dataset fingerprint. The price checker (evaluator) verifies only an exact match. |
+| **Propose** | With the bot's own trader credential: `exit` for holdings that left the top 3, then `enter-long` with `targetWeightPct` 33 for top-3 shares not held. Horizon 30 days, expiry 7 days, model `rules:top3-momentum-6m`, prompt version = the rule's fingerprint, so release control applies unchanged. |
+| **Once a month** | If the bot already proposed this calendar month, it does nothing. If it already holds the top 3, it proposes and cites nothing. `--dry-run` shows the plan without sending anything. |
+
+**Why conviction is `high`.** Medium conviction halves each long's headroom, so the third one-third slot would be starved by the remaining budget. The backtest held three equal thirds. The target weight remains the real cap, and an evidenced objection from another bot still sizes the trade as medium.
+
+**What it is not.** The rule is pure *relative* momentum, exactly as studied (`portfolio_daily.top_momentum`): it always holds three shares, even in a falling market. Its record is mixed, and all of it is on data already seen:
+
+| Period (after costs) | Top-3 momentum | Hold all 8 shares |
+| --- | --- | --- |
+| Oct 2021 – Oct 2024 | 22.1% a year | 21.2% a year |
+| Oct 2024 – Oct 2025 | +0.7% | −2.0% |
+| Oct 2025 – Oct 2026 | **−11.5%**, worst fall 22.6% | −11.0%, worst fall 16.9% |
+
+Gross of costs, it was ahead of the basket in 32 of 50 months (p ≈ 0.03) but behind on average in broad downtrends. Its paper record on new months is the real test, and its fitness and scorecard judge it like any other bot.
+
+**Running it.** It runs as the cycle step `rule-bot`, before `eod-trading`, so its proposals are reviewed in the same run and filled at the next open. The step is skipped until the owner has:
+1. created the bot;
+2. bound a trader credential to it;
+3. registered and evaluated a release, then qualified the bot (`POST /v1/releases/qualifications`);
+4. set `RULE_BOT_ID`.
+
+`scripts/rule-bot-loop.test.mjs` proves the path end to end: the bot proposes the top 3 with verified evidence, the end-of-day trader accepts all three sized by target weight, and a second run in the same month proposes nothing.
 
 ## Closing the loop automatically: the signal scorer
 

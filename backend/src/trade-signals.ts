@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { Config } from './config.js';
 import { Actor, ceilBps, digest, id, parse, permit, requireThat, symbol, timestamp, uuid } from './core.js';
 import { Database, Sql, audit } from './database.js';
+import { PaperTrading } from './paper.js';
+import { liveReleases } from './bot-releases.js';
 import { Allow } from './security.js';
 import { available, balance } from './treasury.js';
 
@@ -32,10 +34,29 @@ const proposalSchema = z.object({
   .refine(v => v.action === 'no-action' || v.invalidation, 'A trade proposal must say what would prove it wrong')
   .refine(v => v.action === 'no-action' || v.evidenceIds.length > 0, 'A trade proposal must cite verified evidence')
   .refine(v => new Set(v.evidenceIds).size === v.evidenceIds.length, 'Evidence listed twice');
-const reviewSchema = z.object({ signalId: z.uuid() }).strict();
+const priceEvidenceSchema = z.object({ evidenceId: z.uuid(), pricePaise: z.string().regex(/^[1-9][0-9]{0,13}$/), observedAt: timestamp }).strict();
+const reviewSchema = z.object({ signalId: z.uuid(), priceEvidence: priceEvidenceSchema.optional() }).strict();
+
+/** A price stated in verified evidence from an approved source, for this share, observed within the last 7 days. */
+export async function verifiedPrice(tx: Sql, ticker: string, e: { evidenceId: string; pricePaise: string; observedAt: string }) {
+  const row = (await tx.query('SELECT e.content,e.status,s.approved FROM evidence e JOIN sources s ON s.id=e.source_id WHERE e.id=$1', [e.evidenceId])).rows[0];
+  requireThat(row && row.status === 'verified' && row.approved === true, 'Price evidence must be verified and from an approved source');
+  requireThat(String(row.content).includes(`NSE:${ticker} `) && String(row.content).includes(` ${e.pricePaise} paise`), 'Price evidence does not state this price for this share');
+  const at = Date.parse(e.observedAt);
+  requireThat(at <= Date.now() + 60_000 && at >= Date.now() - 7 * 86_400_000, 'Price evidence must be from the last 7 days');
+  return BigInt(e.pricePaise);
+}
+// End-of-day execution: an optional verified price observed AFTER the review (e.g. the next session's open) replaces the
+// live quote; the paper engine re-checks the evidence, so the price can never be chosen with hindsight.
+const executeSchema = z.object({ signalId: z.uuid(), priceEvidence: z.object({ evidenceId: z.uuid(), pricePaise: z.string().regex(/^[1-9][0-9]{0,13}$/),
+  observedAt: timestamp }).strict().optional() }).strict();
 const challengeSchema = z.object({ signalId: z.uuid(), stance: z.enum(['oppose', 'support-with-caveat']), argument: text(600), evidenceId: z.uuid().optional() }).strict();
 const outcomeSchema = z.object({ signalId: z.uuid(), exitPricePaise: z.string().regex(/^[1-9]\d{0,15}$/), observedAt: timestamp, evidenceId: z.uuid() }).strict();
-const querySchema = z.object({ botId: id.optional(), limit: z.number().int().min(1).max(200).default(50) }).strict();
+// Cursor pagination (SCALE-01): `before` is the opaque `nextBefore` of the previous page (microsecond time | id), so every
+// row is reachable however many exist; `pending: 'unscored'` returns only reviewed signals still waiting for an outcome.
+const querySchema = z.object({ botId: id.optional(), limit: z.number().int().min(1).max(200).default(50),
+  before: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z\|[0-9a-f-]{36}$/).optional(),
+  pending: z.enum(['unscored', 'unreviewed', 'unexecuted']).optional() }).strict();
 
 /** Was the call right? A long must beat round-trip costs; an exit is right if the price then fell; no-action is right
  *  if no profitable long was missed. Pure, so the rule is testable and identical for every bot. */
@@ -52,7 +73,47 @@ async function verifiedEvidenceIds(tx: Sql, ids: string[]) {
 }
 
 export class TradeSignals {
-  constructor(private readonly db: Database, private readonly config: Config) {}
+  private readonly paper: PaperTrading;
+  constructor(private readonly db: Database, private readonly config: Config) { this.paper = new PaperTrading(db, config); }
+
+  /** Executes an accepted proposal as exactly one paper order and fill, through the paper engine (which re-checks every
+   *  limit, the quote's freshness, the bot's qualification and the evidence). Every key derives from the signal, so any
+   *  retry, after a lost answer or a failed fill, resumes the same order and can never trade twice. */
+  async execute(actor: Actor, key: string, raw: unknown) {
+    permit(actor, 'trader');
+    const input = parse(executeSchema, raw);
+    requireThat(/^[a-zA-Z0-9_-]{8,100}$/.test(key), 'A valid Idempotency-Key is required', 400);
+    const plan = await this.db.transaction(async tx => {
+      const s = (await tx.query(`SELECT s.bot_id,s.symbol,s.expires_at,r.outcome,r.side,r.quantity::text AS quantity,r.created_at AS reviewed_at,
+          (SELECT evidence_id FROM trade_signal_evidence x WHERE x.signal_id=s.id ORDER BY evidence_id LIMIT 1) AS evidence_id,
+          (SELECT row_to_json(e) FROM trade_signal_executions e WHERE e.signal_id=s.id) AS done
+        FROM trade_signals s LEFT JOIN trade_signal_reviews r ON r.signal_id=s.id WHERE s.id=$1`, [input.signalId])).rows[0];
+      requireThat(s, 'Signal not found', 404);
+      requireThat(actor.botId === s.bot_id, 'Only the proposing bot executes its signal', 403);
+      return s;
+    }, false);
+    if (plan.done) return { ...executionView(plan.done), duplicate: true };
+    requireThat(plan.outcome === 'accepted', 'Only an accepted review can be executed');
+    requireThat(new Date(plan.expires_at).getTime() > Date.now(), 'The proposal expired before execution');
+    if (input.priceEvidence) requireThat(Date.parse(input.priceEvidence.observedAt) > new Date(plan.reviewed_at).getTime(),
+      'An end-of-day price must be observed after the review that accepted the trade (no hindsight)');
+    const priced = input.priceEvidence ? { priceEvidence: input.priceEvidence } : {};
+    const order = await this.paper.reserve(actor, `sigexec-reserve-${input.signalId}`, { botId: plan.bot_id, symbol: plan.symbol, side: plan.side,
+      quantity: Number(plan.quantity), evidenceId: String(plan.evidence_id), ...priced });
+    // A failed fill keeps its reservation: the same call can be retried once a fresh quote arrives. If the price moved
+    // beyond the reservation, the paper engine says so; the bot then cancels the order and re-proposes.
+    const fill = await this.paper.fill(actor, `sigexec-fill-${input.signalId}`, { orderId: order.id, ...priced }) as { fillId: string; pricePaise: string; feePaise: string };
+    return this.db.command(actor, 'trade-signal-execution', `sigexec-record-${input.signalId}`, input, async tx => {
+      const journal = (await tx.query('SELECT journal_id FROM fills WHERE id=$1', [fill.fillId])).rows[0]!.journal_id;
+      const pnl = (await tx.query("SELECT COALESCE(SUM(amount),0)::text AS v FROM entries WHERE journal_id=$1 AND account='PNL'", [journal])).rows[0]!.v;
+      const realised = plan.side === 'sell' ? (-BigInt(pnl)).toString() : null; // PNL entries are debits: profit is their negative
+      const row = (await tx.query(`INSERT INTO trade_signal_executions(signal_id,order_id,fill_id,side,quantity,price_paise,fee_paise,realised_paise,executed_by)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`, [input.signalId, order.id, fill.fillId, plan.side, plan.quantity, fill.pricePaise, fill.feePaise,
+        realised, actor.id])).rows[0]!;
+      await audit(tx, actor, 'trade.signal.executed', input.signalId, { orderId: order.id, fillId: fill.fillId, side: plan.side, quantity: plan.quantity });
+      return { ...executionView(row), duplicate: false };
+    });
+  }
 
   propose(actor: Actor, key: string, raw: unknown) {
     permit(actor, 'trader', 'researcher');
@@ -65,6 +126,10 @@ export class TradeSignals {
       const bot = (await tx.query('SELECT state FROM bots WHERE id=$1', [input.botId])).rows[0];
       requireThat(bot, 'Bot not found', 404);
       requireThat(bot.state !== 'retired', 'Retired bots cannot propose trades', 403);
+      // release control (RELEASE-01): once a bot has releases, only its active release or a canary may propose
+      const { registered, releases } = await liveReleases(tx, input.botId);
+      const release = releases.find(r => r.model === input.model && r.prompt_version === input.promptVersion);
+      if (registered) requireThat(release, 'This model and prompt version is not an authorised release of the bot', 403);
       const verified = await verifiedEvidenceIds(tx, input.evidenceIds);
       requireThat(verified.length === input.evidenceIds.length, 'Every cited evidence must be verified and from an approved source');
       const hash = digest(input);
@@ -72,9 +137,10 @@ export class TradeSignals {
       if (old) return { id: String(old.id), duplicate: true };
       const signalId = uuid();
       await tx.query(`INSERT INTO trade_signals(id,bot_id,symbol,action,horizon_days,conviction,probability_pct,thesis,invalidation,expires_at,
-        model,prompt_version,author,content_hash,target_weight_pct) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+        model,prompt_version,author,content_hash,target_weight_pct,release_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
         [signalId, input.botId, input.symbol, input.action, input.horizonDays, input.conviction, input.probabilityPct ?? null, input.thesis,
-          input.invalidation ?? null, input.expiresAt, input.model ?? null, input.promptVersion ?? null, actor.id, hash, input.targetWeightPct ?? null]);
+          input.invalidation ?? null, input.expiresAt, input.model ?? null, input.promptVersion ?? null, actor.id, hash, input.targetWeightPct ?? null,
+          release ? release.id : null]);
       for (const evidenceId of input.evidenceIds) await tx.query('INSERT INTO trade_signal_evidence VALUES($1,$2)', [signalId, evidenceId]);
       await audit(tx, actor, 'trade.signal.proposed', signalId, { botId: input.botId, symbol: input.symbol, action: input.action, conviction: input.conviction });
       return { id: signalId, duplicate: false };
@@ -93,9 +159,17 @@ export class TradeSignals {
       if (existing) return { ...reviewView(existing), duplicate: true };
       const reasons: string[] = [];
       let outcome: 'accepted' | 'rejected' | 'expired' | 'acknowledged' = 'rejected', side: string | null = null, quantity: bigint | null = null;
-      const quote = (await tx.query(`SELECT q.bid::text AS bid,q.ask::text AS ask,q.observed_at FROM quotes q JOIN sources s ON s.id=q.source_id
-        WHERE q.symbol=$1 AND s.approved=true`, [signal.symbol])).rows[0];
-      const fresh = quote && Math.abs(Date.now() - new Date(quote.observed_at).getTime()) <= QUOTE_FRESH_MS;
+      // `fresh` below guarantees a quote wherever it is used
+      let quote = (await tx.query(`SELECT q.bid::text AS bid,q.ask::text AS ask,q.observed_at FROM quotes q JOIN sources s ON s.id=q.source_id
+        WHERE q.symbol=$1 AND s.approved=true`, [signal.symbol])).rows[0] as Record<string, any>;
+      let fresh = quote && Math.abs(Date.now() - new Date(quote.observed_at).getTime()) <= QUOTE_FRESH_MS;
+      let pricedFromClose = false; // informational, recorded after the rule checks (any earlier reason means rejection)
+      if (!fresh && input.priceEvidence) { // end-of-day mode: the latest verified close stands in for a live quote
+        const close = (await verifiedPrice(tx, signal.symbol, input.priceEvidence)).toString();
+        quote = { bid: close, ask: close, observed_at: input.priceEvidence.observedAt };
+        fresh = true;
+        pricedFromClose = true;
+      }
       const reference = fresh ? (BigInt(quote.bid) + BigInt(quote.ask)) / 2n : null;
       if (new Date(signal.expires_at).getTime() <= Date.now()) { outcome = 'expired'; reasons.push('expired-before-review'); }
       else if (signal.action === 'no-action') { outcome = 'acknowledged'; reasons.push('no-action-recorded'); }
@@ -113,11 +187,19 @@ export class TradeSignals {
             const price = BigInt(quote.ask) + ceilBps(BigInt(quote.ask), this.config.slippageBps);
             const perShare = price + ceilBps(price, this.config.feeBps);
             const sum = async (sql: string, params: unknown[]) => BigInt((await tx.query(sql, params)).rows[0]!.value);
-            const allReserved = await sum("SELECT COALESCE(SUM(reserved_paise),0)::text AS value FROM orders WHERE status='reserved'", []);
+            // accepted buy intents not yet executed (and not expired) are already committed: without this, concurrent reviews
+            // would each size against the same room (found by the load test). A reservation stuck after a failed fill may be
+            // counted twice for a while, which errs on the safe side.
+            const pending = (filter: string, params: unknown[]) => sum(`SELECT COALESCE(SUM(r.quantity*r.reference_price_paise),0)::text AS value
+              FROM trade_signal_reviews r JOIN trade_signals s ON s.id=r.signal_id WHERE r.outcome='accepted' AND r.side='buy' AND s.expires_at > now()
+              AND NOT EXISTS (SELECT 1 FROM trade_signal_executions x WHERE x.signal_id=s.id) ${filter}`, params);
+            const allPending = await pending('', []);
+            const allReserved = await sum("SELECT COALESCE(SUM(reserved_paise),0)::text AS value FROM orders WHERE status='reserved'", []) + allPending;
             const own = await sum('SELECT COALESCE(SUM(cost_paise),0)::text AS value FROM positions WHERE bot_id=$1', [signal.bot_id])
-              + await sum("SELECT COALESCE(SUM(reserved_paise),0)::text AS value FROM orders WHERE bot_id=$1 AND status='reserved'", [signal.bot_id]);
+              + await sum("SELECT COALESCE(SUM(reserved_paise),0)::text AS value FROM orders WHERE bot_id=$1 AND status='reserved'", [signal.bot_id])
+              + await pending('AND s.bot_id=$1', [signal.bot_id]);
             const limits: [string, bigint][] = [['order-limit', this.config.maxOrder], ['bot-budget', BigInt(bot.budget) - own],
-              ['available-capital', await available(tx)], ['exposure-limit', this.config.maxExposure - await balance(tx, 'POSITION') - allReserved]];
+              ['available-capital', await available(tx) - allPending], ['exposure-limit', this.config.maxExposure - await balance(tx, 'POSITION') - allReserved]];
             let [binding, room] = limits.reduce((a, b) => (b[1] < a[1] ? b : a));
             // an independent challenger's evidenced objection halves a high-conviction long (deterministic, recorded)
             let conviction = signal.conviction as keyof typeof SIZE;
@@ -128,7 +210,8 @@ export class TradeSignals {
             if (signal.target_weight_pct !== null) {
               // never more than the stated share of the bot's budget in this instrument, counting what it already holds or reserved
               const inSymbol = await sum('SELECT COALESCE(SUM(cost_paise),0)::text AS value FROM positions WHERE bot_id=$1 AND symbol=$2', [signal.bot_id, signal.symbol])
-                + await sum("SELECT COALESCE(SUM(reserved_paise),0)::text AS value FROM orders WHERE bot_id=$1 AND symbol=$2 AND status='reserved'", [signal.bot_id, signal.symbol]);
+                + await sum("SELECT COALESCE(SUM(reserved_paise),0)::text AS value FROM orders WHERE bot_id=$1 AND symbol=$2 AND status='reserved'", [signal.bot_id, signal.symbol])
+                + await pending('AND s.bot_id=$1 AND s.symbol=$2', [signal.bot_id, signal.symbol]);
               const toTarget = BigInt(bot.budget) * BigInt(signal.target_weight_pct) / 100n - inSymbol;
               if (toTarget < allowance) [binding, allowance] = ['target-weight', toTarget];
             }
@@ -145,6 +228,7 @@ export class TradeSignals {
           else { outcome = 'accepted'; side = 'sell'; quantity = free; reasons.push('exit-whole-unreserved-position'); }
         }
       }
+      if (pricedFromClose) reasons.push('priced-from-verified-close');
       const reviewId = uuid();
       const row = (await tx.query(`INSERT INTO trade_signal_reviews(id,signal_id,outcome,reasons,side,quantity,reference_price_paise,quote_observed_at,
         rules_version,reviewer) VALUES($1,$2,$3,$4::text[],$5,$6,$7,$8,$9,$10) RETURNING *`,
@@ -212,24 +296,35 @@ export class TradeSignals {
     const botId = actor.role === 'trader' ? actor.botId : input.botId;
     if (actor.role === 'trader') requireThat(!input.botId || input.botId === actor.botId, 'Traders see only their own signals', 403);
     return this.db.transaction(async tx => {
-      const rows = (await tx.query(`SELECT s.*,r.outcome AS review_outcome,r.reasons,r.side,r.quantity::text AS quantity,
+      const rows = (await tx.query(`SELECT s.*,r.outcome AS review_outcome,r.reasons,r.side,r.quantity::text AS quantity,r.created_at AS reviewed_at,
           r.reference_price_paise::text AS reference,o.move_bps,o.correct,o.brier,
-          ARRAY(SELECT evidence_id::text FROM trade_signal_evidence x WHERE x.signal_id=s.id ORDER BY evidence_id) AS evidence_ids
+          ARRAY(SELECT evidence_id::text FROM trade_signal_evidence x WHERE x.signal_id=s.id ORDER BY evidence_id) AS evidence_ids,
+          (SELECT row_to_json(e) FROM trade_signal_executions e WHERE e.signal_id=s.id) AS execution_row,
+          to_char(s.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at
         FROM trade_signals s LEFT JOIN trade_signal_reviews r ON r.signal_id=s.id LEFT JOIN trade_signal_outcomes o ON o.signal_id=s.id
-        WHERE ($1::text IS NULL OR s.bot_id=$1) ORDER BY s.created_at DESC,s.id DESC LIMIT $2`, [botId ?? null, input.limit])).rows;
+        WHERE ($1::text IS NULL OR s.bot_id=$1) AND ($3::timestamptz IS NULL OR (s.created_at,s.id) < ($3::timestamptz,$4::uuid))
+          AND (NOT $5::boolean OR (r.reference_price_paise IS NOT NULL AND o.signal_id IS NULL))
+          AND (NOT $6::boolean OR (r.signal_id IS NULL AND s.expires_at > now()))
+          AND (NOT $7::boolean OR (r.outcome='accepted' AND s.expires_at > now() AND NOT EXISTS (SELECT 1 FROM trade_signal_executions x WHERE x.signal_id=s.id)))
+        ORDER BY s.created_at DESC,s.id DESC LIMIT $2`, [botId ?? null, input.limit, input.before?.split('|')[0] ?? null, input.before?.split('|')[1] ?? null,
+          input.pending === 'unscored', input.pending === 'unreviewed', input.pending === 'unexecuted'])).rows;
       const signals = rows.map(r => ({ id: String(r.id), botId: r.bot_id, symbol: r.symbol, action: r.action, horizonDays: r.horizon_days,
         conviction: r.conviction, probabilityPct: r.probability_pct, targetWeightPct: r.target_weight_pct, thesis: r.thesis, invalidation: r.invalidation,
         createdAt: new Date(r.created_at).toISOString(), expiresAt: new Date(r.expires_at).toISOString(), evidenceIds: r.evidence_ids,
-        model: r.model, promptVersion: r.prompt_version,
-        review: r.review_outcome ? { outcome: r.review_outcome, reasons: r.reasons, side: r.side, quantity: r.quantity, referencePricePaise: r.reference } : null,
+        model: r.model, promptVersion: r.prompt_version, releaseId: r.release_id ? String(r.release_id) : null,
+        review: r.review_outcome ? { outcome: r.review_outcome, reasons: r.reasons, side: r.side, quantity: r.quantity, referencePricePaise: r.reference,
+          reviewedAt: new Date(r.reviewed_at).toISOString() } : null,
+        execution: r.execution_row ? executionView(r.execution_row) : null,
         outcome: r.correct === null || r.correct === undefined ? null : { moveBps: r.move_bps, correct: r.correct, brier: r.brier === null ? null : Number(r.brier) } }));
       const ids = signals.map(s => s.id);
       const challenges = ids.length ? (await tx.query(`SELECT signal_id,challenger_bot_id,stance,argument,evidence_id FROM trade_signal_challenges
         WHERE signal_id=ANY($1::uuid[]) ORDER BY created_at`, [ids])).rows : [];
       const withChallenges = signals.map(s => ({ ...s, challenges: challenges.filter(c => String(c.signal_id) === s.id).map(c => ({ challengerBotId: c.challenger_bot_id,
         stance: c.stance, argument: c.argument, evidenceId: c.evidence_id ? String(c.evidence_id) : null })) }));
-      return { signals: withChallenges, trackRecord: trackRecord(signals), challengerRecord: challengerRecord(withChallenges),
-        note: 'A track record is descriptive; promotion, retirement and budgets stay owner and lifecycle decisions.' };
+      const last = rows[rows.length - 1];
+      return { signals: withChallenges, nextBefore: rows.length === input.limit && last ? `${last.cursor_at}|${last.id}` : null,
+        trackRecord: trackRecord(signals), challengerRecord: challengerRecord(withChallenges),
+        note: 'Track records here cover this page; scorecards cover full windows. Descriptive only: promotion, retirement and budgets stay owner and lifecycle decisions.' };
     }, false);
   }
 }
@@ -266,6 +361,11 @@ export function challengerRecord(signals: Challenged[]) {
   return [...bots.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([botId, r]) => ({ botId, ...r, accuracy: Number((r.right / r.scored).toFixed(3)) }));
 }
 
+function executionView(r: Record<string, any>) {
+  return { signalId: String(r.signal_id), orderId: String(r.order_id), fillId: String(r.fill_id), side: r.side, quantity: String(r.quantity),
+    pricePaise: String(r.price_paise), feePaise: String(r.fee_paise), realisedPaise: r.realised_paise === null ? null : String(r.realised_paise) };
+}
+
 function reviewView(r: Record<string, any>) {
   return { signalId: String(r.signal_id), outcome: r.outcome, reasons: r.reasons, side: r.side ?? null,
     quantity: r.quantity === null ? null : String(r.quantity), referencePricePaise: r.reference_price_paise === null ? null : String(r.reference_price_paise),
@@ -280,6 +380,7 @@ type Request = { actor: Actor };
 export class TradeSignalsController {
   constructor(private readonly signals: TradeSignals) {}
   @Post('trading/signals') @Allow('trader', 'researcher') propose(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) { return this.signals.propose(r.actor, k ?? '', b); }
+  @Post('trading/signals/executions') @Allow('trader') execute(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) { return this.signals.execute(r.actor, k ?? '', b); }
   @Post('trading/signals/challenges') @Allow('trader', 'researcher') challenge(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) { return this.signals.challenge(r.actor, k ?? '', b); }
   @Post('trading/signals/reviews') @Allow('owner', 'evaluator') review(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) { return this.signals.review(r.actor, k ?? '', b); }
   @Post('trading/signals/outcomes') @Allow('owner', 'evaluator') outcome(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) { return this.signals.outcome(r.actor, k ?? '', b); }

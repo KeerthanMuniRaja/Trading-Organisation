@@ -13,6 +13,8 @@ import { Allow } from './security.js';
 // register, evaluate on the same tests, canary, activate, with the previous release one rollback away.
 
 const fingerprint = z.string().regex(/^[a-f0-9]{16,64}$/);
+/** Evaluations expire (SCHOOL-01): markets change, so a qualification earned long ago must be re-earned. */
+export const EVALUATION_VALID_DAYS = 180;
 const createSchema = z.object({ botId: id, model: z.string().trim().min(1).max(120), promptVersion: z.string().regex(/^[a-zA-Z0-9._-]{1,64}$/),
   codeFingerprint: fingerprint, settings: z.object({ temperature: z.number().min(0).max(2).optional(), maxTokens: z.number().int().min(16).max(32768).optional(),
     timeoutSeconds: z.number().int().min(5).max(900).optional() }).strict().default({}), notes: z.string().trim().min(1).max(600) }).strict();
@@ -21,12 +23,21 @@ const stageSchema = z.object({ releaseId: z.uuid(), stage: z.enum(['canary', 'ac
 const rollbackSchema = z.object({ botId: id, reason: z.string().trim().min(1).max(600) }).strict();
 const checkSchema = z.object({ botId: id, model: z.string().trim().min(1).max(120), promptVersion: z.string().regex(/^[a-zA-Z0-9._-]{1,64}$/), codeFingerprint: fingerprint }).strict();
 const viewSchema = z.object({ botId: id }).strict();
+const qualifySchema = z.object({ botId: id, reason: z.string().trim().min(1).max(600) }).strict();
 
 /** Current stage per release of a bot: the latest stage row for each release wins. */
 async function stages(tx: Sql, botId: string) {
   const rows = (await tx.query(`SELECT DISTINCT ON (release_id) release_id,stage,sequence FROM bot_release_stages WHERE bot_id=$1
     ORDER BY release_id,sequence DESC`, [botId])).rows;
   return new Map(rows.map(r => [String(r.release_id), { stage: r.stage as string, sequence: Number(r.sequence) }]));
+}
+
+/** Releases a bot may run right now: its current active release and any canaries (used to gate trade proposals). */
+export async function liveReleases(tx: Sql, botId: string) {
+  const { active, map } = await current(tx, botId);
+  const ids = [...map.entries()].filter(([releaseId, s]) => releaseId === active || s.stage === 'canary').map(([releaseId]) => releaseId);
+  if (!ids.length) return { registered: map.size > 0, releases: [] as Record<string, any>[] };
+  return { registered: true, releases: (await tx.query('SELECT * FROM bot_releases WHERE id=ANY($1::uuid[])', [ids])).rows };
 }
 
 /** The release a bot should run: the most recently activated release still 'active'; a canary only when none is active. */
@@ -91,15 +102,38 @@ export class BotReleases {
       if (input.stage !== 'revoked') {
         const flag = input.stage === 'canary' ? 'canary_eligible' : 'active_eligible';
         // the newest evaluation decides: a later worse result withdraws eligibility
-        const latest = (await tx.query(`SELECT ${flag} AS ok FROM bot_release_evaluations WHERE release_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1`,
-          [release.id])).rows[0];
+        const latest = (await tx.query(`SELECT ${flag} AS ok,created_at >= now() - ($2::int * interval '1 day') AS fresh FROM bot_release_evaluations
+          WHERE release_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1`, [release.id, EVALUATION_VALID_DAYS])).rows[0];
         requireThat(latest?.ok === true, input.stage === 'canary' ? 'Canary needs an evaluation that is not worse than its baseline'
           : 'Activation needs an evaluation with enough evidence that is not worse than its baseline');
+        requireThat(latest.fresh === true, `The release's evaluation is older than ${EVALUATION_VALID_DAYS} days; re-test before staging it`);
       }
       await tx.query('INSERT INTO bot_release_stages(id,bot_id,release_id,stage,reason,decided_by) VALUES($1,$2,$3,$4,$5,$6)',
         [uuid(), release.bot_id, release.id, input.stage, input.reason, actor.id]);
       await audit(tx, actor, 'bot.release.staged', release.id, { botId: release.bot_id, stage: input.stage });
       return { releaseId: String(release.id), botId: release.bot_id, stage: input.stage };
+    });
+  }
+
+  /** SCHOOL-01: the owner qualifies a school or college bot for paper trading on the strength of its own versioned
+   *  capability: an active release whose newest evaluation is active-eligible and not expired. Lifecycle-managed research
+   *  students keep their own route; retired bots never qualify. */
+  qualify(actor: Actor, key: string, raw: unknown) {
+    permit(actor, 'owner');
+    const input = parse(qualifySchema, raw);
+    return this.db.command(actor, 'bot-qualification', key, input, async tx => {
+      const bot = (await tx.query('SELECT state,lifecycle_managed FROM bots WHERE id=$1', [input.botId])).rows[0];
+      requireThat(bot, 'Bot not found', 404);
+      requireThat(bot.state === 'school' || bot.state === 'college', bot.state === 'paper' ? 'Bot is already qualified' : 'Retired bots cannot qualify');
+      requireThat(!bot.lifecycle_managed, 'Lifecycle-managed students qualify through their research route');
+      const { active } = await current(tx, input.botId);
+      requireThat(active, 'Qualification needs an active release');
+      const evaluation = (await tx.query(`SELECT active_eligible,fitness_verdict,created_at >= now() - ($2::int * interval '1 day') AS fresh FROM bot_release_evaluations
+        WHERE release_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1`, [active, EVALUATION_VALID_DAYS])).rows[0];
+      requireThat(evaluation?.active_eligible === true && evaluation.fresh === true, 'The active release needs a fresh evaluation with enough evidence that is not worse than its baseline');
+      await tx.query("UPDATE bots SET state='paper' WHERE id=$1", [input.botId]);
+      await audit(tx, actor, 'bot.qualified.paper', input.botId, { releaseId: active, fitnessVerdict: evaluation.fitness_verdict, reason: input.reason });
+      return { botId: input.botId, state: 'paper', releaseId: active };
     });
   }
 
@@ -164,6 +198,7 @@ export class BotReleasesController {
   @Post('releases') @Allow('owner', 'researcher') create(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) { return this.releases.create(r.actor, k ?? '', b); }
   @Post('releases/evaluations') @Allow('owner', 'evaluator') evaluate(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) { return this.releases.evaluate(r.actor, k ?? '', b); }
   @Post('releases/stages') @Allow('owner') stage(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) { return this.releases.stage(r.actor, k ?? '', b); }
+  @Post('releases/qualifications') @Allow('owner') qualify(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) { return this.releases.qualify(r.actor, k ?? '', b); }
   @Post('releases/rollbacks') @Allow('owner') rollback(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) { return this.releases.rollback(r.actor, k ?? '', b); }
   @Post('releases/check') @Allow('researcher', 'evaluator', 'trader', 'owner') check(@Req() r: Request, @Body() b: unknown) { return this.releases.check(r.actor, b); }
   @Post('releases/view') @Allow('owner', 'evaluator', 'researcher') view(@Req() r: Request, @Body() b: unknown) { return this.releases.view(r.actor, b); }

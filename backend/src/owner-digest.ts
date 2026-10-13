@@ -1,0 +1,77 @@
+import { Body, Controller, Post, Req } from '@nestjs/common';
+import { z } from 'zod';
+import { Actor, parse, permit } from './core.js';
+import { Database } from './database.js';
+import { compute as paperPerformance } from './paper-performance.js';
+import { usageByBot } from './compute-usage.js';
+import { Allow } from './security.js';
+
+// Owner digest (OBS-01): one summary of what the organisation did in a window (default the last 24 hours) and what
+// needs the owner. Read-only; assembled from the ledger, proposals, evidence, alerts and pending decisions.
+
+const schema = z.object({ hours: z.number().int().min(1).max(24 * 31).default(24) }).strict();
+
+export class OwnerDigest {
+  constructor(private readonly db: Database) {}
+
+  digest(actor: Actor, raw: unknown) {
+    permit(actor, 'owner', 'evaluator');
+    const input = parse(schema, raw);
+    return this.db.transaction(async tx => {
+      const since = `now() - ($1::int * interval '1 hour')`, p = [input.hours];
+      const one = async (sql: string, params: unknown[] = p) => (await tx.query(sql, params)).rows[0]!;
+      const perf = await paperPerformance(tx, null, Date.now());
+      const money = perf.reduce((m, b) => ({ realised: m.realised + BigInt(b.realisedPaise), unrealised: m.unrealised + BigInt(b.unrealisedPaise) }),
+        { realised: 0n, unrealised: 0n });
+      const trading = await one(`SELECT
+          (SELECT COUNT(*) FROM trade_signals WHERE created_at >= ${since})::int AS proposed,
+          (SELECT COUNT(*) FROM trade_signal_reviews WHERE created_at >= ${since} AND outcome='accepted')::int AS accepted,
+          (SELECT COUNT(*) FROM trade_signal_reviews WHERE created_at >= ${since} AND outcome='rejected')::int AS rejected,
+          (SELECT COUNT(*) FROM trade_signal_executions WHERE created_at >= ${since})::int AS executed,
+          (SELECT COALESCE(SUM(realised_paise),0) FROM trade_signal_executions WHERE created_at >= ${since})::text AS realised,
+          (SELECT COUNT(*) FROM trade_signal_outcomes WHERE created_at >= ${since})::int AS scored,
+          (SELECT COUNT(*) FROM trade_signal_outcomes WHERE created_at >= ${since} AND correct)::int AS right,
+          (SELECT COUNT(*) FROM trade_signal_challenges WHERE created_at >= ${since})::int AS challenges`);
+      const knowledge = await one(`SELECT
+          (SELECT COUNT(*) FROM evidence WHERE received_at >= ${since})::int AS received,
+          (SELECT COUNT(*) FROM evidence WHERE reviewed_at >= ${since} AND status='verified')::int AS verified,
+          (SELECT COUNT(*) FROM evidence WHERE reviewed_at >= ${since} AND status='rejected')::int AS rejected,
+          (SELECT COUNT(*) FROM evidence WHERE status='unverified')::int AS backlog`);
+      const alerts = (await tx.query(`SELECT severity,COUNT(*)::int AS n FROM owner_alerts WHERE resolved_at IS NULL GROUP BY severity`)).rows;
+      const topAlerts = (await tx.query(`SELECT severity,rule,message FROM owner_alerts WHERE resolved_at IS NULL
+        ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END, raised_at DESC LIMIT 5`)).rows;
+      const pending = await one(`SELECT
+          (SELECT COUNT(*) FROM department_proposals x WHERE NOT EXISTS (SELECT 1 FROM department_decisions d WHERE d.proposal_id=x.id))::int AS departments,
+          (SELECT COUNT(*) FROM bot_birth_proposals x WHERE NOT EXISTS (SELECT 1 FROM bot_birth_decisions d WHERE d.proposal_id=x.id))::int AS births`, []);
+      const accuracy = (await tx.query(`SELECT s.bot_id,COUNT(*)::int AS scored,AVG(CASE WHEN o.correct THEN 1 ELSE 0 END)::float AS accuracy
+        FROM trade_signal_outcomes o JOIN trade_signals s ON s.id=o.signal_id WHERE o.created_at >= now() - interval '90 days'
+        GROUP BY s.bot_id HAVING COUNT(*) >= 5 ORDER BY accuracy DESC,s.bot_id`, [])).rows
+        .map(r => ({ botId: r.bot_id, scored: r.scored, accuracy: Number(Number(r.accuracy).toFixed(3)) }));
+      const tokens = [...(await usageByBot(tx, Math.max(1, Math.ceil(input.hours / 24)))).values()].reduce((s, u) => s + u.tokens, 0n);
+      const halted = (await one('SELECT halted FROM system_lock WHERE id=1', [])).halted as boolean;
+      const needsOwner = [
+        ...(halted ? ['New risk is HALTED.'] : []),
+        ...topAlerts.filter(a => a.severity !== 'info').map(a => `${a.severity}: ${a.message}`),
+        ...(pending.departments ? [`${pending.departments} department proposal(s) await your decision.`] : []),
+        ...(pending.births ? [`${pending.births} bot birth proposal(s) await your decision.`] : []),
+      ];
+      return { windowHours: input.hours, generatedAt: new Date().toISOString(), mode: 'paper', halted,
+        money: { realisedPaise: money.realised.toString(), unrealisedPaise: money.unrealised.toString(), totalPaise: (money.realised + money.unrealised).toString(),
+          realisedInWindowPaise: trading.realised,
+          byBot: perf.filter(b => b.totalPaise !== '0').map(b => ({ botId: b.botId, totalPaise: b.totalPaise, returnOnBudgetPct: b.returnOnBudgetPct })) },
+        trading: { proposed: trading.proposed, accepted: trading.accepted, rejected: trading.rejected, executed: trading.executed,
+          challenges: trading.challenges, scored: trading.scored, accuracy: trading.scored ? Number((trading.right / trading.scored).toFixed(3)) : null },
+        knowledge, alerts: Object.fromEntries(alerts.map(a => [a.severity, a.n])), needsOwner,
+        bots: { best: accuracy.slice(0, 3), weakest: accuracy.slice(-3).reverse().filter(b => !accuracy.slice(0, 3).includes(b)) },
+        compute: { tokens: tokens.toString() },
+        note: 'Paper results. Read-only summary; decisions remain the owner\'s.' };
+    }, false);
+  }
+}
+
+type Request = { actor: Actor };
+@Controller('v1')
+export class OwnerDigestController {
+  constructor(private readonly digest: OwnerDigest) {}
+  @Post('owner/digest') @Allow('owner', 'evaluator') report(@Req() r: Request, @Body() b: unknown) { return this.digest.digest(r.actor, b); }
+}

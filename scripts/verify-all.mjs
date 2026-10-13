@@ -15,7 +15,7 @@ const NODE = process.execPath;
 const DESK_TESTS = ['test_desk', 'test_desk_v2', 'test_live', 'test_datasets', 'test_forecast', 'test_desk_learning', 'test_fitness', 'test_dashboard',
   'test_tournament', 'test_daily', 'test_portfolio_daily', 'test_ai_allocator', 'test_model_compare', 'test_risk_monitor', 'test_allocator_review',
   'test_curriculum', 'test_participants', 'test_chains', 'test_signals_bridge', 'test_regime_study', 'test_release_gate', 'test_data_steward',
-  'test_signal_scorer'];
+  'test_signal_scorer', 'test_rule_bot'];
 
 export function suites({ quick = false } = {}) {
   return [
@@ -23,7 +23,8 @@ export function suites({ quick = false } = {}) {
     { id: 'backend-build', cmd: NODE, args: [join(ROOT, 'node_modules', 'typescript', 'bin', 'tsc'), '-p', 'backend/tsconfig.json'] }, // same as npm run build, no shell
     ...(quick ? [] : [{ id: 'backend-tests', cmd: NODE, args: ['--test', '--test-concurrency=1', 'backend/dist/test/*.test.js'], timeoutMs: 1_800_000 }]),
     { id: 'script-tests', cmd: NODE, args: ['--test', 'scripts/backup.test.mjs', 'scripts/deliver-alerts.test.mjs', 'scripts/secret-scan.test.mjs',
-      'scripts/organisation-cycle.test.mjs', 'scripts/verify-all.test.mjs', 'scripts/signal-loop.test.mjs'] },
+      'scripts/organisation-cycle.test.mjs', 'scripts/verify-all.test.mjs', 'scripts/signal-loop.test.mjs', 'scripts/daily-digest.test.mjs', 'scripts/eod-loop.test.mjs',
+      'scripts/rule-bot-loop.test.mjs', 'scripts/activate-rule-bot.test.mjs', 'scripts/readiness.test.mjs'] },
     { id: 'trading-desk', cmd: REPLAY, args: ['-m', 'unittest', ...DESK_TESTS], cwd: join(ROOT, 'integrations', 'trading-desk'), requires: REPLAY },
     { id: 'quant-advisor', cmd: SKFOLIO, args: ['-m', 'unittest', 'test_quant_advisor'], cwd: join(ROOT, 'integrations', 'trading-desk'), requires: SKFOLIO },
     { id: 'claims', cmd: REPLAY, args: ['-m', 'unittest', 'test_claims', 'test_http_security', 'test_autolearn', 'test_refresh_headlines'],

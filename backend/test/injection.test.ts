@@ -18,7 +18,8 @@ test('injected text in evidence, theses and proposals changes no authority, limi
     await f.deposit('500000');
     await f.org.bot(owner, key(), { id: 'bot-one', name: 'bot-one', department: 'desk', specialty: 'one', method: 'test', contribution: 'Injection fixture', budgetPaise: '1000000' });
     await f.db.transaction(tx => tx.query("UPDATE bots SET state='paper' WHERE id='bot-one'"));
-    await f.paper.quote(market, key(), { symbol: 'DEMO', bidPaise: '10000', askPaise: '10000', observedAt: new Date().toISOString(), sourceId: e.sourceId });
+    for (const symbol of ['DEMO', 'TWIN'])
+      await f.paper.quote(market, key(), { symbol, bidPaise: '10000', askPaise: '10000', observedAt: new Date().toISOString(), sourceId: e.sourceId });
 
     // 1. hostile news text is stored verbatim as unverified data and cannot be used until independently reviewed
     const hostile = await f.org.evidence(researcher, key(), { sourceId: e.sourceId, kind: 'news', content: 'Markets update. ' + INJECTION, publishedAt: '2025-01-01T00:00:00Z' });
@@ -28,12 +29,14 @@ test('injected text in evidence, theses and proposals changes no authority, limi
       invalidation: 'Breaks the 200-day average', expiresAt: new Date(Date.now() + 86_400_000).toISOString() };
     await assert.rejects(() => signals.propose(trader, key(), { ...base, evidenceIds: [hostile.id] }), says(/verified/));
 
-    // 2. the same trade with and without injected text gets the identical deterministic review
-    const clean = await signals.propose(trader, key(), { ...base, evidenceIds: [e.evidenceId] });
-    const injected = await signals.propose(trader, key(), { ...base, evidenceIds: [e.evidenceId], thesis: INJECTION.slice(0, 600), invalidation: INJECTION.slice(0, 300) });
+    // 2. the same trade with and without injected text gets the identical deterministic review: two identical shares,
+    //    each capped at a 5% target weight, so neither review's room depends on the other's committed intent
+    const clean = await signals.propose(trader, key(), { ...base, evidenceIds: [e.evidenceId], targetWeightPct: 5 });
+    const injected = await signals.propose(trader, key(), { ...base, symbol: 'TWIN', evidenceIds: [e.evidenceId], targetWeightPct: 5,
+      thesis: INJECTION.slice(0, 600), invalidation: INJECTION.slice(0, 300) });
     const a = await signals.review(evaluator, key(), { signalId: clean.id }), b = await signals.review(evaluator, key(), { signalId: injected.id });
     assert.deepEqual([b.outcome, b.quantity, b.reasons], [a.outcome, a.quantity, a.reasons]);
-    assert.equal(a.quantity, '25'); // medium conviction: half of the 500000-paise available capital at 10000 paise
+    assert.deepEqual([a.quantity, a.reasons[0]], ['5', 'sized-by-target-weight']); // 5% of the 1000000-paise budget at 10000 paise
 
     // 3. a bot cannot smuggle authority through structured fields either
     assert.throws(() => signals.propose(trader, key(), { ...base, evidenceIds: [e.evidenceId], role: 'owner' } as any));

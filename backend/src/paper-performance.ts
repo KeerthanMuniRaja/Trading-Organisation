@@ -1,8 +1,9 @@
 import { Body, Controller, Get, Headers, Post, Req } from '@nestjs/common';
 import { z } from 'zod';
-import { Actor, id, parse, permit, uuid } from './core.js';
+import { Actor, id, parse, permit, requireThat, symbol, timestamp, uuid } from './core.js';
 import { Database, Sql, audit } from './database.js';
 import { Allow } from './security.js';
+import { verifiedPrice } from './trade-signals.js';
 
 // Paper performance (part of PAPER-01): per-bot profit and loss, read only from the append-only ledger and positions.
 // Realised P&L is the bot's share of the PNL account (fees on buys, gains or losses on sells; PNL entries are debits,
@@ -12,10 +13,15 @@ import { Allow } from './security.js';
 // from which the history view derives each bot's equity curve, return and worst fall.
 // Nothing here can move money, change a limit or alter a bot.
 
+// PAPER-02: without a live feed, a position may instead be marked at a verified daily close (price_marks, recorded by the
+// evaluator from verified evidence). The newer of the two prices wins. A live quote is current for a day; a daily close
+// for four (a weekend plus one exchange holiday), since no newer close exists in between.
 type Row = Record<string, any>;
 const money = (v: bigint) => v.toString();
-const STALE_SECONDS = 86_400; // a mark older than a day is reported as stale in snapshots
+const STALE_SECONDS = 86_400; // a live quote older than a day is stale
+export const MARK_STALE_SECONDS = 4 * 86_400;
 const historySchema = z.object({ botId: id.optional(), days: z.number().int().min(1).max(3650).default(365) }).strict();
+const markSchema = z.object({ symbol, priceEvidence: z.object({ evidenceId: z.uuid(), pricePaise: z.string().regex(/^[1-9][0-9]{0,13}$/), observedAt: timestamp }).strict() }).strict();
 
 /** India trading day of a moment (NSE dates are IST). */
 export function indiaDay(ms: number) { return new Date(ms + 330 * 60_000).toISOString().slice(0, 10); }
@@ -44,15 +50,21 @@ export async function compute(tx: Sql, only: string | null, now: number) {
     FROM fills f JOIN orders o ON o.id=f.order_id GROUP BY o.bot_id`)).rows.map((r: Row) => [r.bot_id, r]));
   const reserved = new Map<string, bigint>((await tx.query(`SELECT bot_id,SUM(reserved_paise)::text AS value FROM orders
     WHERE status='reserved' GROUP BY bot_id`)).rows.map((r: Row) => [r.bot_id, BigInt(r.value)]));
-  const positions = (await tx.query(`SELECT p.bot_id,p.symbol,p.quantity::text AS qty,p.cost_paise::text AS cost,q.bid::text AS bid,q.observed_at
+  const positions = (await tx.query(`SELECT p.bot_id,p.symbol,p.quantity::text AS qty,p.cost_paise::text AS cost,q.bid::text AS bid,q.observed_at,
+      m.price_paise::text AS mark,m.observed_at AS mark_at
     FROM positions p LEFT JOIN (SELECT q.* FROM quotes q JOIN sources s ON s.id=q.source_id AND s.approved=true) q ON q.symbol=p.symbol
+    LEFT JOIN LATERAL (SELECT price_paise,observed_at FROM price_marks WHERE symbol=p.symbol ORDER BY observed_at DESC LIMIT 1) m ON true
     WHERE p.quantity>0 AND ($1::text IS NULL OR p.bot_id=$1) ORDER BY p.bot_id,p.symbol`, [only])).rows;
   return bots.map((b: Row) => {
     const open = positions.filter((p: Row) => p.bot_id === b.id).map((p: Row) => {
-      const qty = BigInt(p.qty), cost = BigInt(p.cost), value = p.bid ? BigInt(p.bid) * qty : cost;
+      const quoteAt = p.bid ? new Date(p.observed_at).getTime() : null, markAt = p.mark ? new Date(p.mark_at).getTime() : null;
+      const useMark = markAt !== null && (quoteAt === null || markAt > quoteAt);
+      const price = useMark ? BigInt(p.mark) : p.bid ? BigInt(p.bid) : null, at = useMark ? markAt : quoteAt;
+      const qty = BigInt(p.qty), cost = BigInt(p.cost), value = price !== null ? price * qty : cost;
+      const age = at !== null ? Math.max(0, Math.round((now - at) / 1000)) : null;
       return { symbol: p.symbol, quantity: p.qty, costPaise: money(cost), marketValuePaise: money(value), unrealisedPaise: money(value - cost),
-        priceAgeSeconds: p.observed_at ? Math.max(0, Math.round((now - new Date(p.observed_at).getTime()) / 1000)) : null,
-        valuation: p.bid ? 'latest-approved-bid' : 'no-quote-held-at-cost' };
+        priceAgeSeconds: age, valuation: useMark ? 'verified-close' : p.bid ? 'latest-approved-bid' : 'no-quote-held-at-cost',
+        stale: age === null || age > (useMark ? MARK_STALE_SECONDS : STALE_SECONDS) };
     });
     const cost = open.reduce((s, p) => s + BigInt(p.costPaise), 0n), unrealised = open.reduce((s, p) => s + BigInt(p.unrealisedPaise), 0n);
     const real = realised.get(b.id) ?? 0n, t = trades.get(b.id), used = cost + (reserved.get(b.id) ?? 0n);
@@ -75,7 +87,7 @@ export class PaperPerformance {
       const sum = (k: 'realisedPaise' | 'unrealisedPaise' | 'totalPaise' | 'feesPaise') => money(perBot.reduce((s, b) => s + BigInt(b[k]), 0n));
       return { mode: 'paper', asOf: new Date(now).toISOString(), bots: perBot,
         organisation: only === null ? { realisedPaise: sum('realisedPaise'), unrealisedPaise: sum('unrealisedPaise'), totalPaise: sum('totalPaise'), feesPaise: sum('feesPaise') } : null,
-        note: 'Paper results. Open positions are marked at the latest approved bid; check priceAgeSeconds before relying on them.' };
+        note: 'Paper results. Open positions are marked at the newer of the latest approved bid and the latest verified daily close; check stale before relying on them.' };
     }, false);
   }
 
@@ -86,7 +98,7 @@ export class PaperPerformance {
       const now = Date.now(), day = indiaDay(now), perBot = await compute(tx, null, now);
       let recorded = 0;
       for (const b of perBot) {
-        const unpriced = b.openPositions.filter(p => p.priceAgeSeconds === null || p.priceAgeSeconds > STALE_SECONDS).length;
+        const unpriced = b.openPositions.filter(p => p.stale).length;
         const inserted = await tx.query(`INSERT INTO paper_performance_snapshots(id,day,bot_id,budget_paise,realised_paise,unrealised_paise,open_positions,
           unpriced_or_stale,recorder) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (day,bot_id) DO NOTHING RETURNING id`,
           [uuid(), day, b.botId, b.budgetPaise, b.realisedPaise, b.unrealisedPaise, b.openPositions.length, unpriced, actor.id]);
@@ -95,6 +107,36 @@ export class PaperPerformance {
       await audit(tx, actor, 'paper.performance.snapshot', day, { day, recorded, bots: perBot.length });
       return { day, recorded, alreadyRecorded: perBot.length - recorded };
     });
+  }
+
+  /** PAPER-02: records a share's verified daily close as its valuation mark (evaluator or owner). The price must be stated
+   *  in verified evidence from an approved source, at most 7 days old; marks only move forward in time per share. */
+  mark(actor: Actor, key: string, raw: unknown) {
+    permit(actor, 'owner', 'evaluator');
+    const input = parse(markSchema, raw);
+    return this.db.command(actor, 'paper-price-mark', key, input, async tx => {
+      const price = (await verifiedPrice(tx, input.symbol, input.priceEvidence)).toString();
+      const at = new Date(input.priceEvidence.observedAt).toISOString();
+      const latest = (await tx.query(`SELECT price_paise::text AS price,observed_at FROM price_marks WHERE symbol=$1 ORDER BY observed_at DESC LIMIT 1`, [input.symbol])).rows[0];
+      if (latest && new Date(latest.observed_at).toISOString() === at) {
+        requireThat(latest.price === price, 'A different mark is already recorded for this share at this time');
+        return { symbol: input.symbol, pricePaise: price, observedAt: at, duplicate: true };
+      }
+      requireThat(!latest || new Date(latest.observed_at).getTime() < Date.parse(at), 'Marks must move forward in time');
+      const markId = uuid();
+      await tx.query('INSERT INTO price_marks(id,symbol,price_paise,observed_at,evidence_id,recorded_by) VALUES($1,$2,$3,$4,$5,$6)',
+        [markId, input.symbol, price, at, input.priceEvidence.evidenceId, actor.id]);
+      await audit(tx, actor, 'paper.mark.recorded', input.symbol, { markId, pricePaise: price, observedAt: at, evidenceId: input.priceEvidence.evidenceId });
+      return { symbol: input.symbol, pricePaise: price, observedAt: at, duplicate: false };
+    });
+  }
+
+  /** The latest verified mark per share. */
+  marks(actor: Actor) {
+    permit(actor, 'owner', 'evaluator', 'trader', 'researcher');
+    return this.db.transaction(async tx => ({ marks: (await tx.query(`SELECT DISTINCT ON (symbol) symbol,price_paise::text AS price,observed_at,evidence_id
+      FROM price_marks ORDER BY symbol,observed_at DESC`)).rows.map((r: Row) => ({ symbol: r.symbol, pricePaise: r.price,
+        observedAt: new Date(r.observed_at).toISOString(), evidenceId: String(r.evidence_id) })) }), false);
   }
 
   /** Equity curve per bot (budget + realised + unrealised at each day's snapshot), return and worst fall. */
@@ -124,4 +166,6 @@ export class PaperPerformanceController {
   @Get('paper/performance') @Allow('owner', 'trader') report(@Req() r: Request) { return this.performance.report(r.actor); }
   @Post('paper/performance/snapshots') @Allow('owner', 'evaluator') snapshot(@Req() r: Request, @Headers('idempotency-key') k: string) { return this.performance.snapshot(r.actor, k ?? ''); }
   @Post('paper/performance/history') @Allow('owner', 'trader', 'evaluator') history(@Req() r: Request, @Body() b: unknown) { return this.performance.history(r.actor, b); }
+  @Post('paper/marks') @Allow('owner', 'evaluator') mark(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) { return this.performance.mark(r.actor, k ?? '', b); }
+  @Get('paper/marks') @Allow('owner', 'evaluator', 'trader', 'researcher') marks(@Req() r: Request) { return this.performance.marks(r.actor); }
 }

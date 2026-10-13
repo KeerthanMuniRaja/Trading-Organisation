@@ -86,7 +86,13 @@ def score(source_id, env=os.environ, cache=daily.DAILY, opener=None, now=None):
     now = now or datetime.now(timezone.utc)
     rbase, reporter = principals(env, 'researcher')
     ebase, checker = principals(env, 'evaluator')
-    signals = post(ebase, checker, '/v1/trading/signals/query', {'limit': 200}, opener)['signals']
+    signals, before = [], None
+    while True:  # every page of reviewed, unscored signals: nothing is left behind however many exist
+        page = post(ebase, checker, '/v1/trading/signals/query', {'limit': 200, 'pending': 'unscored', **({'before': before} if before else {})}, opener)
+        signals += page['signals']
+        before = page.get('nextBefore')
+        if not before:
+            break
     results = []
     for s in signals:
         review = s.get('review') or {}

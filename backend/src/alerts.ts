@@ -3,9 +3,11 @@ import { z } from 'zod';
 import { Config } from './config.js';
 import { Actor, digest, parse, permit, requireThat, uuid } from './core.js';
 import { Database, Sql, audit } from './database.js';
-import { curveStats } from './paper-performance.js';
+import { MARK_STALE_SECONDS, curveStats } from './paper-performance.js';
 import { usageByBot } from './compute-usage.js';
-import { balance } from './treasury.js';
+import { LOW_SCORE, MIN_FOR_ALERT, reliability } from './source-reliability.js';
+import { available, balance } from './treasury.js';
+import { EVALUATION_VALID_DAYS } from './bot-releases.js';
 import { Allow } from './security.js';
 
 // Owner alerts (OBS-01). A cycle (run by the owner or an evaluator worker, e.g. every few minutes) evaluates fixed rules
@@ -71,12 +73,35 @@ export async function conditions(tx: Sql, config: Config): Promise<Condition[]> 
   if (backlog >= BACKLOG_COUNT) out.push({ rule: 'evidence-backlog', severity: 'warning', subject: 'unverified-evidence',
     message: `${backlog} pieces of evidence have waited over ${BACKLOG_HOURS} hours for review.`, detail: { count: backlog } });
 
+  // priced = an approved live quote from the last day, or a verified daily close (PAPER-02) within its own tolerance
   const stale = (await tx.query(`SELECT p.bot_id,p.symbol FROM positions p LEFT JOIN quotes q ON q.symbol=p.symbol
     LEFT JOIN sources s ON s.id=q.source_id AND s.approved=true WHERE p.quantity>0 AND (s.id IS NULL OR q.observed_at < now() - ($1::int * interval '1 second'))
-    ORDER BY p.bot_id,p.symbol`, [STALE_QUOTE_SECONDS])).rows;
+      AND NOT EXISTS (SELECT 1 FROM price_marks m WHERE m.symbol=p.symbol AND m.observed_at >= now() - ($2::int * interval '1 second'))
+    ORDER BY p.bot_id,p.symbol`, [STALE_QUOTE_SECONDS, MARK_STALE_SECONDS])).rows;
   if (stale.length) out.push({ rule: 'stale-position-prices', severity: 'warning', subject: 'positions',
-    message: `${stale.length} open paper position(s) have no approved price from the last day; P&L for them is unreliable.`,
+    message: `${stale.length} open paper position(s) have neither a recent approved quote nor a recent verified close; P&L for them is unreliable.`,
     detail: { positions: stale.map(p => `${p.bot_id}:${p.symbol}`).slice(0, 50) } });
+
+  // SCHOOL-01: an active release whose newest evaluation has expired must be re-tested
+  const staleReleases = (await tx.query(`SELECT r.id,r.bot_id,r.version,MAX(e.created_at) AS evaluated FROM bot_releases r
+      JOIN (SELECT DISTINCT ON (release_id) release_id,stage FROM bot_release_stages ORDER BY release_id,sequence DESC) st ON st.release_id=r.id AND st.stage='active'
+      LEFT JOIN bot_release_evaluations e ON e.release_id=r.id GROUP BY r.id,r.bot_id,r.version
+      HAVING MAX(e.created_at) IS NULL OR MAX(e.created_at) < now() - ($1::int * interval '1 day')`, [EVALUATION_VALID_DAYS])).rows;
+  for (const r of staleReleases) out.push({ rule: 'release-evaluation-expired', severity: 'warning', subject: `${r.bot_id}/v${r.version}`,
+    message: `Active release v${r.version} of ${r.bot_id} was last evaluated more than ${EVALUATION_VALID_DAYS} days ago: re-test it on recent data.`,
+    detail: { botId: r.bot_id, releaseId: String(r.id) } });
+
+  // COST-01: department budget ceilings should be covered by capital actually available in Wallet 1
+  const ceilings = BigInt((await tx.query("SELECT COALESCE(SUM(budget_paise),0)::text AS v FROM departments WHERE status='active'")).rows[0]!.v);
+  const free = await available(tx);
+  if (ceilings > 0n && ceilings > free) out.push({ rule: 'budgets-exceed-capital', severity: 'warning', subject: 'departments',
+    message: `Active department budget ceilings total ${ceilings} paise, more than the ${free} paise available in Wallet 1.`,
+    detail: { ceilingsPaise: ceilings.toString(), availablePaise: free.toString() } });
+
+  for (const s of await reliability(tx))
+    if (s.approved && s.decided >= MIN_FOR_ALERT && s.score < LOW_SCORE) out.push({ rule: 'source-low-reliability', severity: 'warning', subject: s.sourceId,
+      message: `Approved source ${s.sourceId} has a reliability score of ${s.score} over ${s.decided} independent decisions: review its approval.`,
+      detail: { sourceId: s.sourceId, score: s.score, decided: s.decided } });
 
   const budgets = (await tx.query('SELECT id,compute_tokens_per_day FROM departments WHERE status=\'active\' AND compute_tokens_per_day IS NOT NULL')).rows;
   if (budgets.length) {

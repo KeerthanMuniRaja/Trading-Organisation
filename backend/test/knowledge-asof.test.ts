@@ -7,10 +7,16 @@ import { Database } from '../src/database.js';
 import { createApp } from '../src/app.js';
 
 const ARTICLE = 'Reliance Industries on Friday reported a 12% rise in quarterly net profit, helped by retail growth across its stores.';
-const tick = async () => { await new Promise(r => setTimeout(r, 25)); return new Date().toISOString(); };
+// Cutoffs come from the database clock that stamps the audit events, not the JavaScript clock: under heavy load the two
+// can drift by milliseconds, which made a cutoff taken before an event look later than it.
+let clock: () => Promise<string>;
+const tick = async () => { await new Promise(r => setTimeout(r, 25)); return clock(); };
+const databaseClock = (db: { transaction: (fn: (tx: any) => Promise<any>, lock?: boolean) => Promise<any> }) => async () =>
+  (await db.transaction(tx => tx.query(`SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS t`), false)).rows[0].t as string;
 
 test('the view at any cutoff shows exactly what was known and reviewed then, never later changes', async () => {
   const f = await fixture(); try {
+    clock = databaseClock(f.db);
     await f.org.sources(owner, key(), { id: 'wire', name: 'Wire', url: 'https://wire.example.org/feed', approved: true });
     await f.org.bot(owner, key(), { id: 'analyst', name: 'Analyst', department: 'desk', specialty: 'earnings', method: 'reasoning', contribution: 'As-of fixture', budgetPaise: '0' });
     const claims = new EvidenceClaims(f.db), asOf = new KnowledgeAsOf(f.db);
@@ -42,7 +48,7 @@ test('the view at any cutoff shows exactly what was known and reviewed then, nev
     assert.deepEqual(atCutoff.lessons.map(l => [l.verifiedAtCutoff, l.usableAtCutoff]), [[true, true]]);
     assert.deepEqual([atCutoff.summary.usableEvidence, atCutoff.summary.acceptedClaims, atCutoff.summary.usableLessons, atCutoff.summary.changedSince], [1, 1, 1, 1]);
 
-    const now = await asOf.snapshot(researcher, { asOf: new Date().toISOString(), symbol: 'RELIANCE.NS', botId: 'analyst' });
+    const now = await asOf.snapshot(researcher, { asOf: await tick(), symbol: 'RELIANCE.NS', botId: 'analyst' });
     assert.deepEqual([now.evidence[0]!.statusAtCutoff, now.evidence[0]!.usableAtCutoff, now.lessons[0]!.usableAtCutoff], ['revoked', false, false]);
     assert.throws(() => asOf.snapshot(trader, { asOf: allGood }));
     assert.throws(() => asOf.snapshot(owner, { asOf: '2099-01-01T00:00:00Z' }));
@@ -51,6 +57,7 @@ test('the view at any cutoff shows exactly what was known and reviewed then, nev
 
 test('a source revoked before the cutoff makes its evidence unusable at that cutoff', async () => {
   const f = await fixture(); try {
+    clock = databaseClock(f.db);
     await f.org.sources(owner, key(), { id: 'wire', name: 'Wire', url: 'https://wire.example.org/feed', approved: true });
     const evidence = (await f.org.evidence(researcher, key(), { sourceId: 'wire', kind: 'news', content: ARTICLE, publishedAt: '2025-01-03T10:00:00Z' })).id;
     await f.org.reviewEvidence(evaluator, key(), { evidenceId: evidence, status: 'verified' });

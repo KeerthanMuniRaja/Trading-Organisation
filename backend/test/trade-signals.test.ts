@@ -58,22 +58,21 @@ test('a proposal must be complete, evidenced, bounded in time and made under the
 
 test('the risk review is deterministic: code sizes accepted trades and records every rejection reason', async () => {
   const f = await setup(); try {
-    const high = await f.signals.propose(trader, key(), f.long);
-    assert.throws(() => f.signals.review(trader, key(), { signalId: high.id })); // a trader cannot review
-    const accepted = await f.signals.review(evaluator, key(), { signalId: high.id });
-    // binding limit is available capital (500000 paise) at a 10000-paise ask: high conviction uses all of it
-    assert.deepEqual([accepted.outcome, accepted.side, accepted.quantity], ['accepted', 'buy', '50']);
-    assert.deepEqual(accepted.reasons, ['sized-by-available-capital', 'conviction-high']);
-    assert.equal((await f.signals.review(evaluator, key(), { signalId: high.id })).duplicate, true);
-    const medium = await f.signals.propose(trader, key(), { ...f.long, conviction: 'medium', thesis: 'Smaller conviction' });
-    assert.equal((await f.signals.review(evaluator, key(), { signalId: medium.id })).quantity, '25');
     // a stated target weight caps the size: 20% of the 1000000-paise budget is 200000 paise, 20 shares at 10000
     const targeted = await f.signals.propose(trader, key(), { ...f.long, targetWeightPct: 20, thesis: 'Raise to 20% of the book' });
+    assert.throws(() => f.signals.review(trader, key(), { signalId: targeted.id })); // a trader cannot review
     const capped = await f.signals.review(evaluator, key(), { signalId: targeted.id });
-    assert.deepEqual([capped.quantity, capped.reasons[0]], ['20', 'sized-by-target-weight']);
-    // the accepted intent goes through paper trading, which re-checks every limit itself
-    const order = await f.paper.reserve(trader, key(), { botId: 'bot-one', symbol: 'DEMO', side: 'buy', quantity: 50, evidenceId: f.e.evidenceId });
-    assert.equal(order.state, 'reserved');
+    assert.deepEqual([capped.outcome, capped.side, capped.quantity, capped.reasons[0]], ['accepted', 'buy', '20', 'sized-by-target-weight']);
+    assert.equal((await f.signals.review(evaluator, key(), { signalId: targeted.id })).duplicate, true);
+    // accepted intents not yet executed are committed: 500000 available minus 200000 leaves 300000; medium uses half
+    const medium = await f.signals.propose(trader, key(), { ...f.long, conviction: 'medium', thesis: 'Smaller conviction' });
+    const sized = await f.signals.review(evaluator, key(), { signalId: medium.id });
+    assert.deepEqual([sized.quantity, sized.reasons], ['15', ['sized-by-available-capital', 'conviction-medium']]);
+    // high conviction takes all that is left (150000), and the next one finds no room at all
+    const high = await f.signals.propose(trader, key(), f.long);
+    assert.deepEqual([(await f.signals.review(evaluator, key(), { signalId: high.id })).quantity], ['15']);
+    const late = await f.signals.propose(trader, key(), { ...f.long, thesis: 'One more' });
+    assert.deepEqual((await f.signals.review(evaluator, key(), { signalId: late.id })).reasons, ['size-below-one-share', 'available-capital']);
 
     const unsure = await f.signals.propose(trader, key(), { ...f.long, probabilityPct: 40, thesis: 'Coin flip at best' });
     assert.deepEqual((await f.signals.review(evaluator, key(), { signalId: unsure.id })).reasons, ['stated-probability-below-even']);
@@ -147,7 +146,9 @@ test('an independent challenger argues before review; an evidenced objection hal
     // an objection without evidence is recorded and visible, but does not change the size
     const another = await f.signals.propose(trader, key(), { ...f.long, thesis: 'Second idea' });
     await f.signals.challenge(skeptic, key(), { signalId: another.id, stance: 'oppose', argument: 'I just do not like it' });
-    assert.equal((await f.signals.review(evaluator, key(), { signalId: another.id })).quantity, '50');
+    // the first accepted intent committed 250000 paise, so 250000 remains; high conviction keeps all of it (not halved)
+    const unhalved = await f.signals.review(evaluator, key(), { signalId: another.id });
+    assert.deepEqual([unhalved.quantity, unhalved.reasons], ['25', ['sized-by-available-capital', 'conviction-high']]);
     const view = await f.signals.query(owner, {});
     assert.equal(view.signals.find(s => s.id === another.id)!.challenges[0]!.argument, 'I just do not like it');
   } finally { await f.db.close(); }
@@ -159,6 +160,104 @@ test('challengers are scored: an opposition is right when the call was wrong', (
     { outcome: { correct: true }, challenges: [{ challengerBotId: 'skeptic', stance: 'oppose' }, { challengerBotId: 'ally', stance: 'support-with-caveat' }] },
     { outcome: null, challenges: [{ challengerBotId: 'skeptic', stance: 'oppose' }] }]);
   assert.deepEqual(record, [{ botId: 'ally', scored: 1, right: 1, opposed: 0, accuracy: 1 }, { botId: 'skeptic', scored: 2, right: 1, opposed: 2, accuracy: 0.5 }]);
+});
+
+test('an accepted proposal executes once as a linked paper order and fill; retries resume, never double-trade', async () => {
+  const f = await setup(); try {
+    const buy = await f.signals.propose(trader, key(), { ...f.long, conviction: 'medium' });
+    await assert.rejects(() => f.signals.execute(trader, key(), { signalId: buy.id }), says(/accepted review/)); // not reviewed yet
+    await f.signals.review(evaluator, key(), { signalId: buy.id });
+    await assert.rejects(() => f.signals.execute(evaluator, key(), { signalId: buy.id })); // only trader credentials execute
+    await assert.rejects(() => f.signals.execute({ id: 'other', role: 'trader', botId: 'bot-two' }, key(), { signalId: buy.id }), says(/proposing bot/));
+
+    // a stale quote makes the fill fail, but the reservation stays and the same call succeeds once prices are fresh
+    await f.db.transaction(tx => tx.query("UPDATE quotes SET observed_at=now()-interval '5 minutes'"));
+    await assert.rejects(() => f.signals.execute(trader, key(), { signalId: buy.id }), says(/Fresh approved quote/));
+    await f.paper.quote(market, key(), { symbol: 'DEMO', bidPaise: '10000', askPaise: '10000', observedAt: new Date().toISOString(), sourceId: f.e.sourceId });
+    const done = await f.signals.execute(trader, key(), { signalId: buy.id });
+    assert.deepEqual([done.side, done.quantity, done.pricePaise, done.realisedPaise, done.duplicate], ['buy', '25', '10000', null, false]);
+    const again = await f.signals.execute(trader, key(), { signalId: buy.id });
+    assert.deepEqual([again.orderId, again.duplicate], [done.orderId, true]);
+    const orders = (await f.db.transaction(tx => tx.query("SELECT status FROM orders WHERE bot_id='bot-one'"))).rows;
+    assert.deepEqual(orders.map(o => o.status), ['filled']); // exactly one order, even after the failed attempt
+
+    // the exit executes as a sell of the whole position and records its realised profit
+    await f.paper.quote(market, key(), { symbol: 'DEMO', bidPaise: '11000', askPaise: '11000', observedAt: new Date(Date.now() + 1000).toISOString(), sourceId: f.e.sourceId });
+    const exit = await f.signals.propose(trader, key(), { ...f.long, action: 'exit', thesis: 'Target reached' });
+    await f.signals.review(evaluator, key(), { signalId: exit.id });
+    const sold = await f.signals.execute(trader, key(), { signalId: exit.id });
+    assert.deepEqual([sold.side, sold.quantity, sold.realisedPaise], ['sell', '25', '25000']); // 25 shares x 1000 paise gain, no fees in the fixture
+    const view = await f.signals.query(owner, {});
+    assert.equal(view.signals.find(s => s.id === exit.id)!.execution!.realisedPaise, '25000');
+    await assert.rejects(() => f.db.transaction(tx => tx.query('UPDATE trade_signal_executions SET realised_paise=0')));
+    assert.equal((await f.ops.verifyAudit(owner)).valid, true);
+  } finally { await f.db.close(); }
+});
+
+test('end-of-day execution: reviewed at a verified close, filled at a verified price observed after the review', async () => {
+  const f = await setup(); try {
+    await f.db.transaction(tx => tx.query("UPDATE quotes SET observed_at=now()-interval '1 day'")); // no live quote feed
+    const price = async (kind: string, paise: number) => {
+      const e = await f.org.evidence(researcher, key(), { sourceId: f.e.sourceId, kind: 'dataset',
+        content: `${kind} of NSE:DEMO on 2026-10-14: ${paise} paise. Source: daily bars ${key()}.`, publishedAt: new Date().toISOString() });
+      await f.org.reviewEvidence(evaluator, key(), { evidenceId: e.id, status: 'verified' });
+      return e.id as string;
+    };
+    const buy = await f.signals.propose(trader, key(), { ...f.long, conviction: 'medium' });
+    assert.deepEqual((await f.signals.review(evaluator, key(), { signalId: buy.id })).reasons, ['no-fresh-approved-quote']); // nothing to price with
+    const another = await f.signals.propose(trader, key(), { ...f.long, conviction: 'medium', thesis: 'Priced at the close' });
+    const closeId = await price('Daily close', 10000);
+    const reviewed = await f.signals.review(evaluator, key(), { signalId: another.id, priceEvidence: { evidenceId: closeId, pricePaise: '10000',
+      observedAt: new Date(Date.now() - 3_600_000).toISOString() } });
+    assert.deepEqual([reviewed.outcome, reviewed.quantity], ['accepted', '25']);
+    assert.equal(reviewed.reasons.at(-1), 'priced-from-verified-close');
+
+    const openId = await price('Opening price', 10200);
+    // hindsight is refused: a price observed before the review cannot be used
+    await assert.rejects(() => f.signals.execute(trader, key(), { signalId: another.id, priceEvidence: { evidenceId: openId, pricePaise: '10200',
+      observedAt: new Date(Date.now() - 7_200_000).toISOString() } }), says(/after the review/));
+    // a price the evidence does not state is refused by the paper engine itself
+    await assert.rejects(() => f.signals.execute(trader, key(), { signalId: another.id, priceEvidence: { evidenceId: openId, pricePaise: '9000',
+      observedAt: new Date().toISOString() } }), says(/does not state this price/));
+    const filled = await f.signals.execute(trader, key(), { signalId: another.id, priceEvidence: { evidenceId: openId, pricePaise: '10200',
+      observedAt: new Date().toISOString() } });
+    assert.deepEqual([filled.side, filled.quantity, filled.pricePaise], ['buy', '25', '10200']); // the next open, verified
+    const position = (await f.db.transaction(tx => tx.query("SELECT quantity::text AS q,cost_paise::text AS c FROM positions WHERE bot_id='bot-one'"))).rows[0]!;
+    assert.deepEqual([position.q, position.c], ['25', '255000']);
+    assert.equal((await f.ops.verifyAudit(owner)).valid, true);
+  } finally { await f.db.close(); }
+});
+
+test('cursor pagination reaches every signal; the unscored filter returns only reviewed signals awaiting an outcome', async () => {
+  const f = await setup(); try {
+    const ids: string[] = [];
+    await f.db.transaction(async tx => {
+      for (let i = 0; i < 7; i++) {
+        const id = crypto.randomUUID();
+        ids.push(id);
+        // identical timestamps for some rows: the cursor must still neither skip nor repeat any of them
+        await tx.query(`INSERT INTO trade_signals(id,bot_id,symbol,action,horizon_days,conviction,thesis,invalidation,expires_at,author,content_hash,created_at)
+          VALUES($1,'bot-one','DEMO','enter-long',5,'low','t','i',now()+interval '1 day','trader',$2,timestamp '2026-10-01 10:00:00' + ($3::int / 3) * interval '1 second')`,
+          [id, key(), i]);
+        if (i % 2 === 0) await tx.query(`INSERT INTO trade_signal_reviews(id,signal_id,outcome,reasons,reference_price_paise,rules_version,reviewer)
+          VALUES($1,$2,'rejected',ARRAY['t']::text[],10000,'signal-risk-v2','evaluator')`, [crypto.randomUUID(), id]);
+      }
+    });
+    const seen: string[] = [];
+    let before: string | null = null, pages = 0;
+    do {
+      const page = await f.signals.query(owner, { limit: 3, ...(before ? { before } : {}) });
+      seen.push(...page.signals.map(s => s.id));
+      before = page.nextBefore; pages++;
+    } while (before);
+    assert.equal(seen.length, 7);
+    assert.equal(new Set(seen).size, 7); // no repeats
+    assert.deepEqual([...seen].sort(), [...ids].sort()); // nothing skipped
+    assert.equal(pages, 3);
+    const unscored = await f.signals.query(owner, { pending: 'unscored', limit: 200 });
+    assert.deepEqual(unscored.signals.map(s => s.id).sort(), ids.filter((_, i) => i % 2 === 0).sort());
+    assert.throws(() => f.signals.query(owner, { before: 'not-a-cursor' }));
+  } finally { await f.db.close(); }
 });
 
 test('signal routes are registered and guarded by role', async () => {

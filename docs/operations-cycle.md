@@ -14,6 +14,9 @@ Three pieces that make the organisation run on its own and stay auditable. They 
 | `claims-and-fact-check` | Claim analyst (model) plus fact-checker (no model), via `autolearn.py --cycles 1` | `--with-model`, local model server, `.local/claims/autolearn.json` |
 | `chain-links` | Adds inferred driver links to the verified headlines | verified headlines exist |
 | `forward-daily-rules`, `forward-portfolio` | Scores the pre-registered forward tests on new days | none |
+| `rule-bot` | Once a month, the model-free rule bot proposes its top-3 momentum trades ([trade signals](trade-signals.md#the-rule-bot-a-model-free-member)) | `RULE_BOT_ID` set, the bot qualified, a trader credential bound to it |
+| `eod-trading` | Reviews waiting proposals at the verified close, executes accepted ones at the verified next open | backend, daily data |
+| `score-signals` | Scores proposals whose horizon has passed | backend, daily data |
 | `paper-snapshot` | Records today's per-bot P&L mark (evaluator credential) | backend |
 | `alerts` | Evaluates alert rules and delivers new alerts | backend |
 
