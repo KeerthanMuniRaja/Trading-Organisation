@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const UNIVERSE = ['AXISBANK', 'HDFCBANK', 'ICICIBANK', 'INFY', 'ITC', 'NTPC', 'RELIANCE', 'SBIN'];
 const RULE_MODEL = 'rules:top3-momentum-6m';
+const LEARNING_STEPS = ['claims-and-fact-check', 'chain-links', 'model-allocator-decide'];
 const DAY = 86_400_000;
 
 /** The latest NSE session whose daily bar should be settled by `now` (15:30 IST close + 30 min); weekends skipped, holidays not known. */
@@ -31,7 +32,9 @@ export function assess(f, now) {
     : check('credentials', 'GO', 'owner, researcher and evaluator configured'));
   out.push(f.audit?.valid === true ? check('audit-chain', 'GO', 'hash chain intact')
     : check('audit-chain', 'NO-GO', 'audit chain broken or unreadable', 'Investigate before trading; restore the last good backup if needed'));
-  out.push(f.digest?.halted ? check('risk-halt', 'NO-GO', 'new risk is halted', 'Owner decides whether to resume') : check('risk-halt', 'GO', 'not halted'));
+  // without the digest, the halt and alert state is unknown: never report GO on missing facts
+  if (!f.digest) out.push(check('risk-halt', 'NO-GO', 'could not read the owner digest, so the halt and alert state is unknown', 'Check the evaluator credential and the backend log'));
+  else out.push(f.digest.halted ? check('risk-halt', 'NO-GO', 'new risk is halted', 'Owner decides whether to resume') : check('risk-halt', 'GO', 'not halted'));
   const alerts = f.digest?.alerts ?? {};
   out.push(alerts.critical ? check('alerts', 'NO-GO', `${alerts.critical} critical alert(s) open`, 'Resolve or acknowledge them')
     : alerts.warning ? check('alerts', 'WARN', `${alerts.warning} warning alert(s) open`, 'Read today\'s digest') : check('alerts', 'GO', 'none open'));
@@ -59,6 +62,10 @@ export function assess(f, now) {
   out.push(!f.lastCycle ? check('last-cycle', 'WARN', 'no cycle has run yet', 'npm.cmd run cycle')
     : failed.length ? check('last-cycle', 'WARN', `${f.lastCycle.day}: failed ${failed.join(', ')}`, 'Read .local/cycles/' + f.lastCycle.day + '.json and rerun: npm.cmd run cycle')
       : check('last-cycle', 'GO', `${f.lastCycle.day}: no failed steps`));
+  // learning that silently did not happen is still not happening: say so (no model, or its setup missing)
+  const unlearned = (f.lastCycle?.skipped ?? []).filter(s => LEARNING_STEPS.includes(s.id));
+  if (unlearned.length) out.push(check('learning', 'WARN', `no knowledge was learned in the last cycle: ${unlearned.map(s => `${s.id} skipped (${s.reason})`).join('; ')}`,
+    'Run the cycle with the local model (npm run cycle -- --with-model) once its setup exists; see docs/operations-cycle.md'));
   // a degraded step finished but needs a person: e.g. data kept back by the steward, or a split to record
   for (const d of degraded) out.push(check('needs-owner', 'WARN', `${d.id}: ${d.note}`, d.note.includes('corporate-actions')
     ? 'Check the exchange notice, then record it: POST /v1/corporate-actions' : 'Read .local/cycles/' + f.lastCycle.day + '.json'));
@@ -103,7 +110,8 @@ export async function gather(env, { fetchImpl = fetch, root = ROOT } = {}) {
     const journal = JSON.parse(await readFile(join(cycles, days.at(-1)), 'utf8'));
     const steps = Object.entries(journal.steps ?? {});
     lastCycle = { day: days.at(-1).slice(0, 10), failed: steps.filter(([, s]) => s.status === 'failed').map(([id]) => id),
-      degraded: steps.filter(([, s]) => s.status === 'degraded').map(([id, s]) => ({ id, note: String(s.reason ?? 'finished with a caveat') })) };
+      degraded: steps.filter(([, s]) => s.status === 'degraded').map(([id, s]) => ({ id, note: String(s.reason ?? 'finished with a caveat') })),
+      skipped: steps.filter(([, s]) => s.status === 'skipped').map(([id, s]) => ({ id, reason: String(s.reason ?? 'skipped') })) };
   }
   const backups = join(root, '.local', 'backups');
   let backupAt = null;

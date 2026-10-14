@@ -32,7 +32,7 @@ Workers run only an authorised release, so moving to a stronger model is a contr
 
 The test `a model switch: evaluate, canary beside the active release, activate, then roll back in one step` plays exactly this out, from a 4B release to an Opus release.
 
-The worker gate refuses to run if the registry cannot be reached. An unverified version is never treated as allowed.
+The worker gate refuses to run if the registry cannot be reached. An unverified version is never treated as allowed. (It is available to workers, but no worker calls it yet. See the note at the end.)
 
 ## Qualifications expire (SCHOOL-01)
 
@@ -62,4 +62,6 @@ Release control does not depend on workers remembering to call the gate. **The b
 - **Never registered:** bots that have never registered a release work as before.
 - **Stamping:** each proposal records the `releaseId` that made it. The bot's scorecard splits scored calls `byRelease`, so a canary's **live** accuracy can be compared with the active release's before you promote it.
 
-(The code fingerprint is checked by the worker gate. Proposals carry only the model and prompt version.)
+**Direct orders are closed too.** A bot under release control cannot place orders through `/v1/paper/orders`; it trades only by executing its reviewed proposals (PAPER-04).
+
+**Not enforced (audit, 14 October 2026).** The **code fingerprint** is not checked on the trading path. Proposals carry only the model and prompt version. The worker gate (`release_gate.py`) checks the fingerprint, but no worker calls it yet, so editing a bot's code without changing its rule version keeps proposing under the old release. Until proposals carry the fingerprint, change the rule version (`promptVersion`) whenever the decision code changes.

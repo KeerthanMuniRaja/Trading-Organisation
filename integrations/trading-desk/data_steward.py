@@ -93,12 +93,17 @@ def gaps(bars, peer_dates, share=0.75):
     return sorted(d for d, n in counts.items() if n >= need and d not in mine)
 
 
-def review(new, old=None, peers=(), today=None):
-    """Verdict for a new download: 'ok', 'warning' (usable) or 'reject' (keep the previous file)."""
+def review(new, old=None, peers=(), today=None, accepted=()):
+    """Verdict for a new download: 'ok', 'warning' (usable) or 'reject' (keep the previous file). `accepted`: session
+    dates of large moves the owner checked and confirmed as real (daily.py accept-move)."""
     bars = new['bars']
     issues = []
+    # a large move the previous (accepted) file already had, or that the owner confirmed, is known; any other large move,
+    # new or rewritten into the past, is rejected
+    known = ({m['date'] for m in extreme_moves(old['bars'])} if old else set()) | set(accepted)
     for move in extreme_moves(bars):
-        issues.append({'check': 'extreme-move', 'severity': 'reject', **move})
+        if move['date'] not in known:
+            issues.append({'check': 'extreme-move', 'severity': 'reject', **move})
     if old:
         r = rewrite(old['bars'], bars)
         if r['rewritten']:

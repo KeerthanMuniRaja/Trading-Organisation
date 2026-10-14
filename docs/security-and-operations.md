@@ -14,7 +14,7 @@ Migration 015 stores immutable scoped worker observations separately from backen
 
 ## Enforced by this build
 
-The API denies routes unless a role is explicitly allowed. Configured tokens must be long, unique and assigned to unique identities; exactly one owner is required. A trader identity is bound to one bot. HTTP bodies, identifiers, quantities and monetary values are validated. Helmet headers, non-cacheable responses, request IDs and a per-process rate limit are enabled.
+The API denies routes unless a role is explicitly allowed. Configured tokens must be long, unique and assigned to unique identities; exactly one owner is required. A trader identity is bound to one bot. HTTP bodies, identifiers, quantities and monetary values are validated. Helmet headers, non-cacheable responses, request IDs and a per-process rate limit are enabled. The rate limit (120 requests a minute per address) applies to anonymous requests and wrong tokens, to slow token guessing. Requests carrying a configured credential are the organisation's own workers, which share one local address, so they are not throttled. Authentication and roles are still checked on every request.
 
 Financial authorisation is outside the learning loop. Owner monetary commands require a separate Ed25519 proof for the exact transaction and a one-time, two-minute challenge. Bots cannot request owner challenges, change ratios, edit budgets or withdraw to the bank. The protected wallet is a separate account in the ledger, not an actual independently custodied wallet yet.
 
@@ -38,7 +38,7 @@ Failed and revoked knowledge remains in records; retrieval excludes it from usab
 
 ## Incidents, halts and notifications
 
-Every audited business event also creates a durable owner inbox entry in the same transaction. Fetch `/v1/operations` with the owner role and acknowledge relevant entries. There is no email, Slack, mobile push or autonomous external message sender configured.
+Every audited business event also creates a durable owner inbox entry in the same transaction. Fetch `/v1/operations` with the owner role and acknowledge relevant entries. Owner alerts are delivered by `scripts/deliver-alerts.mjs` to a local outbox, and to an HTTPS webhook if `ALERT_WEBHOOK_URL` is set; none is set yet (the owner's choice). Nothing else sends messages out.
 
 A critical incident halts new paper risk. Cancelling reservations and closing existing positions remain possible subject to valid quotes and evidence. Resolution requires verified evidence; resuming is a separate owner action and is refused while critical incidents remain open. Job lease recovery and bounded HTTP retries run automatically. Arbitrary source patching, self-redeployment, incident-court verdicts and permission changes do not.
 

@@ -1,5 +1,9 @@
 # Current implementation — v0.1.34
 
+> **Superseded for status, 14 October 2026.** The honest, code-checked status is in the [audit of 14 October](audit-2026-10-14.md).
+> - **Migrations:** they now run to 049; "migration 023 is the latest" below is history.
+> - **Docker:** it was tested on 13 October, so it is no longer deferred.
+
 ## Current development update — v0.1.35, 7 October 2026
 
 The checkout now includes v0.1.34's explicit direct-structured-v1 production engine and migration 023, which adds the optional research-methods-v1 assessment rubric. Existing research-basics-v1 records/defaults remain unchanged. The direct worker requests task schemas and binds tickets to the owner-selected engine; it is separate from Hermes, not a fallback or an upgrade of the pinned Hermes path.

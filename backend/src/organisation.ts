@@ -138,10 +138,18 @@ export class Organisation {
     });
   }
   retire(actor:Actor,key:string,raw:unknown) {
-    permit(actor,'owner');const input=parse(z.object({botId:id,reason:text,transferLessonIds:z.array(z.uuid()).min(1).max(50)}).strict(),raw);
+    permit(actor,'owner');const input=parse(z.object({botId:id,reason:text,transferLessonIds:z.array(z.uuid()).max(50).default([])}).strict(),raw);
     return this.db.command(actor,'retire',key,input,async tx=>{
       requireThat((await tx.query("SELECT id FROM bots WHERE id=$1 AND state<>'retired'",[input.botId])).rows.length,'Active bot not found');
       requireThat(!(await tx.query("SELECT id FROM orders WHERE bot_id=$1 AND status='reserved'",[input.botId])).rows.length && !(await tx.query('SELECT bot_id FROM positions WHERE bot_id=$1 AND quantity>0',[input.botId])).rows.length,'Resolve orders and positions before retirement');
+      // a live proposal (not yet reviewed, or accepted and not executed or lapsed) would be orphaned by retirement
+      requireThat(!(await tx.query(`SELECT 1 FROM trade_signals s LEFT JOIN trade_signal_reviews r ON r.signal_id=s.id WHERE s.bot_id=$1 AND s.expires_at>now()
+        AND (r.signal_id IS NULL OR r.outcome='accepted') AND NOT EXISTS (SELECT 1 FROM trade_signal_executions x WHERE x.signal_id=s.id)
+        AND NOT EXISTS (SELECT 1 FROM trade_signal_lapses l WHERE l.signal_id=s.id)`,[input.botId])).rows.length,'Resolve open trade proposals before retirement (let them execute or expire)');
+      // knowledge transfer: a bot that learned something must hand it on; a bot with no verified lessons (e.g. a
+      // model-free rule bot) has nothing to transfer and may retire without
+      const learned=Number((await tx.query("SELECT count(*)::int AS n FROM lessons WHERE bot_id=$1 AND status='verified'",[input.botId])).rows[0]!.n);
+      if(learned)requireThat(input.transferLessonIds.length>0,'Retirement must transfer at least one of this bot\'s verified lessons');
       requireThat(!(await tx.query("SELECT j.id FROM jobs j JOIN experiments e ON e.id=j.experiment_id WHERE e.bot_id=$1 AND j.state IN ('queued','running')",[input.botId])).rows.length,'Resolve research jobs before retirement');
       requireThat(!(await tx.query("SELECT id FROM portfolio_trials WHERE bot_id=$1 AND state='submitted'",[input.botId])).rows.length,'Resolve portfolio trials before retirement');
       for(const lessonId of input.transferLessonIds){
@@ -150,7 +158,10 @@ export class Organisation {
       const bot=(await tx.query('SELECT lifecycle_managed FROM bots WHERE id=$1',[input.botId])).rows[0]!;
       if(bot.lifecycle_managed)await archiveResearchBot(tx,actor,input.botId,input.reason);
       else await tx.query("UPDATE bots SET state='retired' WHERE id=$1",[input.botId]);
-      await audit(tx,actor,'bot.retired',input.botId,input);return {id:input.botId,state:'retired',knowledgePreserved:true};
+      // a retired bot leads no department any more (the owner appoints a new lead)
+      for(const d of (await tx.query('UPDATE departments SET lead_bot_id=NULL WHERE lead_bot_id=$1 RETURNING id',[input.botId])).rows)
+        await audit(tx,actor,'department.lead.vacated',d.id,{botId:input.botId,reason:'lead retired'});
+      await audit(tx,actor,'bot.retired',input.botId,input);return {id:input.botId,state:'retired',knowledgePreserved:input.transferLessonIds.length>0};
     });
   }
   list(actor:Actor) { permit(actor,'owner','researcher','evaluator');return this.db.transaction(async tx=>(await tx.query('SELECT id,name,department,specialty,method,contribution,state,mentor_id,lifecycle_managed FROM bots ORDER BY created_at')).rows); }

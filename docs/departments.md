@@ -50,7 +50,7 @@ Code: [`backend/src/bot-births.ts`](../backend/src/bot-births.ts) (migration 040
 `GET /v1/bots/births` lists similar bots so the owner can weigh up overlap.
 
 **Owner decision.** `POST /v1/bots/births/decisions` is owner only.
-- **Approval** re-checks that the department is still active and the capability still new. It then creates the bot in **school with zero budget**, mentored by the department lead unless the owner names another mentor. Trading still requires the academy's qualification.
+- **Approval** re-checks that the department is still active and the capability still new. It then creates the bot in **school with zero budget**, mentored by the department lead unless the owner names another mentor. Trading still requires qualification: an active release with a fresh, active-eligible evaluation, then the owner's qualification (`POST /v1/releases/qualifications`).
 - **Rejection** keeps the record and frees the capability for a better-argued proposal.
 
 ## What it does not do

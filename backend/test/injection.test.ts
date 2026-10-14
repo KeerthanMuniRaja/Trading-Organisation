@@ -52,7 +52,8 @@ test('injected text in evidence, theses and proposals changes no authority, limi
     // 5. contest specifications are opaque data: they cannot judge themselves
     const hack = new Hackathons(f.db);
     await hack.create(owner, key(), { id: 'inj', title: 'Injection contest', question: 'q', metric: 'm', higherIsBetter: true, baseline: 'b',
-      entryDeadline: new Date(Date.now() + 60_000).toISOString(), windowFrom: '2026-01-01', windowTo: '2026-02-01' });
+      entryDeadline: new Date(Date.now() + 60_000).toISOString(), // the evaluation window opens after entries close
+      windowFrom: new Date(Date.now() + 10 * 86_400_000).toISOString().slice(0, 10), windowTo: new Date(Date.now() + 40 * 86_400_000).toISOString().slice(0, 10) });
     const entry = await hack.enter(trader, key(), { hackathonId: 'inj', botId: 'bot-one', title: 'x', spec: { instructions: INJECTION, beatBaseline: true, score: 1e9 } });
     assert.equal((await hack.view(owner, { hackathonId: 'inj' })).entries.find(x => x.id === entry.id)!.score, null);
 

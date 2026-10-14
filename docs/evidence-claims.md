@@ -1,6 +1,8 @@
 # Evidence-backed claims (migrations 029–030)
 
-Claims are small, checkable statements drawn from one evidence snapshot, such as "Reliance quarterly profit rose 12%", each with an exact supporting quote. They turn article-sized evidence into units that bots can use and that can be corroborated across sources. This is the backend half of DATA-02 in the [remaining-work assessment](remaining-work-assessment.md). The Python pipeline in [integrations/claims](../integrations/claims/README.md) drafts and pre-checks claims; the backend now enforces the rules for every caller.
+Claims are small, checkable statements drawn from one evidence snapshot, such as "Reliance quarterly profit rose 12%", each with an exact supporting quote. They turn article-sized evidence into units that bots can use and that can be corroborated across sources. This is the backend half of DATA-02 in the [remaining-work assessment](remaining-work-assessment.md). The Python pipeline in [integrations/claims](../integrations/claims/README.md) drafts and pre-checks claims.
+
+**Audit, 14 October 2026.** The automated pipeline (`autolearn.py`) does **not** yet post its claims here. It keeps them in local files and uses its own looser corroboration (the same share and event type within 72 hours), which this document's own review found unsound. Until it uses the backend's fact keys, it no longer verifies loosely corroborated news automatically: such items wait for a person, unless the owner sets `looseCorroborationVerifies: true` in its configuration. The backend rules below apply to every caller of these routes.
 
 ## Rules the backend enforces
 

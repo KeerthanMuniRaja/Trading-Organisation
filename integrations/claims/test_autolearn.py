@@ -20,7 +20,9 @@ TEXTS = {
 QUOTES = {'e1': ('Reliance Industries reported a 12% rise in quarterly net profit', 'positive'),
           'e2': ('profit for the September quarter climbed 12% on strong retail sales', 'positive'),
           'e4': ('quarterly profit actually missed estimates, according to a revised filing', 'negative')}
-CONFIG = {'recipientBotIds': ['news-desk', 'research-lead'], 'primarySourceIds': [], 'holdDays': 7, 'maxModelCallsPerCycle': 20}
+# the downstream tests exercise the opt-in loose corroboration path; the default (held for review) is tested separately
+CONFIG = {'recipientBotIds': ['news-desk', 'research-lead'], 'primarySourceIds': [], 'holdDays': 7, 'maxModelCallsPerCycle': 20,
+          'looseCorroborationVerifies': True}
 
 
 def observation(evidence):
@@ -309,6 +311,16 @@ class OrchestrationTests(unittest.TestCase):
                     autolearn.load_config(path)
             path.write_text(json.dumps({'recipientBotIds': ['news-desk']}), encoding='utf-8')
             self.assertEqual(autolearn.load_config(path)['holdDays'], 7)
+            self.assertIs(autolearn.load_config(path)['looseCorroborationVerifies'], False)  # safe by default
+
+    def test_by_default_loosely_corroborated_news_waits_for_a_person(self):
+        own = [{'id': 'c1', 'sourceId': 'src-a'}]
+        clusters = [{'claimIds': ['c1'], 'status': 'corroborated'}]
+        obs, record = {'publishedAt': NOW.isoformat()}, {'outcome': 'valid', 'accepted': [{}]}
+        safe = {**CONFIG, 'looseCorroborationVerifies': False}
+        self.assertEqual(autolearn.evidence_decision(obs, record, own, clusters, safe, NOW), ('hold', 'corroborated-by-loose-rule-needs-review'))
+        self.assertEqual(autolearn.evidence_decision(obs, record, own, clusters, CONFIG, NOW), ('verified', 'corroborated'))  # owner opted in
+        self.assertEqual(autolearn.evidence_decision(obs, record, own, [], {**safe, 'primarySourceIds': ['src-a']}, NOW), ('verified', 'primary-source'))
 
 
 if __name__ == '__main__':

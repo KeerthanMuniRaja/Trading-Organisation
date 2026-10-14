@@ -74,5 +74,19 @@ class KnowledgeTests(unittest.TestCase):
             with self.assertRaisesRegex(HermesError,'Uncertain'):run_once(*args,proposer=proposer)
             proposer.assert_called_once()
 
+    def test_a_model_server_that_is_down_starts_nothing_so_the_same_request_runs_later(self):
+        settings=Settings(Path('/source'),Path('/python'),'fixture','http://127.0.0.1:8000/v1','fixture-key')
+        client=Mock(base='http://127.0.0.1:3000',token='fixture-token')
+        client.post.side_effect=[self.ticket(settings),{'authorised':True}]
+        proposer=Mock(return_value=plan())
+        down=Mock(side_effect=HermesError('Model endpoint not reachable (ENDPOINT_UNREACHABLE); nothing was started, retry when it is up'))
+        with tempfile.TemporaryDirectory() as directory:
+            args=(client,settings,{'botId':'student','task':'one'},'stable-key',Path(directory))
+            with self.assertRaisesRegex(HermesError,'not reachable'):run_once(*args,proposer=proposer,probe=down)
+            proposer.assert_not_called()  # no inference began, so nothing is uncertain
+            client.post.side_effect=[{'authorised':True},{'recorded':True},{'state':'awaiting-review'}]
+            self.assertEqual(run_once(*args,proposer=proposer,probe=Mock()),{'state':'awaiting-review'})  # same request, once up
+            proposer.assert_called_once()
+
 
 if __name__ == '__main__': unittest.main()

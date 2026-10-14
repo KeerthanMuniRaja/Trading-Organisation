@@ -17,6 +17,14 @@ const DESK_TESTS = ['test_desk', 'test_desk_v2', 'test_live', 'test_datasets', '
   'test_curriculum', 'test_participants', 'test_chains', 'test_signals_bridge', 'test_regime_study', 'test_release_gate', 'test_data_steward',
   'test_signal_scorer', 'test_rule_bot', 'test_model_allocator'];
 
+const INTEGRATION_NODE_TESTS = ['integrations/kite/quotes.test.mjs', 'integrations/publisher-feeds/feed-client.test.mjs',
+  'integrations/publisher-feeds/feed-parser.test.mjs', 'integrations/ruflo/coordinator.test.mjs', 'integrations/ruflo/dependency.test.mjs',
+  'integrations/ruflo/mirror.test.mjs', 'integrations/vibe-trading/news-adapter.test.mjs', 'integrations/vibe-trading/news-client.test.mjs',
+  'scripts/department-runtime.test.mjs', 'scripts/department-session.test.mjs', 'scripts/import-observations.test.mjs',
+  'scripts/import-replay-evidence.test.mjs', 'scripts/import-vibe-news.test.mjs', 'scripts/model-launchers.test.mjs', 'scripts/obsidian-lessons.test.mjs',
+  'scripts/obsidian-organisation.test.mjs', 'scripts/obsidian-sync.test.mjs', 'scripts/organisation-starter.test.mjs', 'scripts/review-news-queue.test.mjs',
+  'scripts/run-feed-cycle.test.mjs', 'scripts/run-vibe-cycle.test.mjs'];
+
 export function suites({ quick = false } = {}) {
   return [
     { id: 'secret-scan', cmd: NODE, args: ['scripts/secret-scan.mjs'] },
@@ -30,6 +38,11 @@ export function suites({ quick = false } = {}) {
     { id: 'quant-advisor', cmd: SKFOLIO, args: ['-m', 'unittest', 'test_quant_advisor'], cwd: join(ROOT, 'integrations', 'trading-desk'), requires: SKFOLIO },
     { id: 'claims', cmd: REPLAY, args: ['-m', 'unittest', 'test_claims', 'test_http_security', 'test_autolearn', 'test_refresh_headlines'],
       cwd: join(ROOT, 'integrations', 'claims'), requires: REPLAY },
+    // everything else that has tests, so "all checks passed" means all of them (audit, 14 Oct 2026)
+    { id: 'integration-tests', cmd: NODE, args: ['--test', ...INTEGRATION_NODE_TESTS] },
+    { id: 'hermes', cmd: REPLAY, args: ['-m', 'unittest', 'discover', '-p', 'test_*.py'], cwd: join(ROOT, 'integrations', 'hermes'), requires: REPLAY },
+    { id: 'market-replay', cmd: REPLAY, args: ['-m', 'unittest', 'discover', '-p', 'test_*.py'], cwd: join(ROOT, 'integrations', 'market-replay'), requires: REPLAY },
+    { id: 'skfolio', cmd: SKFOLIO, args: ['-m', 'unittest', 'discover', '-p', 'test_*.py'], cwd: join(ROOT, 'integrations', 'skfolio'), requires: SKFOLIO },
   ];
 }
 

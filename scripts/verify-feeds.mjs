@@ -104,5 +104,6 @@ finally {
   if (root) await rm(root, { recursive: true, force: true });
 }
 await mkdir('.local', { recursive: true });
-await writeFile('.local/feed-verification.json', JSON.stringify(report, null, 2) + '\n');
+// not named feed-*.json: the organisation cycle reads that pattern as feed configurations
+await writeFile('.local/feeds-verification-report.json', JSON.stringify(report, null, 2) + '\n');
 console.log(JSON.stringify(report));

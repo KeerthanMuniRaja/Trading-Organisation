@@ -5,7 +5,8 @@ import { Database, Sql, audit } from './database.js';
 import { Allow } from './security.js';
 
 // Compute accounting (COST-01). Two sources of model usage are combined per bot and department:
-//   - compute_usage: reported by research workers (trading desk, allocator, claims runs) from their own decision logs;
+//   - compute_usage: for research workers (trading desk, allocator, claims runs) to report from their own decision logs;
+//     the model allocator step reports each decided month (14 Oct 2026); the desk and claims runs do not report yet;
 //   - inference_reports: the backend's own model tickets, attributed to a bot when the frozen request context names one
 //     (knowledge transfer, source lessons), otherwise counted as 'unattributed'.
 // The owner may set a daily token budget per department; the report flags departments over it. Nothing is throttled

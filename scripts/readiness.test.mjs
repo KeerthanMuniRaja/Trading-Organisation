@@ -29,6 +29,7 @@ test('each blocker is named with what to do', () => {
   assert.deepEqual(assess({ ...ready, health: false }, WED_MORNING).map(c => [c.id, c.status]), [['backend', 'NO-GO']]);
   assert.equal(status(assess({ ...ready, audit: { valid: false } }, WED_MORNING), 'audit-chain'), 'NO-GO');
   assert.equal(status(assess({ ...ready, digest: { halted: true, alerts: {} } }, WED_MORNING), 'risk-halt'), 'NO-GO');
+  assert.equal(status(assess({ ...ready, digest: null }, WED_MORNING), 'risk-halt'), 'NO-GO'); // unknown is never GO
   assert.equal(status(assess({ ...ready, digest: { halted: false, alerts: { critical: 1 } } }, WED_MORNING), 'alerts'), 'NO-GO');
   assert.equal(status(assess({ ...ready, prices: prices('2026-10-05') }, WED_MORNING), 'market-data'), 'NO-GO');
   assert.equal(status(assess({ ...ready, prices: prices('2026-10-12') }, WED_MORNING), 'market-data'), 'WARN'); // maybe a holiday
@@ -41,6 +42,10 @@ test('each blocker is named with what to do', () => {
   const split = assess({ ...ready, lastCycle: { day: '2026-10-13', failed: [], degraded: [{ id: 'market-data',
     note: 'possible split or bonus, record it in /v1/corporate-actions: HDFCBANK x2 from 2026-10-13' }] } }, WED_MORNING).find(c => c.id === 'needs-owner');
   assert.deepEqual([split.status, split.action], ['WARN', 'Check the exchange notice, then record it: POST /v1/corporate-actions']);
+  const learning = assess({ ...ready, lastCycle: { day: '2026-10-13', failed: [], degraded: [], skipped: [{ id: 'claims-and-fact-check', reason: 'model steps not enabled (--with-model)' },
+    { id: 'rule-bot', reason: 'not configured' }] } }, WED_MORNING).find(c => c.id === 'learning');
+  assert.match(learning.detail, /no knowledge was learned in the last cycle: claims-and-fact-check skipped \(model steps not enabled/);
+  assert.doesNotMatch(learning.detail, /rule-bot/); // only learning steps count here
 });
 
 test('a run reads the backend and local files, writes the report, and never sends a change', async () => {

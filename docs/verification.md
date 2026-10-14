@@ -113,7 +113,7 @@ Scope:
 - Source withdrawal blocking ingestion, followed by explicit abandonment.
 - No credentials reaching the publisher, zero wallet balance and a valid audit chain.
 
-Report: `.local/feed-verification.json`.
+Report: `.local/feeds-verification-report.json`.
 
 The full backend regression passed **113/113 tests** with zero failures (395.530 seconds; log `.local/backend-tests-v028.log`). The suite includes the earlier discovery/review-inbox additions; no backend source or migration changed in this increment.
 

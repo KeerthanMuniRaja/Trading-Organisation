@@ -21,7 +21,14 @@ async function setup() {
     await f.org.reviewEvidence(evaluator, key(), { evidenceId: id, status: 'verified' });
     return id;
   };
-  return { ...f, e, notice, actions: new CorporateActions(f.db) };
+  // a verified daily close in the strict form scoring requires (PAPER-04), observed now
+  const close = async (symbol: string, price: string) => {
+    const at = new Date(Date.now() - 1000).toISOString(), day = new Date(Date.parse(at) + 330 * 60_000).toISOString().slice(0, 10);
+    const id = (await f.org.evidence(researcher, key(), { sourceId: e.sourceId, kind: 'dataset', content: `Daily close of NSE:${symbol} on ${day}: ${price} paise.`, publishedAt: at })).id as string;
+    await f.org.reviewEvidence(evaluator, key(), { evidenceId: id, status: 'verified' });
+    return { evidenceId: id, exitPricePaise: price, observedAt: at };
+  };
+  return { ...f, e, notice, close, actions: new CorporateActions(f.db) };
 }
 
 test('a bonus issue rescales every open position once, keeping its cost, and is append-only', async () => {
@@ -75,12 +82,15 @@ test('a call reviewed before the ex-date is scored on the same basis as its exit
     const split = await reviewed('DEMO'), plain = await reviewed('OTHER');
     await f.actions.record(owner, key(), { symbol: 'DEMO', kind: 'bonus', sharesBefore: 1, sharesAfter: 2, exDate: today(),
       evidenceId: await f.notice('NSE:DEMO bonus issue 1:1, ex-date today.') });
-    const now = new Date().toISOString();
     // DEMO now trades at 5500 after the 1:1 bonus: on the same basis the reference is 5000, so the call gained 10%
-    const scored = await signals.outcome(evaluator, key(), { signalId: split, exitPricePaise: '5500', observedAt: now, evidenceId: f.e.evidenceId });
+    const scored = await signals.outcome(evaluator, key(), { signalId: split, ...await f.close('DEMO', '5500') });
     assert.deepEqual([scored.moveBps, scored.correct], [1000, true]);
-    const untouched = await signals.outcome(evaluator, key(), { signalId: plain, exitPricePaise: '5500', observedAt: now, evidenceId: f.e.evidenceId });
+    const untouched = await signals.outcome(evaluator, key(), { signalId: plain, ...await f.close('OTHER', '5500') });
     assert.deepEqual([untouched.moveBps, untouched.correct], [-4500, false]); // no action on OTHER: a real fall
+    // the exit price must be the one its evidence states: a different price, or a re-dated observation, is refused
+    const other = await reviewed('DEMO'), real = await f.close('DEMO', '5600');
+    await assert.rejects(() => signals.outcome(evaluator, key(), { signalId: other, ...real, exitPricePaise: '9999' }), says(/does not state this price/));
+    await assert.rejects(() => signals.outcome(evaluator, key(), { signalId: other, ...real, observedAt: new Date().toISOString() }), says(/own publication time/));
   } finally { await f.db.close(); }
 });
 
@@ -117,7 +127,7 @@ test('a dividend pays holders on the ex-date as realised profit, and calls held 
         VALUES($1,$2,'accepted',ARRAY['fixture']::text[],'buy',10,10000,'signal-risk-v2','evaluator',now()-interval '39 days')`, [crypto.randomUUID(), id]);
     });
     await f.actions.dividend(owner, key(), { symbol: 'DIV', amountPerSharePaise: '500', exDate: today(), evidenceId: await f.notice('NSE:DIV interim dividend of Rs 5.') });
-    const scored = await signals.outcome(evaluator, key(), { signalId: id, exitPricePaise: '9600', observedAt: new Date().toISOString(), evidenceId: f.e.evidenceId });
+    const scored = await signals.outcome(evaluator, key(), { signalId: id, ...await f.close('DIV', '9600') });
     assert.deepEqual([scored.moveBps, scored.correct], [105, true]);
     assert.equal((await f.ops.verifyAudit(owner)).valid, true);
   } finally { await f.db.close(); }

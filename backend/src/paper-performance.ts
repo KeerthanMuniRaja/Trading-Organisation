@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { Actor, id, parse, permit, requireThat, symbol, timestamp, uuid } from './core.js';
 import { Database, Sql, audit } from './database.js';
 import { Allow } from './security.js';
-import { verifiedPrice } from './trade-signals.js';
+import { verifiedPrice } from './price-evidence.js';
 import { restated } from './corporate-actions.js';
 
 // Paper performance (part of PAPER-01): per-bot profit and loss, read only from the append-only ledger and positions.
@@ -158,7 +158,7 @@ export class PaperPerformance {
     permit(actor, 'owner', 'evaluator');
     const input = parse(markSchema, raw);
     return this.db.command(actor, 'paper-price-mark', key, input, async tx => {
-      const price = (await verifiedPrice(tx, input.symbol, input.priceEvidence)).toString();
+      const price = (await verifiedPrice(tx, input.symbol, input.priceEvidence)).pricePaise.toString();
       const at = new Date(input.priceEvidence.observedAt).toISOString();
       const latest = (await tx.query(`SELECT price_paise::text AS price,observed_at FROM price_marks WHERE symbol=$1 ORDER BY observed_at DESC LIMIT 1`, [input.symbol])).rows[0];
       if (latest && new Date(latest.observed_at).toISOString() === at) {

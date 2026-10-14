@@ -35,7 +35,7 @@ test('the rule bot proposes its top 3 with verified evidence and the desk review
       await writeFile(join(dir, `${symbol}-1d.json`), JSON.stringify({ symbol, bars }));
     }
     const env = { ...process.env, API_URL: base, PRINCIPALS_JSON: JSON.stringify(f.cfg.principals) };
-    const run = async script => (await promisify(execFile)(PY, [`integrations/trading-desk/${script}.py`, ...(script === 'rule_bot' ? ['--bot', 'bot-one'] : []),
+    const run = async script => (await promisify(execFile)(PY, [`integrations/trading-desk/${script}.py`, ...(script === 'rule_bot' ? ['--bot', 'bot-one', '--state', join(dir, 'state')] : []),
       '--source', 'market-yahoo-daily', '--cache', dir], { env })).stdout;
 
     const first = JSON.parse(await run('rule_bot'));
@@ -53,7 +53,7 @@ test('the rule bot proposes its top 3 with verified evidence and the desk review
     // three equal thirds of the budget, as in the backtest
     assert.ok(reviews.every(r => r.reasons.includes('priced-from-verified-close') && r.reasons.includes('sized-by-target-weight')), JSON.stringify(reviews));
 
-    assert.equal(JSON.parse(await run('rule_bot')).state, 'already-decided'); // one decision per month
+    assert.equal(JSON.parse(await run('rule_bot')).state, 'month-complete'); // one decision per month: nothing more to send
     assert.equal((await f.ops.verifyAudit(owner)).valid, true);
   } finally { await app.close(); await f.db.close(); await rm(dir, { recursive: true, force: true }); }
 });

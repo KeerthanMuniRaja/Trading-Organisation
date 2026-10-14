@@ -23,12 +23,14 @@ export class KnowledgeAsOf {
     return this.db.transaction(async tx => {
       const cutoff = new Date(input.asOf).getTime();
       const events = (await tx.query(`SELECT action,entity,payload,created_at FROM audit_events
-        WHERE action IN ('evidence.reviewed','evidence.authority.revoked','lesson.verified') ORDER BY sequence`)).rows;
+        WHERE action IN ('evidence.reviewed','evidence.authority.revoked','lesson.verified','source.learning.accepted') ORDER BY sequence`)).rows;
       const evidenceChanges = new Map<string, Change[]>(), sourceRevoked = new Map<string, string>(), lessonVerified = new Map<string, string>();
       for (const e of events) {
         const at = new Date(e.created_at).toISOString();
         if (e.action === 'evidence.reviewed') evidenceChanges.set(e.entity, [...(evidenceChanges.get(e.entity) ?? []), { at, status: e.payload.status }]);
         else if (e.action === 'lesson.verified') { if (!lessonVerified.has(e.entity)) lessonVerified.set(e.entity, at); }
+        // a lesson accepted through a source-learning workflow is verified by that decision (the lesson id is in the payload)
+        else if (e.action === 'source.learning.accepted') { const id = String(e.payload?.lessonId ?? ''); if (id && !lessonVerified.has(id)) lessonVerified.set(id, at); }
         else if (e.payload?.kind === 'source') { if (!sourceRevoked.has(e.entity)) sourceRevoked.set(e.entity, at); }
         else evidenceChanges.set(e.entity, [...(evidenceChanges.get(e.entity) ?? []), { at, status: 'revoked' }]);
       }

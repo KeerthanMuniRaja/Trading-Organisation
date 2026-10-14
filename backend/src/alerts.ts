@@ -6,7 +6,7 @@ import { Database, Sql, audit } from './database.js';
 import { MARK_STALE_SECONDS, curveStats } from './paper-performance.js';
 import { usageByBot } from './compute-usage.js';
 import { LOW_SCORE, MIN_FOR_ALERT, reliability } from './source-reliability.js';
-import { available, balance } from './treasury.js';
+import { available, balance, tradingLoss } from './treasury.js';
 import { EVALUATION_VALID_DAYS } from './bot-releases.js';
 import { Allow } from './security.js';
 
@@ -41,7 +41,7 @@ export async function conditions(tx: Sql, config: Config): Promise<Condition[]> 
     : { rule: 'incident-open', severity: 'warning', subject: String(i.id), message: 'Incident open: ' + String(i.description).slice(0, 200), detail: { incidentId: String(i.id) } });
 
   // PNL entries are debits: a positive balance is a net realised loss (the same rule paper trading's loss limit uses).
-  const pnl = await balance(tx, 'PNL'), loss = pnl > 0n ? pnl : 0n;
+  const pnl = await tradingLoss(tx), loss = pnl > 0n ? pnl : 0n;
   if (config.maxLoss > 0n && loss > 0n) {
     const used = Number(loss * 100n / config.maxLoss);
     if (used >= 75) out.push({ rule: 'realised-loss-limit', severity: used >= 100 ? 'critical' : 'warning', subject: used >= 100 ? 'reached' : 'near',
@@ -84,9 +84,13 @@ export async function conditions(tx: Sql, config: Config): Promise<Condition[]> 
     message: `${stale.length} open paper position(s) have neither a recent approved quote nor a recent verified close; P&L for them is unreliable.`,
     detail: { positions: stale.map(p => `${p.bot_id}:${p.symbol}`).slice(0, 50) } });
 
+  // Each bot's CURRENT active release: of the releases whose latest stage is 'active', the most recently activated one
+  // (activating v2 adds no row for v1, so v1 still reads 'active'; it is a rollback target, not the running release).
+  const CURRENT_ACTIVE = `SELECT DISTINCT ON (bot_id) bot_id,release_id FROM (SELECT DISTINCT ON (release_id) release_id,bot_id,stage,sequence
+    FROM bot_release_stages ORDER BY release_id,sequence DESC) latest WHERE stage='active' ORDER BY bot_id,sequence DESC`;
   // SCHOOL-01: an active release whose newest evaluation has expired must be re-tested
   const staleReleases = (await tx.query(`SELECT r.id,r.bot_id,r.version,MAX(e.created_at) AS evaluated FROM bot_releases r
-      JOIN (SELECT DISTINCT ON (release_id) release_id,stage FROM bot_release_stages ORDER BY release_id,sequence DESC) st ON st.release_id=r.id AND st.stage='active'
+      JOIN (${CURRENT_ACTIVE}) st ON st.release_id=r.id
       LEFT JOIN bot_release_evaluations e ON e.release_id=r.id GROUP BY r.id,r.bot_id,r.version
       HAVING MAX(e.created_at) IS NULL OR MAX(e.created_at) < now() - ($1::int * interval '1 day')`, [EVALUATION_VALID_DAYS])).rows;
   for (const r of staleReleases) out.push({ rule: 'release-evaluation-expired', severity: 'warning', subject: `${r.bot_id}/v${r.version}`,
@@ -95,7 +99,7 @@ export async function conditions(tx: Sql, config: Config): Promise<Condition[]> 
 
   // FITNESS-02: an active release whose newest evaluation (e.g. on live paper calls) no longer allows active use
   const failing = (await tx.query(`SELECT r.id,r.bot_id,r.version,e.fitness_verdict FROM bot_releases r
-      JOIN (SELECT DISTINCT ON (release_id) release_id,stage FROM bot_release_stages ORDER BY release_id,sequence DESC) st ON st.release_id=r.id AND st.stage='active'
+      JOIN (${CURRENT_ACTIVE}) st ON st.release_id=r.id
       JOIN (SELECT DISTINCT ON (release_id) release_id,active_eligible,fitness_verdict FROM bot_release_evaluations ORDER BY release_id,created_at DESC,id DESC) e
         ON e.release_id=r.id WHERE e.active_eligible=false ORDER BY r.bot_id`)).rows;
   for (const r of failing) out.push({ rule: 'release-failing-evaluation', severity: 'warning', subject: `${r.bot_id}/v${r.version}`,

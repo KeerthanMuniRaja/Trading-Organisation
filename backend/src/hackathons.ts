@@ -17,7 +17,10 @@ const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => !Number.isNaN(Da
 const createSchema = z.object({ id, title: text(160), question: text(1000), metric: text(120), higherIsBetter: z.boolean(),
   baseline: text(120), entryDeadline: timestamp, maxEntriesPerBot: z.number().int().min(1).max(10).default(3),
   windowFrom: day, windowTo: day }).strict()
-  .refine(v => v.windowFrom <= v.windowTo, 'The evaluation window must start before it ends');
+  .refine(v => v.windowFrom <= v.windowTo, 'The evaluation window must start before it ends')
+  // entries are judged on days no entrant could have seen: the window opens after the entry deadline's India date
+  .refine(v => v.windowFrom > new Date(Date.parse(v.entryDeadline) + 330 * 60_000).toISOString().slice(0, 10),
+    'The evaluation window must start after the entry deadline, so no entry can be fitted to it');
 const entrySchema = z.object({ hackathonId: id, botId: id, title: text(160),
   spec: z.record(z.string(), z.unknown()).refine(v => JSON.stringify(v).length <= 8000, 'Specification too large') }).strict();
 const stageSchema = z.object({ hackathonId: id }).strict();

@@ -47,13 +47,15 @@ def allocator_conviction(weight):
     return 'high' if weight >= 18 else 'medium' if weight >= 12 else 'low'
 
 
-def from_allocator(state, day, letters, bot_id, evidence_ids, now):
-    """Proposals for one decided month, comparing it with the last valid month before it."""
+def from_allocator(state, day, letters, bot_id, evidence_ids, now, current=None):
+    """Proposals for one decided month. `current` (weights actually held, percent by letter) is what the decision is
+    compared with when given; otherwise the last valid month before it, which drifts from reality whenever a proposal
+    was rejected, lapsed or filled smaller."""
     entry = state['months'][day]
     if entry['outcome'] != 'valid':
         return []
     earlier = [d for d in sorted(state['months']) if d < day and state['months'][d]['outcome'] == 'valid']
-    old = state['months'][earlier[-1]]['weights'] if earlier else {k: 0 for k in ai.LETTERS}
+    old = current if current is not None else state['months'][earlier[-1]]['weights'] if earlier else {k: 0 for k in ai.LETTERS}
     base = {'botId': bot_id, 'evidenceIds': list(evidence_ids), 'model': state['model'][:120], 'promptVersion': state['promptVersion'][:64]}
     out = []
     for letter in ai.LETTERS:
@@ -92,16 +94,19 @@ def from_meeting(record, symbol, bot_id, evidence_ids, now, model=None):
             'invalidation': (best['invalidation'] if best and best['invalidation'] != 'n/a' else 'The desk risk stop is hit.')[:300]}
 
 
-def dissent(record, analyst_bots):
+def dissent(record, analyst_bots, evidence_id=None):
     """Challenges from a desk meeting: every analyst whose valid view opposes the manager's buy or sell files an
-    'oppose' challenge, in its own words, under its own bot identity. Holds have nothing to oppose."""
+    'oppose' challenge, in its own words, under its own bot identity. Holds have nothing to oppose. An objection counts
+    in the risk review only when it cites verified evidence, so `evidence_id` (the verified evidence the meeting read)
+    is cited: without it, dissent is recorded but never changes a size (SPECIALIST-01)."""
     against = {'buy': 'bearish', 'sell': 'bullish'}.get(record.get('action'))
     out = []
     for role, log in sorted(record['bots'].items()):
         if against and role in analyst_bots and log.get('outcome') == 'valid' and log['opinion']['stance'] == against:
             reasons = '; '.join(str(r) for r in log['opinion'].get('reasons', [])[:3])
             out.append({'botId': analyst_bots[role], 'stance': 'oppose',
-                        'argument': f"{role} is {against} ({log['opinion']['conviction']} conviction): {reasons}"[:600]})
+                        'argument': f"{role} is {against} ({log['opinion']['conviction']} conviction): {reasons}"[:600],
+                        **({'evidenceId': evidence_id} if evidence_id else {})})
     return out
 
 
@@ -113,7 +118,8 @@ def submit_challenges(signal_id, challenges, env, opener=None):
     sent = []
     for c in challenges:
         base, token = credential(env, c['botId'])
-        body = json.dumps({'signalId': signal_id, 'stance': c['stance'], 'argument': c['argument']}, sort_keys=True)
+        body = json.dumps({'signalId': signal_id, 'stance': c['stance'], 'argument': c['argument'],
+                           **({'evidenceId': c['evidenceId']} if c.get('evidenceId') else {})}, sort_keys=True)
         req = urlrequest.Request(base + '/v1/trading/signals/challenges', data=body.encode(), method='POST', headers={
             'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json',
             'Idempotency-Key': 'challenge-' + hashlib.sha256((c['botId'] + body).encode()).hexdigest()[:64]})
@@ -136,7 +142,7 @@ def credential(env, bot_id):
         for line in path.read_text(encoding='utf-8').splitlines():
             key, _, value = line.partition('=')
             if key in values and not values[key]:
-                values[key] = value.strip()
+                values[key] = value.strip().strip("'")  # .env quotes the JSON in single quotes
     base = (values['API_URL'] or 'http://127.0.0.1:3000').rstrip('/')
     if not re.match(r'^(https://[^/@?#]+|http://(127\.0\.0\.1|localhost)(:\d+)?)$', base):
         raise ValueError('Invalid backend API origin')

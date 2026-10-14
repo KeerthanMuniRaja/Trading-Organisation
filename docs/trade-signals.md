@@ -51,6 +51,25 @@ An accepted review is an **order intent**, not an order.
 - **A failed fill keeps its reservation.** With a stale price, the same call succeeds once fresh quotes arrive. If the price moved beyond the reservation, cancel the order and re-propose.
 - **Visibility.** The signal query shows each signal's execution.
 
+**Integrity of execution (PAPER-04, migration 049).** These guarantees were added after the 14 October audit.
+
+**Strict price evidence.** Wherever a price comes from evidence instead of a live quote (end-of-day review, end-of-day fill, valuation mark, outcome exit price), the evidence must:
+- be verified and from an approved source;
+- state **exactly one** price, in the form `NSE:<share> on <date>: <price> paise`, for this share and this price, dated on the India trading day of its own publication.
+
+The observation time **is** that verified publication time. A caller cannot re-date a price, borrow one share's price from a table of several, or cite an old close as new.
+
+**One order per proposal.** The proposal is stored on its order, inside the reservation. Whichever credential or retry executes it:
+- there is only ever one order;
+- a fill that happened before a crash is still recorded, even after the proposal expired;
+- a retry with a later verified price resumes the same order.
+
+**Bought at the real price.** A reviewed buy filled at a later, higher price (the next open above the close it was sized at) buys as many of the reviewed shares as still fit every limit, never more. It is refused only if not one share fits. The execution records the quantity actually filled.
+
+**No direct orders around review.** End-of-day prices are accepted only for reviewed proposals. A bot under release control cannot place direct orders (`/v1/paper/orders`) at all.
+
+**Review room.** Accepted intents that already have an order, or have lapsed, no longer count as pending room in later reviews. A reservation counts as a reservation, and a cancelled one holds nothing.
+
 **Lapses (PAPER-03, migration 045).** An accepted proposal that expires without being executed can never be executed later. But if its execution stopped after reserving (a crash, or a fill refused because the price moved beyond the reservation), that reservation would otherwise hold the bot's budget and the shared capital forever.
 - **The sweep.** `POST /v1/trading/signals/lapses` with `{asOf}` (evaluator or owner) closes every such proposal: it cancels the stranded reservation and records the lapse once, append-only and audited.
 - **What is skipped.** Proposals still live are untouched. So is one whose fill already happened.
@@ -99,7 +118,7 @@ Rules `signal-risk-v2`:
 
 So challengers must earn their place like any other bot.
 
-**From the desk.** The trading desk supplies challengers naturally. `signals_bridge.dissent()` turns every analyst whose view opposed the manager's buy or sell into an `oppose` challenge, in its own words and under its own bot identity.
+**From the desk.** The trading desk supplies challengers naturally. `signals_bridge.dissent()` turns every analyst whose view opposed the manager's buy or sell into an `oppose` challenge, in its own words and under its own bot identity. Given the verified evidence the meeting read, the challenge cites it. Only then does the objection count in the review: a dissent without evidence is recorded but cannot change a size.
 
 ## The rule bot: a model-free member
 
@@ -110,7 +129,8 @@ Without the local model running, no bot proposes anything, so the whole pipeline
 | **Rank** | From the steward-checked daily cache, settled bars only. Shares with less than 126 sessions of history are left out. |
 | **Cite** | The price reporter (researcher) submits the full ranking, with its closes and a combined dataset fingerprint. The price checker (evaluator) verifies only an exact match. |
 | **Propose** | With the bot's own trader credential: `exit` for holdings that left the top 3, then `enter-long` with `targetWeightPct` 33 for top-3 shares not held. Horizon 30 days, expiry 7 days, model `rules:top3-momentum-6m`, prompt version = the rule's fingerprint, so release control applies unchanged. |
-| **Once a month** | If the bot already proposed this calendar month, it does nothing. If it already holds the top 3, it proposes and cites nothing. `--dry-run` shows the plan without sending anything. |
+| **Once a month** | The first run of a month ranks once and keeps that decision in `.local/trading-desk/rule-bot/<bot>-<month>.json`, so the bot trades on one ranking a month however often the cycle runs. A rerun sends only what is still missing. If it already holds the top 3, it proposes and cites nothing. `--dry-run` shows the plan without deciding or sending anything. |
+| **Exits first** | In a month when the top 3 changes, it proposes the exits first. It proposes the new entries on a later run, once the exits have executed and freed the budget; otherwise the entries would be sized against money still invested. |
 
 **Why conviction is `high`.** Medium conviction halves each long's headroom, so the third one-third slot would be starved by the remaining budget. The backtest held three equal thirds. The target weight remains the real cap, and an evidenced objection from another bot still sizes the trade as medium.
 
@@ -140,7 +160,7 @@ When the local model is switched on, its allocator proposes like any other membe
 2. **Propose** ([`model_allocator.py`](../integrations/trading-desk/model_allocator.py), `model-allocator-propose`, no model needed). Once per decided month, while the decision is at most 7 days old:
    - **Report.** The researcher reports the exact facts the model saw, with the shares named, as evidence.
    - **Check.** The evaluator recomputes them from the steward-checked data and verifies only an exact match. If they no longer match, nothing is proposed. So the model's **inputs** are proven true, not just its output recorded.
-   - **Propose.** Material weight changes become proposals (`signals_bridge.from_allocator`: `enter-long` with `targetWeightPct`, or `exit`), sent with the allocator bot's own credential and stamped with the run's model and prompt version.
+   - **Propose.** Material differences between the model's weights and what the bot **actually holds** (read from its paper performance) become proposals. A share 3 or more points under target gets `enter-long` with `targetWeightPct`; a share the model cuts to zero that is still held gets `exit`. Because the comparison is with real holdings, a buy that was rejected, lapsed or filled smaller is proposed again instead of being assumed done. Partial trims are not proposed, since an exit sells the whole position. Proposals are sent with the allocator bot's own credential, stamped with the run's model and prompt version, and the month's model call is reported to compute usage.
    - **What is skipped.** Failed months, stale months and months already proposed propose nothing.
 
 **Switching it on (owner):**

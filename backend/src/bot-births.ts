@@ -64,8 +64,10 @@ export class BotBirths {
         requireThat(dept?.status === 'active', 'The department is no longer active');
         const clash = await duplicate(tx, p.bot_id, p.novelty_key, String(p.id));
         requireThat(!clash, 'No longer novel: ' + clash);
-        mentor = input.mentorId ?? dept.lead_bot_id ?? null;
-        if (mentor) requireThat((await tx.query("SELECT 1 FROM bots WHERE id=$1 AND state<>'retired'", [mentor])).rows.length, 'Mentor not found or retired');
+        const active = async (botId: string) => (await tx.query("SELECT 1 FROM bots WHERE id=$1 AND state<>'retired'", [botId])).rows.length > 0;
+        if (input.mentorId) { requireThat(await active(input.mentorId), 'Mentor not found or retired'); mentor = input.mentorId; }
+        // the department lead mentors by default; a lead who has since retired simply leaves the new bot without one
+        else mentor = dept.lead_bot_id && await active(dept.lead_bot_id) ? dept.lead_bot_id : null;
         await tx.query(`INSERT INTO bots(id,name,department,specialty,method,novelty_key,contribution,state,budget_paise,mentor_id)
           VALUES($1,$2,$3,$4,$5,$6,$7,'school',0,$8)`, [p.bot_id, p.name, p.department, p.specialty, p.method, p.novelty_key, p.contribution, mentor]);
         await audit(tx, actor, 'bot.created', p.bot_id, { birthProposal: String(p.id), department: p.department, state: 'school', budgetPaise: '0', mentorId: mentor });

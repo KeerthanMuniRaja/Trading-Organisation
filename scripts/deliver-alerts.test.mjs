@@ -49,6 +49,11 @@ test('a failed webhook leaves that alert undelivered for the next run', async ()
     assert.deepEqual([result.delivered, result.failed, result.channel], [1, 1, 'outbox+webhook']);
     assert.deepEqual(backend.calls.at(-1).body, { alertIds: ['a1'] });
     assert.ok(!backend.calls.some(c => c.url.startsWith('https://notify') && c.auth)); // the backend credential never goes to the webhook
+    // the retry next run tries the webhook again, but the outbox keeps one line per alert
+    const again = fakeBackend({ webhookFailsFor: 'a2' });
+    await deliver({ PRINCIPALS_JSON: principals, ALERT_OUTBOX: join(dir, 'o.jsonl'), ALERT_WEBHOOK_URL: 'https://notify.example/topic' }, { fetchImpl: again.fetchImpl });
+    const ids = (await readFile(join(dir, 'o.jsonl'), 'utf8')).trim().split('\n').map(l => JSON.parse(l).id);
+    assert.equal(ids.filter(i => i === 'a2').length, 1);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

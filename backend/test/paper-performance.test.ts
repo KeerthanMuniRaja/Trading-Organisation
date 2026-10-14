@@ -51,7 +51,7 @@ test('verified daily closes mark positions when they are newer than the last quo
     const order = await f.paper.reserve(trader, key(), { botId: 'bot-one', symbol: 'DEMO', side: 'buy', quantity: 10, evidenceId: e.evidenceId });
     await f.paper.fill(trader, key(), { orderId: order.id });
     const close = async (price: string, at: string) => {
-      const id = (await f.org.evidence(researcher, key(), { sourceId: e.sourceId, kind: 'dataset', content: `Daily close of NSE:DEMO on ${at.slice(0, 10)}: ${price} paise.`, publishedAt: at })).id as string;
+      const id = (await f.org.evidence(researcher, key(), { sourceId: e.sourceId, kind: 'dataset', content: `Daily close of NSE:DEMO on ${indiaDay(Date.parse(at))}: ${price} paise.`, publishedAt: at })).id as string;
       await f.org.reviewEvidence(evaluator, key(), { evidenceId: id, status: 'verified' });
       return { evidenceId: id, pricePaise: price, observedAt: at };
     };

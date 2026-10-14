@@ -86,37 +86,62 @@ class RuleBotTests(unittest.TestCase):
         self.assertNotIn('targetWeightPct', plan[0])
         self.assertEqual(rb.proposals(rows, {'RELIANCE', 'ICICIBANK', 'NTPC'}, 'momentum-rules', 'ev', NOW), [])
 
-    def test_a_run_reports_verifies_and_proposes_under_the_bots_own_credential(self):
+    def test_a_rotation_month_sells_first_and_buys_once_the_sale_has_freed_the_budget(self):
         with tempfile.TemporaryDirectory() as tmp:
+            cache, state = cache_with(tmp), Path(tmp) / 'state'
             fake = Fake(holdings=['SBIN'])
-            result = rb.run('momentum-rules', 'market-yahoo-daily', ENV, cache_with(tmp), fake, NOW)
-            self.assertEqual(result['state'], 'proposed')
-            self.assertEqual([(p['action'], p['symbol']) for p in result['proposals']],
-                             [('exit', 'SBIN'), ('enter-long', 'RELIANCE'), ('enter-long', 'ICICIBANK'), ('enter-long', 'NTPC')])
+            first = rb.run('momentum-rules', 'market-yahoo-daily', ENV, cache, fake, NOW, state_dir=state)
+            self.assertEqual([(p['action'], p['symbol']) for p in first['proposals']], [('exit', 'SBIN')])  # only the exit today
             routes = [(route, auth) for route, auth, _ in fake.calls]
             self.assertEqual(routes[:4], [('/v1/trading/signals/query', 'Bearer bot-token'), ('/v1/paper/performance', 'Bearer bot-token'),
                                           ('/v1/evidence', 'Bearer reporter-token'), ('/v1/evidence/reviews', 'Bearer checker-token')])
-            self.assertTrue(all(r == ('/v1/trading/signals', 'Bearer bot-token') for r in routes[4:]))
             evidence = fake.calls[2][2]
             self.assertRegex(evidence['content'], r'1\. NSE:RELIANCE \+\d+\.\d\d% \(\d+ -> \d+ paise\); 2\. NSE:ICICIBANK ')
-            self.assertEqual(evidence['kind'], 'dataset')
-            self.assertTrue(all(body['evidenceIds'] == ['ev-1'] for _, _, body in fake.calls[4:]))
+            exit_signal = {'botId': 'momentum-rules', 'model': rb.MODEL, 'createdAt': '2026-11-05T12:00:00Z', 'action': 'exit', 'symbol': 'SBIN',
+                           'review': {'outcome': 'accepted'}, 'execution': None, 'lapse': None}
+            waiting = Fake(signals=[exit_signal], holdings=['SBIN'])  # the exit is accepted but not filled yet
+            self.assertEqual(rb.run('momentum-rules', 'src', ENV, cache, waiting, NOW, state_dir=state)['state'], 'waiting-for-exits')
+            sold = Fake(signals=[{**exit_signal, 'execution': {'side': 'sell'}}])  # next day: the exit filled, SBIN is gone
+            second = rb.run('momentum-rules', 'src', ENV, cache, sold, NOW + timedelta(days=1), state_dir=state)
+            self.assertEqual([(p['action'], p['symbol']) for p in second['proposals']],
+                             [('enter-long', 'RELIANCE'), ('enter-long', 'ICICIBANK'), ('enter-long', 'NTPC')])
+            self.assertNotIn('/v1/evidence', [c[0] for c in sold.calls])  # the month's decision and its evidence are reused
+            self.assertTrue(all(body['evidenceIds'] == ['ev-1'] for route, _, body in sold.calls if route == '/v1/trading/signals'))
 
-    def test_one_decision_per_month_and_dry_runs_send_nothing(self):
+    def test_the_ranking_is_decided_once_a_month_and_a_rerun_sends_only_what_is_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
-            cache = cache_with(tmp)
-            done = Fake(signals=[{'botId': 'momentum-rules', 'model': rb.MODEL, 'createdAt': '2026-11-02T04:00:00Z'}])
-            self.assertEqual(rb.run('momentum-rules', 'src', ENV, cache, done, NOW)['state'], 'already-decided')
+            cache, state = cache_with(tmp), Path(tmp) / 'state'
+            legacy = Fake(signals=[{'botId': 'momentum-rules', 'model': rb.MODEL, 'createdAt': '2026-11-02T04:00:00Z', 'action': 'enter-long', 'symbol': 'NTPC'}])
+            self.assertEqual(rb.run('momentum-rules', 'src', ENV, cache, legacy, NOW, state_dir=state)['state'], 'already-decided')
             last_month = Fake(signals=[{'botId': 'momentum-rules', 'model': rb.MODEL, 'createdAt': '2026-10-02T04:00:00Z'}])
-            dry = rb.run('momentum-rules', 'src', ENV, cache, last_month, NOW, dry_run=True)
+            dry = rb.run('momentum-rules', 'src', ENV, cache, last_month, NOW, dry_run=True, state_dir=state)
             self.assertEqual(dry['proposals'], [['enter-long', 'RELIANCE'], ['enter-long', 'ICICIBANK'], ['enter-long', 'NTPC']])
-            self.assertEqual([c[0] for c in last_month.calls], ['/v1/trading/signals/query', '/v1/paper/performance'])
+            self.assertFalse(state.exists())  # a dry run decides nothing
+            partial = Fake()
+            rb.run('momentum-rules', 'src', ENV, cache, partial, NOW, state_dir=state)
+            sent_one = [{'botId': 'momentum-rules', 'model': rb.MODEL, 'createdAt': '2026-11-05T12:00:00Z', 'action': 'enter-long', 'symbol': 'RELIANCE'}]
+            rerun = Fake(signals=sent_one)  # only the first proposal got through
+            self.assertEqual([p['symbol'] for p in rb.run('momentum-rules', 'src', ENV, cache, rerun, NOW, state_dir=state)['proposals']], ['ICICIBANK', 'NTPC'])
 
-    def test_holding_the_leaders_proposes_nothing_and_cites_nothing(self):
+    def test_holding_the_leaders_decides_nothing_to_change_for_the_whole_month(self):
         with tempfile.TemporaryDirectory() as tmp:
+            cache, state = cache_with(tmp), Path(tmp) / 'state'
             fake = Fake(holdings=['RELIANCE', 'ICICIBANK', 'NTPC'])
-            self.assertEqual(rb.run('momentum-rules', 'src', ENV, cache_with(tmp), fake, NOW)['state'], 'nothing-to-change')
+            self.assertEqual(rb.run('momentum-rules', 'src', ENV, cache, fake, NOW, state_dir=state)['state'], 'nothing-to-change')
             self.assertNotIn('/v1/evidence', [c[0] for c in fake.calls])
+            self.assertEqual(json.loads((state / 'momentum-rules-2026-11.json').read_text(encoding='utf-8'))['evidenceId'], None)
+
+    def test_a_suspended_bot_reports_suspended_instead_of_failing_the_cycle(self):
+        class Suspended(Fake):
+            def __call__(self, req, timeout):
+                if req.full_url.endswith('/v1/trading/signals'):
+                    from urllib.error import HTTPError
+                    import io
+                    raise HTTPError(req.full_url, 403, 'Forbidden', {}, io.BytesIO(b'{"message":"The bot is suspended: only exits and no-action calls are accepted"}'))
+                return super().__call__(req, timeout)
+        with tempfile.TemporaryDirectory() as tmp:
+            result = rb.run('momentum-rules', 'src', ENV, cache_with(tmp), Suspended(), NOW, state_dir=Path(tmp) / 'state')
+            self.assertEqual(result['state'], 'suspended')
 
     def test_describe_names_the_release_identity(self):
         d = rb.describe()

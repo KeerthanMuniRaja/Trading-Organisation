@@ -58,7 +58,8 @@ test('activation qualifies the rule bot, reruns change nothing, and its proposal
       const bars = Array.from({ length: 140 }, (_, i) => { const p = Math.round(10000 * growth ** (i / 139)); return { date: day(140 - i), openPaise: p, highPaise: p, lowPaise: p, closePaise: p, volume: 1 }; });
       await writeFile(join(dir, `${symbol}-1d.json`), JSON.stringify({ symbol, bars }));
     }
-    const { stdout } = await promisify(execFile)(PY, ['integrations/trading-desk/rule_bot.py', '--bot', BOT.id, '--source', 'market-yahoo-daily', '--cache', dir], { env });
+    const { stdout } = await promisify(execFile)(PY, ['integrations/trading-desk/rule_bot.py', '--bot', BOT.id, '--source', 'market-yahoo-daily', '--cache', dir,
+      '--state', join(dir, 'state')], { env });
     const result = JSON.parse(stdout);
     assert.deepEqual(result.proposals.map(p => p.symbol), ['RELIANCE', 'ICICIBANK', 'SBIN']);
     const linked = (await f.db.transaction(tx => tx.query('SELECT count(*)::int AS n FROM trade_signals WHERE bot_id=$1 AND release_id IS NOT NULL', [BOT.id]))).rows[0];

@@ -2,7 +2,7 @@
 
 The first generic **approved-publisher adapter** (DATA-01 in the [remaining-work assessment](remaining-work-assessment.md)). It reads one owner-configured RSS 2.0 or Atom 1.0 feed, keeps a durable checkpoint, and submits new entries through the existing [source-observation intake](source-observations.md). Every submitted entry is **unverified evidence**: an independent evaluator must still review it, and lessons still need their own review.
 
-No publisher has been selected or contacted. The example configuration is disabled. Choosing a feed, and confirming that its terms allow this use, is an owner decision.
+**Update, 13 October 2026.** Three publisher feeds are registered and enabled (BusinessLine, Mint and The Economic Times). The organisation cycle polls them each run, and its retries and failure escalation cover them (a feed in back-off counts as failed, so an outage escalates). The example configuration stays disabled. Confirming that each publisher's terms allow this use remains an owner decision.
 
 ## What it does
 
@@ -76,7 +76,7 @@ npm.cmd run review:news
   - Source withdrawal followed by abandonment.
   - No credentials sent to the publisher, no financial writes, and a valid audit chain.
 
-  Report: `.local/feed-verification.json`.
+  Report: `.local/feeds-verification-report.json`.
 
 These checks use synthetic feeds. They do not show that a real publisher's feed parses, that its terms allow collection, or that collected claims are true.
 

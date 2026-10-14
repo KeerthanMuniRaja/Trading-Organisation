@@ -15,16 +15,17 @@ Code: [`backend/src/alerts.ts`](../backend/src/alerts.ts) (migration 037), worke
 | `system-halted` | critical | New risk is halted |
 | `audit-chain-broken` | critical | The audit hash chain does not verify |
 | `critical-incident-open` | critical | A critical incident is open (one alert per incident) |
-| `realised-loss-limit` | warning at 75% of `MAX_REALISED_LOSS_PAISE`, critical at 100% | Net realised paper loss approaches or reaches the limit |
+| `realised-loss-limit` | warning at 75% of `MAX_REALISED_LOSS_PAISE`, critical at 100% | Net realised **trading** loss (paper buys, sells and dividends; owner operating expenses do not count) approaches or reaches the limit |
 | `bot-drawdown` | warning at 10%, critical at 20% | A bot's paper equity fell that far from its peak in the last 90 days of daily snapshots |
 | `fitness-review` | warning | A bot was worse than its baseline in its last two fitness reports |
 | `evidence-backlog` | warning | 20 or more pieces of evidence have waited over 24 hours for review |
-| `stale-position-prices` | warning | Open positions have no approved price from the last day |
+| `stale-position-prices` | warning | Open positions have neither an approved quote from the last day nor a verified daily close from the last 4 days |
 | `department-proposals-pending` | info | Department proposals await the owner's decision |
 | `incident-open` | warning | A warning incident is open, for example a cycle escalation |
 | `compute-over-budget` | warning | A department used more model tokens in the last day than its budget |
 | `source-low-reliability` | warning | An approved source scores below 0.4 over at least 10 independent decisions |
-| `release-evaluation-expired` | warning | An active release's newest evaluation is older than 180 days: re-test it |
+| `release-evaluation-expired` | warning | A bot's current active release (the most recently activated) has a newest evaluation older than 180 days: re-test it |
+| `release-failing-evaluation` | warning | A bot's current active release is no longer active-eligible in its newest evaluation (for example worse than cash on live paper calls): the owner decides whether to roll back or revoke it |
 | `budgets-exceed-capital` | warning | Active department budget ceilings add up to more than the capital available in Wallet 1 |
 
 Alerts describe; they never halt, trade, fund or retire anything.

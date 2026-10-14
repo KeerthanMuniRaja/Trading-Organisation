@@ -50,8 +50,8 @@ def build(tmp, months=None, tamper=False):
 
 
 class Fake:
-    def __init__(self, signals=()):
-        self.signals, self.calls, self.evidence = list(signals), [], {}
+    def __init__(self, signals=(), positions=()):
+        self.signals, self.positions, self.calls, self.evidence = list(signals), list(positions), [], {}
 
     def __call__(self, req, timeout):
         route = req.full_url.split('3000')[1]
@@ -62,6 +62,10 @@ class Fake:
         elif route == '/v1/evidence':
             self.evidence['ev-1'] = body
             answer = {'id': 'ev-1', 'status': 'unverified'}
+        elif route == '/v1/paper/performance':
+            answer = {'bots': [{'botId': 'ai-allocator', 'budgetPaise': '1000000', 'openPositions': self.positions}]}
+        elif route == '/v1/compute/usage/reports':
+            answer = {'id': 'usage-1', 'duplicate': False}
         elif route == '/v1/evidence/reviews':
             assert body['expected']['content'] == self.evidence[body['evidenceId']]['content']
             answer = {'evidenceId': body['evidenceId'], 'status': 'verified'}
@@ -83,16 +87,30 @@ class ModelAllocatorTests(unittest.TestCase):
             result = ma.run('ai-allocator', 'ai-forward', 'market-yahoo-daily', ENV, cache, root, fake, NOW)
             self.assertEqual(result['state'], 'proposed')
             a, b, c = (bridge_ticker(letters[k]) for k in 'ABC')
-            self.assertEqual(sorted((p[0], p[1]) for p in result['proposals']), sorted([('enter-long', a), ('exit', c)]))  # B unchanged at 15
+            # compared with what is actually held (nothing yet), not with last month's decision: A and B are both bought
+            self.assertEqual(sorted((p[0], p[1]) for p in result['proposals']), sorted([('enter-long', a), ('enter-long', b)]))
             routes = [(route, auth) for route, auth, _ in fake.calls]
-            self.assertEqual(routes[:3], [('/v1/trading/signals/query', 'Bearer allocator-token'), ('/v1/evidence', 'Bearer reporter-token'),
+            self.assertEqual(routes[:5], [('/v1/compute/usage/reports', 'Bearer reporter-token'), ('/v1/trading/signals/query', 'Bearer allocator-token'),
+                                          ('/v1/paper/performance', 'Bearer allocator-token'), ('/v1/evidence', 'Bearer reporter-token'),
                                           ('/v1/evidence/reviews', 'Bearer checker-token')])
-            evidence = fake.calls[1][2]['content']
+            usage = fake.calls[0][2]
+            self.assertEqual((usage['calls'], usage['runLabel'], usage['periodFrom']), (1, f'ai-allocator:ai-forward:{DAY}', DAY))
+            self.assertTrue(result['usageReported'])
+            evidence = fake.calls[3][2]['content']
             self.assertIn(f'NSE:{a} return 1m', evidence)
             self.assertIn(f'decision on {DAY}', evidence)
             sent = [body for route, _, body in fake.calls if route == '/v1/trading/signals']
             self.assertTrue(all(s['evidenceIds'] == ['ev-1'] and s['model'] == 'Qwen3.5-4B-Q4_K_M' for s in sent))
             self.assertEqual(next(s for s in sent if s['action'] == 'enter-long')['targetWeightPct'], 20)
+
+    def test_proposals_follow_the_real_holdings_so_a_trade_that_never_happened_is_proposed_again(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cache, root, letters = build(tmp)
+            a, b, c = (bridge_ticker(letters[k]) for k in 'ABC')
+            # B is held at its 15% target, C (cut to zero) is still held, A's earlier buy never filled
+            fake = Fake(positions=[{'symbol': b, 'quantity': '15', 'marketValuePaise': '150000'}, {'symbol': c, 'quantity': '10', 'marketValuePaise': '100000'}])
+            result = ma.run('ai-allocator', 'ai-forward', 'market-yahoo-daily', ENV, cache, root, fake, NOW)
+            self.assertEqual(sorted((p[0], p[1]) for p in result['proposals']), sorted([('enter-long', a), ('exit', c)]))
 
     def test_facts_that_do_not_match_the_checked_data_are_never_proposed_on(self):
         with tempfile.TemporaryDirectory() as tmp:

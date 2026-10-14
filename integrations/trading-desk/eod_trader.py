@@ -52,6 +52,12 @@ def first_open_after(bars, moment, now):
 
 def bot_credential(env, bot_id):
     values = {k: env.get(k) for k in ('API_URL', 'PRINCIPALS_JSON')}
+    path = daily.ROOT / '.env'
+    if not values['PRINCIPALS_JSON'] and path.exists():  # a run by hand, outside the cycle, reads .env like the scorer does
+        for line in path.read_text(encoding='utf-8').splitlines():
+            key, _, value = line.partition('=')
+            if key in values and not values[key]:
+                values[key] = value.strip().strip("'")
     base = (values['API_URL'] or 'http://127.0.0.1:3000').rstrip('/')
     found = [p for p in json.loads(values['PRINCIPALS_JSON'] or '[]') if p.get('role') == 'trader' and p.get('botId') == bot_id]
     return (base, found[0]['token']) if len(found) == 1 and found[0].get('token') else None

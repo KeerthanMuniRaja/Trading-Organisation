@@ -14,7 +14,7 @@ test('conditions raise one alert each, stay deduplicated, escalate and resolve t
     await f.db.transaction(tx => tx.query("UPDATE system_lock SET halted=true,halt_reason='Owner review' WHERE id=1"));
     // a realised loss of 80% of the 1000000-paise limit (fixture config)
     await f.deposit('1000000');
-    await f.db.transaction(tx => journal(tx, 'test-loss', 'loss:' + key(), {}, [['W1', -800000n], ['PNL', 800000n]]));
+    await f.db.transaction(tx => journal(tx, 'paper-sell', 'loss:' + key(), {}, [['W1', -800000n], ['PNL', 800000n]]));
     await f.org.bot(owner, key(), { id: 'bot-one', name: 'bot-one', department: 'desk', specialty: 'one', method: 'test', contribution: 'Alert fixture', budgetPaise: '1000000' });
     await f.db.transaction(async tx => {
       for (const [ago, unrealised] of [[3, '0'], [2, '-150000'], [1, '-120000']] as const)
@@ -24,8 +24,12 @@ test('conditions raise one alert each, stay deduplicated, escalate and resolve t
     const first = await alerts.cycle(evaluator, key());
     assert.deepEqual(first.raised.map(a => [a.rule, a.severity]).sort(), [['bot-drawdown', 'warning'], ['realised-loss-limit', 'warning'], ['system-halted', 'critical']]);
     assert.deepEqual((await alerts.cycle(evaluator, key())).raised, []); // still true: nothing new, no spam
+    // an owner operating expense also debits PNL, but it is not a trading loss: no escalation from it
+    await f.deposit('150000');
+    await f.db.transaction(tx => journal(tx, 'operating-expense', 'expense:' + key(), {}, [['W1', -150000n], ['PNL', 150000n]]));
+    assert.deepEqual((await alerts.cycle(evaluator, key())).raised, []);
 
-    await f.db.transaction(tx => journal(tx, 'test-loss', 'loss:' + key(), {}, [['W1', -200000n], ['PNL', 200000n]])); // now 100% of the limit
+    await f.db.transaction(tx => journal(tx, 'paper-sell', 'loss:' + key(), {}, [['W1', -200000n], ['PNL', 200000n]])); // now 100% of the limit
     await f.db.transaction(tx => tx.query("UPDATE system_lock SET halted=false,halt_reason=NULL WHERE id=1"));
     const second = await alerts.cycle(evaluator, key());
     assert.deepEqual(second.raised.map(a => [a.rule, a.severity]), [['realised-loss-limit', 'critical']]); // escalation is a new condition

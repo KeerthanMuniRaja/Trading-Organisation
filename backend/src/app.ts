@@ -1,10 +1,10 @@
 import 'reflect-metadata';
-import { ArgumentsHost, Body, Catch, Controller, ExceptionFilter, Get, Headers, HttpException, Module, Post, Req } from '@nestjs/common';
+import { ArgumentsHost, Body, Catch, Controller, ExceptionFilter, ExecutionContext, Get, Headers, HttpException, Module, Post, Req } from '@nestjs/common';
 import { APP_GUARD, NestFactory, Reflector } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import helmet from 'helmet';
 import { json } from 'express';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { Actor } from './core.js';
 import { Config } from './config.js';
 import { Database } from './database.js';
@@ -32,6 +32,7 @@ import { TradeSignals, TradeSignalsController } from './trade-signals.js';
 import { PaperPerformance, PaperPerformanceController } from './paper-performance.js';
 import { CorporateActions, CorporateActionsController } from './corporate-actions.js';
 import { EvidenceTriage, EvidenceTriageController } from './evidence-triage.js';
+import { BotControl, BotControlController } from './bot-control.js';
 import { Departments, DepartmentsController } from './departments.js';
 import { Hackathons, HackathonsController } from './hackathons.js';
 import { OwnerAlerts, OwnerAlertsController } from './alerts.js';
@@ -193,8 +194,15 @@ class ErrorFilter implements ExceptionFilter {
 }
 export async function createApp(config:Config,db:Database,quiet=false) {
   const auth=new OwnerAuthorization(db,config);
+  // The rate limit slows down token guessing, so anonymous and badly authenticated requests stay limited. A request that
+  // carries a configured credential is the organisation's own worker (all local workers share one address) and is not
+  // throttled: a long automated run must not be cut off part-way. Authentication itself is still enforced by ApiGuard.
+  const tokenHashes=config.principals.map(p=>createHash('sha256').update(p.token).digest());
+  const authenticated=(context:ExecutionContext)=>{const h:unknown=context.switchToHttp().getRequest().headers?.authorization;
+    if(typeof h!=='string'||!/^Bearer [A-Za-z0-9_-]{43,200}$/.test(h))return false;const hash=createHash('sha256').update(h.slice(7)).digest();
+    return tokenHashes.some(k=>timingSafeEqual(k,hash));};
   const services=[{provide:OwnerAuthorization,useValue:auth},{provide:Treasury,useValue:new Treasury(db,config,auth)},{provide:Organisation,useValue:new Organisation(db)},{provide:Research,useValue:new Research(db)},{provide:PaperTrading,useValue:new PaperTrading(db,config)},{provide:Operations,useValue:new Operations(db)},{provide:PortfolioResearch,useValue:new PortfolioResearch(db)},{provide:ResearchLifecycle,useValue:new ResearchLifecycle(db)},{provide:ResearchDispatch,useValue:new ResearchDispatch(db)},{provide:OrganisationReport,useValue:new OrganisationReport(db)},{provide:OrganisationalLearning,useValue:new OrganisationalLearning(db)},{provide:ResearchDevelopment,useValue:new ResearchDevelopment(db)},{provide:DevelopmentExperiments,useValue:new DevelopmentExperiments(db)},{provide:DepartmentSessions,useValue:new DepartmentSessions(db)}];
-  @Module({imports:[ThrottlerModule.forRoot([{ttl:60000,limit:120}])],controllers:[ApiController,EvidenceClaimsController,BotFitnessController,TradeSignalsController,PaperPerformanceController,DepartmentsController,HackathonsController,OwnerAlertsController,KnowledgeAsOfController,ComputeUsageController,BotReleasesController,BotBirthsController,BotScorecardsController,SourceReliabilityController,OwnerDigestController,CorporateActionsController,EvidenceTriageController],providers:[...services,{provide:EvidenceTriage,useValue:new EvidenceTriage(db)},{provide:CorporateActions,useValue:new CorporateActions(db)},{provide:OwnerDigest,useValue:new OwnerDigest(db)},{provide:SourceReliability,useValue:new SourceReliability(db)},{provide:BotScorecards,useValue:new BotScorecards(db)},{provide:BotBirths,useValue:new BotBirths(db)},{provide:BotReleases,useValue:new BotReleases(db)},{provide:ComputeUsage,useValue:new ComputeUsage(db)},{provide:KnowledgeAsOf,useValue:new KnowledgeAsOf(db)},{provide:Hackathons,useValue:new Hackathons(db)},{provide:OwnerAlerts,useValue:new OwnerAlerts(db,config)},{provide:EvidenceClaims,useValue:new EvidenceClaims(db)},{provide:BotFitness,useValue:new BotFitness(db)},{provide:TradeSignals,useValue:new TradeSignals(db,config)},{provide:PaperPerformance,useValue:new PaperPerformance(db)},{provide:Departments,useValue:new Departments(db)},{provide:AcademySkills,useValue:new AcademySkills(db)},{provide:SkillRecovery,useValue:new SkillRecovery(db)},{provide:SkillDiagnostics,useValue:new SkillDiagnostics(db)},{provide:SkillExperiments,useValue:new SkillExperiments(db)},{provide:APP_GUARD,useClass:ThrottlerGuard}]})
+  @Module({imports:[ThrottlerModule.forRoot({throttlers:[{ttl:60000,limit:120}],skipIf:authenticated})],controllers:[ApiController,EvidenceClaimsController,BotFitnessController,TradeSignalsController,PaperPerformanceController,DepartmentsController,HackathonsController,OwnerAlertsController,KnowledgeAsOfController,ComputeUsageController,BotReleasesController,BotBirthsController,BotScorecardsController,SourceReliabilityController,OwnerDigestController,CorporateActionsController,EvidenceTriageController,BotControlController],providers:[...services,{provide:BotControl,useValue:new BotControl(db)},{provide:EvidenceTriage,useValue:new EvidenceTriage(db)},{provide:CorporateActions,useValue:new CorporateActions(db)},{provide:OwnerDigest,useValue:new OwnerDigest(db)},{provide:SourceReliability,useValue:new SourceReliability(db)},{provide:BotScorecards,useValue:new BotScorecards(db)},{provide:BotBirths,useValue:new BotBirths(db)},{provide:BotReleases,useValue:new BotReleases(db)},{provide:ComputeUsage,useValue:new ComputeUsage(db)},{provide:KnowledgeAsOf,useValue:new KnowledgeAsOf(db)},{provide:Hackathons,useValue:new Hackathons(db)},{provide:OwnerAlerts,useValue:new OwnerAlerts(db,config)},{provide:EvidenceClaims,useValue:new EvidenceClaims(db)},{provide:BotFitness,useValue:new BotFitness(db)},{provide:TradeSignals,useValue:new TradeSignals(db,config)},{provide:PaperPerformance,useValue:new PaperPerformance(db)},{provide:Departments,useValue:new Departments(db)},{provide:AcademySkills,useValue:new AcademySkills(db)},{provide:SkillRecovery,useValue:new SkillRecovery(db)},{provide:SkillDiagnostics,useValue:new SkillDiagnostics(db)},{provide:SkillExperiments,useValue:new SkillExperiments(db)},{provide:APP_GUARD,useClass:ThrottlerGuard}]})
   class RootModule {}
   const app=await NestFactory.create(RootModule,{logger:quiet?false:['error','warn','log'],bodyParser:false});
   app.use(helmet());app.use(json({limit:'512kb',strict:true}));

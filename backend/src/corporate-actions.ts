@@ -53,15 +53,25 @@ export class CorporateActions {
         'An action is already recorded for this share on this ex-date');
       requireThat(!(await tx.query("SELECT 1 FROM orders WHERE symbol=$1 AND status='reserved'", [input.symbol])).rows.length,
         'Cancel or lapse open reservations in this share first: their quantities are on the old basis');
-      const positions = (await tx.query('SELECT bot_id,quantity::text AS q FROM positions WHERE symbol=$1 AND quantity>0 ORDER BY bot_id', [input.symbol])).rows;
-      const fractional = positions.filter(p => BigInt(p.q) * BigInt(input.sharesAfter) % BigInt(input.sharesBefore) !== 0n).map(p => p.bot_id);
+      // Recorded after the ex-date (the usual case: the steward flags it the next day), shares bought on or after the
+      // ex-date are already on the new basis and must not be rescaled; only the shares held through the ex-date are.
+      // A sale since the ex-date sold old-basis units at new-basis prices: that is settled by hand, never guessed.
+      const positions = (await tx.query(`SELECT p.bot_id,p.quantity::text AS q,
+          COALESCE(SUM(f.quantity) FILTER (WHERE o.side='buy'),0)::text AS bought,COALESCE(SUM(f.quantity) FILTER (WHERE o.side='sell'),0)::text AS sold
+        FROM positions p LEFT JOIN orders o ON o.bot_id=p.bot_id AND o.symbol=p.symbol AND o.status='filled'
+        LEFT JOIN fills f ON f.order_id=o.id AND ((f.created_at AT TIME ZONE 'UTC') + interval '330 minutes')::date >= $2::date
+        WHERE p.symbol=$1 AND p.quantity>0 GROUP BY p.bot_id,p.quantity ORDER BY p.bot_id`, [input.symbol, input.exDate])).rows;
+      const soldSince = positions.filter(p => BigInt(p.sold) > 0n).map(p => p.bot_id);
+      requireThat(!soldSince.length, `${soldSince.join(', ')} sold this share since the ex-date: settle by hand before recording`);
+      const held = (p: Record<string, any>) => BigInt(p.q) - BigInt(p.bought); // shares held through the ex-date
+      const fractional = positions.filter(p => held(p) * BigInt(input.sharesAfter) % BigInt(input.sharesBefore) !== 0n).map(p => p.bot_id);
       requireThat(!fractional.length, `Fractional entitlement for ${fractional.join(', ')}: settle by hand (cash in lieu) before recording`);
       const actionId = uuid();
       await tx.query(`INSERT INTO corporate_actions(id,symbol,kind,shares_before,shares_after,ex_date,evidence_id,recorded_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
         [actionId, input.symbol, input.kind, input.sharesBefore, input.sharesAfter, input.exDate, input.evidenceId, actor.id]);
       const adjusted = [];
-      for (const p of positions) {
-        const after = BigInt(p.q) * BigInt(input.sharesAfter) / BigInt(input.sharesBefore);
+      for (const p of positions.filter(x => held(x) > 0n)) {
+        const after = held(p) * BigInt(input.sharesAfter) / BigInt(input.sharesBefore) + BigInt(p.bought);
         await tx.query('UPDATE positions SET quantity=$3 WHERE bot_id=$1 AND symbol=$2', [p.bot_id, input.symbol, after.toString()]);
         await tx.query('INSERT INTO corporate_action_adjustments(action_id,bot_id,quantity_before,quantity_after) VALUES($1,$2,$3,$4)', [actionId, p.bot_id, p.q, after.toString()]);
         adjusted.push({ botId: p.bot_id, quantityBefore: p.q, quantityAfter: after.toString() });

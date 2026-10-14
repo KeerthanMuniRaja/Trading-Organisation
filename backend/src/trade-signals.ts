@@ -6,8 +6,10 @@ import { Database, Sql, audit } from './database.js';
 import { PaperTrading } from './paper.js';
 import { liveReleases } from './bot-releases.js';
 import { restated } from './corporate-actions.js';
+import { isSuspended } from './bot-control.js';
 import { Allow } from './security.js';
-import { available, balance } from './treasury.js';
+import { available, balance, tradingLoss } from './treasury.js';
+import { verifiedPrice } from './price-evidence.js';
 
 // Structured trade proposals (DECISION-01). A bot states what it would do, why, how sure it is, when the idea expires and
 // what would prove it wrong, citing verified evidence. A deterministic risk review then accepts (with a size computed from
@@ -38,15 +40,6 @@ const proposalSchema = z.object({
 const priceEvidenceSchema = z.object({ evidenceId: z.uuid(), pricePaise: z.string().regex(/^[1-9][0-9]{0,13}$/), observedAt: timestamp }).strict();
 const reviewSchema = z.object({ signalId: z.uuid(), priceEvidence: priceEvidenceSchema.optional() }).strict();
 
-/** A price stated in verified evidence from an approved source, for this share, observed within the last 7 days. */
-export async function verifiedPrice(tx: Sql, ticker: string, e: { evidenceId: string; pricePaise: string; observedAt: string }) {
-  const row = (await tx.query('SELECT e.content,e.status,s.approved FROM evidence e JOIN sources s ON s.id=e.source_id WHERE e.id=$1', [e.evidenceId])).rows[0];
-  requireThat(row && row.status === 'verified' && row.approved === true, 'Price evidence must be verified and from an approved source');
-  requireThat(String(row.content).includes(`NSE:${ticker} `) && String(row.content).includes(` ${e.pricePaise} paise`), 'Price evidence does not state this price for this share');
-  const at = Date.parse(e.observedAt);
-  requireThat(at <= Date.now() + 60_000 && at >= Date.now() - 7 * 86_400_000, 'Price evidence must be from the last 7 days');
-  return BigInt(e.pricePaise);
-}
 // End-of-day execution: an optional verified price observed AFTER the review (e.g. the next session's open) replaces the
 // live quote; the paper engine re-checks the evidence, so the price can never be chosen with hindsight.
 const executeSchema = z.object({ signalId: z.uuid(), priceEvidence: z.object({ evidenceId: z.uuid(), pricePaise: z.string().regex(/^[1-9][0-9]{0,13}$/),
@@ -86,9 +79,11 @@ export class TradeSignals {
     const input = parse(executeSchema, raw);
     requireThat(/^[a-zA-Z0-9_-]{8,100}$/.test(key), 'A valid Idempotency-Key is required', 400);
     const plan = await this.db.transaction(async tx => {
-      const s = (await tx.query(`SELECT s.bot_id,s.symbol,s.expires_at,r.outcome,r.side,r.quantity::text AS quantity,r.created_at AS reviewed_at,
+      const s = (await tx.query(`SELECT s.bot_id,s.symbol,s.expires_at,r.outcome,r.side,r.quantity::text AS quantity,
           (SELECT evidence_id FROM trade_signal_evidence x WHERE x.signal_id=s.id ORDER BY evidence_id LIMIT 1) AS evidence_id,
-          (SELECT row_to_json(e) FROM trade_signal_executions e WHERE e.signal_id=s.id) AS done
+          (SELECT row_to_json(e) FROM trade_signal_executions e WHERE e.signal_id=s.id) AS done,
+          EXISTS (SELECT 1 FROM trade_signal_lapses l WHERE l.signal_id=s.id) AS lapsed,
+          (SELECT row_to_json(o) FROM (SELECT id,status FROM orders WHERE signal_id=s.id) o) AS order_row
         FROM trade_signals s LEFT JOIN trade_signal_reviews r ON r.signal_id=s.id WHERE s.id=$1`, [input.signalId])).rows[0];
       requireThat(s, 'Signal not found', 404);
       requireThat(actor.botId === s.bot_id, 'Only the proposing bot executes its signal', 403);
@@ -96,23 +91,31 @@ export class TradeSignals {
     }, false);
     if (plan.done) return { ...executionView(plan.done), duplicate: true };
     requireThat(plan.outcome === 'accepted', 'Only an accepted review can be executed');
-    requireThat(new Date(plan.expires_at).getTime() > Date.now(), 'The proposal expired before execution');
-    if (input.priceEvidence) requireThat(Date.parse(input.priceEvidence.observedAt) > new Date(plan.reviewed_at).getTime(),
-      'An end-of-day price must be observed after the review that accepted the trade (no hindsight)');
+    requireThat(!plan.lapsed, 'The proposal lapsed unexecuted; re-propose');
+    // The proposal's one order is found by its link (PAPER-04), whichever credential or retry made it: a second order can
+    // never be reserved, and a fill that happened before a crash is recorded, even after the proposal expired.
+    let order = plan.order_row as { id: string; status: string } | null;
+    requireThat(order?.status !== 'cancelled', 'The reservation was cancelled; re-propose');
+    if (order?.status !== 'filled') requireThat(new Date(plan.expires_at).getTime() > Date.now(), 'The proposal expired before execution');
     const priced = input.priceEvidence ? { priceEvidence: input.priceEvidence } : {};
-    const order = await this.paper.reserve(actor, `sigexec-reserve-${input.signalId}`, { botId: plan.bot_id, symbol: plan.symbol, side: plan.side,
-      quantity: Number(plan.quantity), evidenceId: String(plan.evidence_id), ...priced });
-    // A failed fill keeps its reservation: the same call can be retried once a fresh quote arrives. If the price moved
-    // beyond the reservation, the paper engine says so; the bot then cancels the order and re-proposes.
-    const fill = await this.paper.fill(actor, `sigexec-fill-${input.signalId}`, { orderId: order.id, ...priced }) as { fillId: string; pricePaise: string; feePaise: string };
-    return this.db.command(actor, 'trade-signal-execution', `sigexec-record-${input.signalId}`, input, async tx => {
-      const journal = (await tx.query('SELECT journal_id FROM fills WHERE id=$1', [fill.fillId])).rows[0]!.journal_id;
-      const pnl = (await tx.query("SELECT COALESCE(SUM(amount),0)::text AS v FROM entries WHERE journal_id=$1 AND account='PNL'", [journal])).rows[0]!.v;
+    // keys carry the price evidence, so a retry with a later verified price is a new attempt on the same linked order
+    const attempt = digest(input.priceEvidence ?? 'live-quote').slice(0, 16);
+    if (!order) order = { id: (await this.paper.reserve(actor, `sigexec-reserve-${input.signalId}-${attempt}`, { botId: plan.bot_id, symbol: plan.symbol,
+      side: plan.side, quantity: Number(plan.quantity), evidenceId: String(plan.evidence_id), ...priced }, { signalId: input.signalId })).id, status: 'reserved' };
+    // A failed fill keeps its reservation: the same call can be retried (fresh quote or a later verified price). If the
+    // price moved beyond the reservation, the paper engine says so; the reservation lapses when the proposal expires.
+    if (order.status === 'reserved') await this.paper.fill(actor, `sigexec-fill-${input.signalId}-${attempt}`, { orderId: order.id, ...priced });
+    return this.db.command(actor, 'trade-signal-execution', `sigexec-record-${input.signalId}`, { signalId: input.signalId }, async tx => {
+      const existing = (await tx.query('SELECT * FROM trade_signal_executions WHERE signal_id=$1', [input.signalId])).rows[0];
+      if (existing) return { ...executionView(existing), duplicate: true };
+      const fill = (await tx.query('SELECT id,journal_id,quantity::text AS qty,price_paise::text AS price,fee_paise::text AS fee FROM fills WHERE order_id=$1', [order!.id])).rows[0];
+      requireThat(fill, 'The order has not been filled');
+      const pnl = (await tx.query("SELECT COALESCE(SUM(amount),0)::text AS v FROM entries WHERE journal_id=$1 AND account='PNL'", [fill.journal_id])).rows[0]!.v;
       const realised = plan.side === 'sell' ? (-BigInt(pnl)).toString() : null; // PNL entries are debits: profit is their negative
       const row = (await tx.query(`INSERT INTO trade_signal_executions(signal_id,order_id,fill_id,side,quantity,price_paise,fee_paise,realised_paise,executed_by)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`, [input.signalId, order.id, fill.fillId, plan.side, plan.quantity, fill.pricePaise, fill.feePaise,
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`, [input.signalId, order!.id, fill.id, plan.side, fill.qty, fill.price, fill.fee,
         realised, actor.id])).rows[0]!;
-      await audit(tx, actor, 'trade.signal.executed', input.signalId, { orderId: order.id, fillId: fill.fillId, side: plan.side, quantity: plan.quantity });
+      await audit(tx, actor, 'trade.signal.executed', input.signalId, { orderId: order!.id, fillId: String(fill.id), side: plan.side, quantity: fill.qty });
       return { ...executionView(row), duplicate: false };
     });
   }
@@ -132,9 +135,8 @@ export class TradeSignals {
         ORDER BY s.expires_at,s.id LIMIT 500`, [input.asOf])).rows;
       const lapsed = [];
       for (const { id: signalId } of due) {
-        // the execution's reservation is found by its deterministic key; it exists only if a fill was attempted
-        const reserved = (await tx.query(`SELECT o.id,o.status,o.reserved_paise::text AS reserved FROM commands c JOIN orders o ON o.id=(c.response->>'id')::uuid
-          WHERE c.namespace='reserve-order' AND c.key=$1`, [`sigexec-reserve-${signalId}`])).rows[0];
+        // the proposal's own order, by its link (PAPER-04); it exists only if an execution was attempted
+        const reserved = (await tx.query(`SELECT id,status,reserved_paise::text AS reserved FROM orders WHERE signal_id=$1`, [signalId])).rows[0];
         if (reserved?.status === 'filled') continue; // the trade happened (its record is still being written): not a lapse
         let released = 0n;
         if (reserved?.status === 'reserved') {
@@ -162,6 +164,8 @@ export class TradeSignals {
       const bot = (await tx.query('SELECT state FROM bots WHERE id=$1', [input.botId])).rows[0];
       requireThat(bot, 'Bot not found', 404);
       requireThat(bot.state !== 'retired', 'Retired bots cannot propose trades', 403);
+      // LIFE-02: a suspended bot takes no new risk; exits and explicit no-action calls stay allowed
+      if (input.action === 'enter-long') requireThat(!(await isSuspended(tx, input.botId)), 'The bot is suspended: only exits and no-action calls are accepted', 403);
       // release control (RELEASE-01): once a bot has releases, only its active release or a canary may propose
       const { registered, releases } = await liveReleases(tx, input.botId);
       const release = releases.find(r => r.model === input.model && r.prompt_version === input.promptVersion);
@@ -201,8 +205,8 @@ export class TradeSignals {
       let fresh = quote && Math.abs(Date.now() - new Date(quote.observed_at).getTime()) <= QUOTE_FRESH_MS;
       let pricedFromClose = false; // informational, recorded after the rule checks (any earlier reason means rejection)
       if (!fresh && input.priceEvidence) { // end-of-day mode: the latest verified close stands in for a live quote
-        const close = (await verifiedPrice(tx, signal.symbol, input.priceEvidence)).toString();
-        quote = { bid: close, ask: close, observed_at: input.priceEvidence.observedAt };
+        const close = await verifiedPrice(tx, signal.symbol, input.priceEvidence);
+        quote = { bid: close.pricePaise.toString(), ask: close.pricePaise.toString(), observed_at: new Date(close.observedAt).toISOString() };
         fresh = true;
         pricedFromClose = true;
       }
@@ -218,17 +222,20 @@ export class TradeSignals {
         if (!fresh) reasons.push('no-fresh-approved-quote');
         if (signal.action === 'enter-long') {
           if (signal.probability_pct !== null && signal.probability_pct < 50) reasons.push('stated-probability-below-even');
-          if (-(await balance(tx, 'PNL')) <= -this.config.maxLoss) reasons.push('realised-loss-limit-reached');
+          if (await isSuspended(tx, signal.bot_id)) reasons.push('bot-suspended');
+          if (await tradingLoss(tx) >= this.config.maxLoss) reasons.push('realised-loss-limit-reached');
           if (fresh && !reasons.length) {
             const price = BigInt(quote.ask) + ceilBps(BigInt(quote.ask), this.config.slippageBps);
             const perShare = price + ceilBps(price, this.config.feeBps);
             const sum = async (sql: string, params: unknown[]) => BigInt((await tx.query(sql, params)).rows[0]!.value);
             // accepted buy intents not yet executed (and not expired) are already committed: without this, concurrent reviews
-            // would each size against the same room (found by the load test). A reservation stuck after a failed fill may be
-            // counted twice for a while, which errs on the safe side.
+            // would each size against the same room (found by the load test). An intent that already has its order is left
+            // out: a reservation is counted as a reservation, and a cancelled one no longer holds room.
             const pending = (filter: string, params: unknown[]) => sum(`SELECT COALESCE(SUM(r.quantity*r.reference_price_paise),0)::text AS value
               FROM trade_signal_reviews r JOIN trade_signals s ON s.id=r.signal_id WHERE r.outcome='accepted' AND r.side='buy' AND s.expires_at > now()
-              AND NOT EXISTS (SELECT 1 FROM trade_signal_executions x WHERE x.signal_id=s.id) ${filter}`, params);
+              AND NOT EXISTS (SELECT 1 FROM trade_signal_executions x WHERE x.signal_id=s.id)
+              AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.signal_id=s.id)
+              AND NOT EXISTS (SELECT 1 FROM trade_signal_lapses l WHERE l.signal_id=s.id) ${filter}`, params);
             const allPending = await pending('', []);
             const allReserved = await sum("SELECT COALESCE(SUM(reserved_paise),0)::text AS value FROM orders WHERE status='reserved'", []) + allPending;
             const own = await sum('SELECT COALESCE(SUM(cost_paise),0)::text AS value FROM positions WHERE bot_id=$1', [signal.bot_id])
@@ -305,16 +312,18 @@ export class TradeSignals {
       const signal = (await tx.query('SELECT * FROM trade_signals WHERE id=$1', [input.signalId])).rows[0];
       requireThat(signal, 'Signal not found', 404);
       requireThat(signal.author !== actor.id, 'The proposer cannot score its own signal', 403);
-      const review = (await tx.query('SELECT reference_price_paise::text AS ref,created_at FROM trade_signal_reviews WHERE signal_id=$1', [signal.id])).rows[0];
+      const review = (await tx.query('SELECT reference_price_paise::text AS ref,created_at,quote_observed_at FROM trade_signal_reviews WHERE signal_id=$1', [signal.id])).rows[0];
       requireThat(review?.ref, 'Only reviewed signals with a reference price can be scored');
       const due = new Date(signal.created_at).getTime() + signal.horizon_days * 86_400_000;
       requireThat(Date.parse(input.observedAt) >= due, 'The horizon has not passed at that observation');
       requireThat(Date.parse(input.observedAt) <= Date.now() + 60_000, 'Observation cannot be in the future', 400);
-      requireThat((await verifiedEvidenceIds(tx, [input.evidenceId])).length === 1, 'Price evidence must be verified and from an approved source');
+      // the exit price is the one its evidence states, at the evidence's own time (PAPER-04), of any age
+      await verifiedPrice(tx, signal.symbol, { evidenceId: input.evidenceId, pricePaise: input.exitPricePaise, observedAt: input.observedAt }, { maxAgeDays: null });
       const old = (await tx.query('SELECT * FROM trade_signal_outcomes WHERE signal_id=$1', [signal.id])).rows[0];
       if (old) return { ...outcomeView(old), duplicate: true };
-      // a split or bonus between review and observation restates the reference on the exit price's basis (CORP-01)
-      const ref = (await restated(tx, signal.symbol, BigInt(review.ref), new Date(review.created_at).getTime(), Date.parse(input.observedAt))).refPaise;
+      // a split, bonus or dividend after the reference price was observed restates it on the exit price's basis (CORP-01/02)
+      const priced = new Date(review.quote_observed_at ?? review.created_at).getTime();
+      const ref = (await restated(tx, signal.symbol, BigInt(review.ref), priced, Date.parse(input.observedAt))).refPaise;
       const exit = BigInt(input.exitPricePaise);
       const moveBps = Number((exit - ref) * 10000n / ref);
       const correct = scoreCall(signal.action, moveBps);

@@ -11,7 +11,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const PY = process.env.CYCLE_PYTHON || join(ROOT, '.local', 'replay-venv', 'Scripts', 'python.exe');
+// the research environment's Python: Scripts\python.exe on Windows, bin/python on Linux (WSL, a VM, the container);
+// CYCLE_PYTHON overrides it for any other layout
+const PY = process.env.CYCLE_PYTHON || join(ROOT, '.local', 'replay-venv', ...(process.platform === 'win32' ? ['Scripts', 'python.exe'] : ['bin', 'python']));
 const NODE = process.execPath;
 
 export async function planSteps({ withModel = false, root = ROOT } = {}) {
@@ -27,7 +29,7 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     ...feeds.map(f => ({ id: 'news-' + f.slice(5, -5), cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'run-feed-cycle.mjs'), 'run',
       join('.local', f), join('.local', 'feeds', f.slice(5, -5))], timeoutMs: 120_000, okCodes: [0], retries: 2, verify: verifyFeed })),
     // KNOW-02: fixed backend rules set aside news about nothing the organisation tracks, before anyone reviews it
-    { id: 'news-triage', kind: 'http', method: 'POST', path: '/v1/evidence/triage', role: 'evaluator' },
+    { id: 'news-triage', kind: 'http', method: 'POST', path: '/v1/evidence/triage', role: 'evaluator', freshKey: true },
     withModel
       ? { id: 'claims-and-fact-check', cmd: PY, args: [join(root, 'integrations', 'claims', 'autolearn.py'), 'run', '--config', join('.local', 'claims', 'autolearn.json'),
           '--cycles', '1'], timeoutMs: 3_600_000, requires: join(root, '.local', 'claims', 'autolearn.json') }
@@ -77,7 +79,11 @@ export function verifyMarketData(output) {
   // CORP-01: an accepted refresh that rescaled the whole past looks like a split or bonus the owner must record
   const actions = results.flatMap(r => (r.warnings ?? []).filter(w => w.check === 'corporate-action-suspected')
     .map(w => `${r.symbol.replace(/\.NS$/, '')} x${w.factor} from ${w.likelyExDate ?? 'unknown date'}`));
+  // a refresh kept back for a large move needs the owner: check the news, and if real, confirm it once
+  const moves = results.flatMap(r => (r.issues ?? []).filter(i => i.check === 'extreme-move')
+    .map(i => `${r.symbol} ${i.changePct}% on ${i.date} (if real: daily.py accept-move --symbol ${r.symbol} --date ${i.date})`));
   const notes = [...(held.length ? ['previous data kept for ' + held.join(', ')] : []),
+    ...(moves.length ? ['large move kept back, check the news: ' + moves.join('; ')] : []),
     ...(actions.length ? ['possible split or bonus, record it in /v1/corporate-actions: ' + actions.join(', ')] : [])];
   return notes.length ? { status: 'degraded', note: notes.join('; ') } : { status: 'done' };
 }
@@ -86,7 +92,8 @@ export function verifyMarketData(output) {
 export function verifyFeed(output) {
   const result = lastJson(output);
   if (!result || typeof result !== 'object' || Array.isArray(result)) return { status: 'failed', note: 'no feed report' };
-  return /fail/.test(String(result.state)) ? { status: 'failed', note: 'feed ' + result.state } : { status: 'done' };
+  // a feed in back-off after a failed fetch did not collect anything: counting it as done would hide an outage forever
+  return /fail|backoff/.test(String(result.state)) ? { status: 'failed', note: 'feed ' + result.state } : { status: 'done' };
 }
 
 export function runProcess(step, { cwd = ROOT } = {}) {
@@ -109,7 +116,9 @@ export function runHttp(step, env = process.env, fetchImpl = fetch) {
     const principal = JSON.parse(env.PRINCIPALS_JSON || '[]').filter(p => p.role === step.role);
     if (principal.length !== 1) return Promise.resolve({ code: 1, tail: `needs exactly one ${step.role} credential` });
     headers.Authorization = 'Bearer ' + principal[0].token;
-    headers['Idempotency-Key'] = 'cycle-' + step.id + '-' + new Date().toISOString().slice(0, 10);
+    // once a day by default (a same-day rerun replays the answer); a step whose work is naturally repeatable (triage of
+    // whatever arrived since) takes a fresh key per run instead
+    headers['Idempotency-Key'] = 'cycle-' + step.id + '-' + (step.freshKey ? new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 17) : new Date().toISOString().slice(0, 10));
   }
   return fetchImpl(base + step.path, { method: step.method || 'GET', headers, redirect: 'error', body: step.method === 'POST' ? '{}' : undefined,
     signal: AbortSignal.timeout(15_000) })

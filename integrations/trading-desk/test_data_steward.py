@@ -45,6 +45,15 @@ class StewardTests(unittest.TestCase):
         dividend = series([round(c * 0.97) for c in BASE] + [100300])  # a 3% dividend is not a corporate action
         self.assertNotIn('corporate-action-suspected', [i['check'] for i in ds.review(dividend, old, today=TODAY)['issues']])
 
+    def test_a_genuine_big_move_is_kept_back_until_the_owner_confirms_it_then_accepted(self):
+        old = series(BASE)
+        crash = series(BASE + [75000])  # a genuine -25% session on a results day
+        day = crash['bars'][-1]['date']
+        self.assertEqual(ds.review(crash, old, today=date.fromisoformat(day))['verdict'], 'reject')
+        self.assertEqual(ds.review(crash, old, today=date.fromisoformat(day), accepted=[day])['verdict'], 'ok')  # owner confirmed
+        later = series(BASE + [75000, 75500])
+        self.assertNotIn('extreme-move', [i['check'] for i in ds.review(later, crash, today=TODAY)['issues']])  # known from then on
+
     def test_an_unadjusted_split_or_bad_print_is_rejected(self):
         halved = series(BASE[:20] + [c // 2 for c in BASE[20:]])  # a 1:1 bonus left unadjusted looks like a 50% crash
         result = ds.review(halved, today=TODAY)

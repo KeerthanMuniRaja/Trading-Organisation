@@ -3,7 +3,7 @@
 // (HTTPS only, no credentials in the URL, redirects refused). Uses the single evaluator credential from .env.
 // Only alerts actually handed to every configured channel are marked delivered, so a failure is retried next run.
 //   node --env-file=.env scripts/deliver-alerts.mjs
-import { appendFile, mkdir } from 'node:fs/promises';
+import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -34,11 +34,14 @@ export async function deliver(env, { fetchImpl = fetch, now = () => new Date() }
   const { alerts, undelivered } = await call('/alerts/query', {});
   const pending = alerts.filter(a => undelivered.includes(a.id));
   const delivered = [];
+  // an alert whose webhook delivery failed is retried next run, but its outbox line is written only once
+  const written = new Set();
+  try { for (const line of (await readFile(s.outbox, 'utf8')).split('\n')) if (line) written.add(JSON.parse(line).id); } catch { /* no outbox yet */ }
   for (const a of pending) {
     const message = { at: now().toISOString(), severity: a.severity, rule: a.rule, subject: a.subject, message: a.message, raisedAt: a.raisedAt, id: a.id };
     try {
       await mkdir(dirname(s.outbox), { recursive: true });
-      await appendFile(s.outbox, JSON.stringify(message) + '\n');
+      if (!written.has(a.id)) await appendFile(s.outbox, JSON.stringify(message) + '\n');
       if (s.webhook) {
         const response = await fetchImpl(s.webhook, { method: 'POST', redirect: 'error', body: JSON.stringify(message),
           headers: { 'Content-Type': 'application/json', Title: `[${a.severity}] ${a.rule}`.slice(0, 120) }, signal: AbortSignal.timeout(10_000) });
@@ -53,5 +56,7 @@ export async function deliver(env, { fetchImpl = fetch, now = () => new Date() }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  deliver(process.env).then(r => console.log(JSON.stringify(r))).catch(error => { console.error(error.message); process.exitCode = 1; });
+  // a delivery that failed (e.g. the webhook was down) fails the step, so the cycle retries and escalates it
+  deliver(process.env).then(r => { console.log(JSON.stringify(r)); if (r.failed) process.exitCode = 1; })
+    .catch(error => { console.error(error.message); process.exitCode = 1; });
 }

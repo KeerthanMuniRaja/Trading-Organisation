@@ -85,6 +85,10 @@ class DissentTests(unittest.TestCase):
         sb.submit_challenges('sig-1', out, env, opener)
         self.assertEqual(sent[0][:2], ('http://127.0.0.1:3000/v1/trading/signals/challenges', 'Bearer news-token'))
         self.assertEqual(sent[0][2]['signalId'], 'sig-1')
+        self.assertNotIn('evidenceId', sent[0][2])  # without evidence: recorded, but it cannot change a size
+        cited = sb.dissent(record, bots, evidence_id='ev-verified')
+        sb.submit_challenges('sig-2', cited, env, opener)
+        self.assertEqual(sent[-1][2]['evidenceId'], 'ev-verified')  # an evidenced objection: it sizes a high-conviction long as medium
 
 
 class SubmitTests(unittest.TestCase):

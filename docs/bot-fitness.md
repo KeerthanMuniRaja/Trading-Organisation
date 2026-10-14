@@ -27,6 +27,7 @@ Before this, verdicts lived only in local research reports ([trading desk fitnes
 | Route | Roles | Body |
 | --- | --- | --- |
 | `POST /v1/bots/fitness` | owner, evaluator | `{botId, role, baseline, testName, periodFrom, periodTo, judged, wins, losses, failed?, model?, evidenceId?}` with an `Idempotency-Key` |
+| `POST /v1/bots/fitness/live` | owner, evaluator | `{botId, releaseId?}`: the backend computes a report from the bot's scored paper calls on new days (against cash); see [releases](releases.md#judged-on-live-paper-calls-fitness-02) |
 | `POST /v1/bots/fitness/query` | owner, researcher, evaluator | `{botId, limit?}` returns the reports (newest first) and a summary per role and baseline with the latest verdict and recommendation |
 
 The `model` field records which model produced the behaviour being judged. After a model switch, a bot's track record should be re-earned rather than inherited (see [switching models](../integrations/trading-desk/README.md#switching-models-what-carries-over-and-the-comparison)).

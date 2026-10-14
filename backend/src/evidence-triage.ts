@@ -37,12 +37,18 @@ export function classify(content: string) {
 export class EvidenceTriage {
   constructor(private readonly db: Database) {}
 
-  /** Classifies every waiting news item or article not yet triaged (up to 1000 per run). Evaluator or owner. */
+  /** Classifies every waiting news item or article not yet triaged (up to 5000 per run, in batches). Evaluator or owner. */
   run(actor: Actor, key: string) {
     permit(actor, 'owner', 'evaluator');
     return this.db.command(actor, 'evidence-triage', key, { version: TRIAGE_VERSION }, async tx => {
-      const waiting = (await tx.query(`SELECT e.id,e.content FROM evidence e WHERE e.status='unverified' AND e.kind IN ('news','article')
-        AND NOT EXISTS (SELECT 1 FROM evidence_triage t WHERE t.evidence_id=e.id) ORDER BY e.received_at,e.id LIMIT 1000`)).rows;
+      const waiting: Record<string, any>[] = [];
+      for (let batch = 0; batch < 5; batch++) { // drains a backlog instead of leaving the rest for tomorrow
+        const rows = (await tx.query(`SELECT e.id,e.content FROM evidence e WHERE e.status='unverified' AND e.kind IN ('news','article')
+          AND NOT EXISTS (SELECT 1 FROM evidence_triage t WHERE t.evidence_id=e.id) AND NOT (e.id = ANY($1::uuid[]))
+          ORDER BY e.received_at,e.id LIMIT 1000`, [waiting.map(w => w.id)])).rows;
+        waiting.push(...rows);
+        if (rows.length < 1000) break;
+      }
       const byShare: Record<string, number> = {};
       let inScope = 0;
       for (const e of waiting) {

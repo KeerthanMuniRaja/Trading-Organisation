@@ -41,7 +41,7 @@ The report is read-only: it cannot move money, change limits or alter a bot.
 
 | Route | Who | What it does |
 | --- | --- | --- |
-| `POST /v1/paper/performance/snapshots` | owner or evaluator, e.g. a nightly job after the close | Records each bot's mark once per India trading day (migration 034). The first snapshot of the day stands, and history is append-only, so an equity curve cannot be rewritten afterwards. Each row counts open positions that were unpriced or more than a day old. |
+| `POST /v1/paper/performance/snapshots` | owner or evaluator, e.g. a nightly job after the close | Records each bot's mark once per India trading day (migration 034). The first snapshot of the day stands, and history is append-only, so an equity curve cannot be rewritten afterwards. Each row counts open positions that were unpriced or stale (a live quote over a day old, or a verified close over four days old). |
 | `POST /v1/paper/performance/history` (`{botId?, days?}`) | owner, evaluator, or a trader for its own bot | Each bot's equity curve (budget plus paper P&L per day), total return and **worst peak-to-trough fall** |
 
 The worst fall is the measure that matters before trusting a bot with more money. A bot can show a profit while having dropped deeply on the way.

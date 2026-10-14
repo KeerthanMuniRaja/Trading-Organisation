@@ -38,6 +38,12 @@ test('triage sets out-of-scope items aside from the queue, backlog and digest, w
     await assert.rejects(() => f.db.transaction(tx => tx.query('DELETE FROM evidence_triage')));
     // a set-aside item can still be reviewed normally if someone chooses to
     await f.org.reviewEvidence(evaluator, key(), { evidenceId: offTopic, status: 'rejected' });
+    // a backlog beyond one batch is drained in the same run, not left for tomorrow
+    await f.db.transaction(async tx => {
+      for (let i = 0; i < 1203; i++) await tx.query(`INSERT INTO evidence(id,source_id,kind,content,content_hash,published_at,status,author)
+        VALUES($1,'wire','news',$2,$3,now(),'unverified','researcher')`, [crypto.randomUUID(), `Item ${i} about nothing tracked`, `bulk-${i}`]);
+    });
+    assert.equal((await triage.run(evaluator, key())).triaged, 1203);
     assert.equal((await f.ops.verifyAudit(owner)).valid, true);
   } finally { await f.db.close(); }
 });

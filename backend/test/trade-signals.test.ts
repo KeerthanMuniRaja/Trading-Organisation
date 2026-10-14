@@ -113,12 +113,17 @@ test('outcomes are scored only after the horizon, by an independent evaluator, i
       return signalId;
     };
     const longCall = await past('enter-long', 70), exitCall = await past('exit', null);
-    const now = new Date().toISOString();
-    assert.throws(() => f.signals.outcome(researcher, key(), { signalId: longCall, exitPricePaise: '10400', observedAt: now, evidenceId: f.e.evidenceId }));
-    const won = await f.signals.outcome(evaluator, key(), { signalId: longCall, exitPricePaise: '10400', observedAt: now, evidenceId: f.e.evidenceId });
+    const close = async (paise: string) => { // a verified daily close in the strict form, observed now
+      const at = new Date(Date.now() - 1000).toISOString(), day = new Date(Date.parse(at) + 330 * 60_000).toISOString().slice(0, 10);
+      const e = await f.org.evidence(researcher, key(), { sourceId: f.e.sourceId, kind: 'dataset', content: `Daily close of NSE:DEMO on ${day}: ${paise} paise.`, publishedAt: at });
+      await f.org.reviewEvidence(evaluator, key(), { evidenceId: e.id, status: 'verified' });
+      return { exitPricePaise: paise, observedAt: at, evidenceId: e.id as string };
+    };
+    assert.throws(() => f.signals.outcome(researcher, key(), { signalId: longCall, exitPricePaise: '10400', observedAt: new Date().toISOString(), evidenceId: f.e.evidenceId }));
+    const won = await f.signals.outcome(evaluator, key(), { signalId: longCall, ...await close('10400') });
     assert.deepEqual([won.moveBps, won.correct], [400, true]);
     assert.ok(Math.abs(won.brier! - 0.09) < 1e-9); // said 70%, was right
-    const exitScore = await f.signals.outcome(evaluator, key(), { signalId: exitCall, exitPricePaise: '9800', observedAt: now, evidenceId: f.e.evidenceId });
+    const exitScore = await f.signals.outcome(evaluator, key(), { signalId: exitCall, ...await close('9800') });
     assert.deepEqual([exitScore.moveBps, exitScore.correct, exitScore.brier], [-200, true, null]);
     const mine = await f.signals.query(trader, {});
     assert.equal(mine.trackRecord[0]!.scored, 2);
@@ -197,30 +202,36 @@ test('an accepted proposal executes once as a linked paper order and fill; retri
 test('end-of-day execution: reviewed at a verified close, filled at a verified price observed after the review', async () => {
   const f = await setup(); try {
     await f.db.transaction(tx => tx.query("UPDATE quotes SET observed_at=now()-interval '1 day'")); // no live quote feed
-    const price = async (kind: string, paise: number) => {
+    // verified price evidence in the strict form (PAPER-04): one price, for this share, dated on its publication day
+    const price = async (kind: string, paise: number, at: number) => {
+      const day = new Date(at + 330 * 60_000).toISOString().slice(0, 10), observedAt = new Date(at).toISOString();
       const e = await f.org.evidence(researcher, key(), { sourceId: f.e.sourceId, kind: 'dataset',
-        content: `${kind} of NSE:DEMO on 2026-10-14: ${paise} paise. Source: daily bars ${key()}.`, publishedAt: new Date().toISOString() });
+        content: `${kind} of NSE:DEMO on ${day}: ${paise} paise. Source: daily bars ${key()}.`, publishedAt: observedAt });
       await f.org.reviewEvidence(evaluator, key(), { evidenceId: e.id, status: 'verified' });
-      return e.id as string;
+      return { evidenceId: e.id as string, pricePaise: String(paise), observedAt };
     };
     const buy = await f.signals.propose(trader, key(), { ...f.long, conviction: 'medium' });
     assert.deepEqual((await f.signals.review(evaluator, key(), { signalId: buy.id })).reasons, ['no-fresh-approved-quote']); // nothing to price with
     const another = await f.signals.propose(trader, key(), { ...f.long, conviction: 'medium', thesis: 'Priced at the close' });
-    const closeId = await price('Daily close', 10000);
-    const reviewed = await f.signals.review(evaluator, key(), { signalId: another.id, priceEvidence: { evidenceId: closeId, pricePaise: '10000',
-      observedAt: new Date(Date.now() - 3_600_000).toISOString() } });
+    const close = await price('Daily close', 10000, Date.now() - 3_600_000);
+    await assert.rejects(() => f.signals.review(evaluator, key(), { signalId: another.id, priceEvidence: { ...close, observedAt: new Date().toISOString() } }),
+      says(/own publication time/)); // the caller cannot re-date a price to look fresh
+    const reviewed = await f.signals.review(evaluator, key(), { signalId: another.id, priceEvidence: close });
     assert.deepEqual([reviewed.outcome, reviewed.quantity], ['accepted', '25']);
     assert.equal(reviewed.reasons.at(-1), 'priced-from-verified-close');
 
-    const openId = await price('Opening price', 10200);
     // hindsight is refused: a price observed before the review cannot be used
-    await assert.rejects(() => f.signals.execute(trader, key(), { signalId: another.id, priceEvidence: { evidenceId: openId, pricePaise: '10200',
-      observedAt: new Date(Date.now() - 7_200_000).toISOString() } }), says(/after the review/));
+    const early = await price('Opening price', 10100, Date.now() - 7_200_000);
+    await assert.rejects(() => f.signals.execute(trader, key(), { signalId: another.id, priceEvidence: early }), says(/after the review/));
+    const open = await price('Opening price', 10200, Date.now());
     // a price the evidence does not state is refused by the paper engine itself
-    await assert.rejects(() => f.signals.execute(trader, key(), { signalId: another.id, priceEvidence: { evidenceId: openId, pricePaise: '9000',
-      observedAt: new Date().toISOString() } }), says(/does not state this price/));
-    const filled = await f.signals.execute(trader, key(), { signalId: another.id, priceEvidence: { evidenceId: openId, pricePaise: '10200',
-      observedAt: new Date().toISOString() } });
+    await assert.rejects(() => f.signals.execute(trader, key(), { signalId: another.id, priceEvidence: { ...open, pricePaise: '9000' } }), says(/does not state this price/));
+    // a table of several prices (like a ranking) is never price evidence
+    const table = await f.org.evidence(researcher, key(), { sourceId: f.e.sourceId, kind: 'dataset', publishedAt: open.observedAt,
+      content: `Ranking: NSE:DEMO on ${open.observedAt.slice(0, 10)}: 10200 paise; NSE:OTHER on ${open.observedAt.slice(0, 10)}: 9000 paise.` });
+    await f.org.reviewEvidence(evaluator, key(), { evidenceId: table.id, status: 'verified' });
+    await assert.rejects(() => f.signals.execute(trader, key(), { signalId: another.id, priceEvidence: { ...open, evidenceId: table.id } }), says(/exactly one price/));
+    const filled = await f.signals.execute(trader, key(), { signalId: another.id, priceEvidence: open });
     assert.deepEqual([filled.side, filled.quantity, filled.pricePaise], ['buy', '25', '10200']); // the next open, verified
     const position = (await f.db.transaction(tx => tx.query("SELECT quantity::text AS q,cost_paise::text AS c FROM positions WHERE bot_id='bot-one'"))).rows[0]!;
     assert.deepEqual([position.q, position.c], ['25', '255000']);
@@ -269,7 +280,8 @@ test('an accepted proposal that expires unexecuted lapses once, releasing the re
     for (const s of [stuck, untried, live]) await f.signals.review(evaluator, key(), { signalId: s.id });
     // the execution crashed after reserving and before filling: its reservation, under the execution's own key, is left behind
     const review = (await f.signals.query(owner, {})).signals.find(s => s.id === stuck.id)!.review!;
-    await f.paper.reserve(trader, `sigexec-reserve-${stuck.id}`, { botId: 'bot-one', symbol: 'DEMO', side: 'buy', quantity: Number(review.quantity), evidenceId: f.e.evidenceId });
+    await f.paper.reserve(trader, `sigexec-reserve-${stuck.id}`, { botId: 'bot-one', symbol: 'DEMO', side: 'buy', quantity: Number(review.quantity), evidenceId: f.e.evidenceId },
+      { signalId: stuck.id });
     const held = (await f.db.transaction(tx => tx.query("SELECT reserved_paise::text AS r FROM orders WHERE status='reserved'"))).rows;
     assert.equal(held.length, 1);
     await new Promise(r => setTimeout(r, 1800));
@@ -286,6 +298,42 @@ test('an accepted proposal that expires unexecuted lapses once, releasing the re
     assert.equal(view.find(s => s.id === live.id)!.lapse, null);
     await assert.rejects(() => f.db.transaction(tx => tx.query('DELETE FROM trade_signal_lapses')));
     assert.throws(() => f.signals.lapse(evaluator, key(), { asOf: inDays(1) }), says(/future/));
+    assert.equal((await f.ops.verifyAudit(owner)).valid, true);
+  } finally { await f.db.close(); }
+});
+
+test('one order per proposal whoever executes it, no direct orders around review, and a buy that got dearer fills what still fits', async () => {
+  const f = await setup(); try {
+    // end-of-day prices are only for reviewed proposals, never for a direct order
+    await assert.rejects(() => f.paper.reserve(trader, key(), { botId: 'bot-one', symbol: 'DEMO', side: 'buy', quantity: 1, evidenceId: f.e.evidenceId,
+      priceEvidence: { evidenceId: f.e.evidenceId, pricePaise: '10000', observedAt: new Date().toISOString() } }), says(/only for reviewed proposals/));
+
+    // the execution crashed after reserving; another credential of the same bot resumes that one order, never a second
+    const crash = await f.signals.propose(trader, key(), { ...f.long, conviction: 'medium', thesis: 'Crashed after reserving' });
+    const review = await f.signals.review(evaluator, key(), { signalId: crash.id });
+    await f.paper.reserve(trader, key(), { botId: 'bot-one', symbol: 'DEMO', side: 'buy', quantity: Number(review.quantity), evidenceId: f.e.evidenceId }, { signalId: crash.id });
+    const second = { id: 'trader-2', role: 'trader', botId: 'bot-one' } as const;
+    const done = await f.signals.execute(second, key(), { signalId: crash.id });
+    assert.equal(done.quantity, review.quantity);
+    assert.equal((await f.db.transaction(tx => tx.query('SELECT count(*)::int AS n FROM orders WHERE signal_id=$1', [crash.id]))).rows[0]!.n, 1);
+    assert.equal((await f.signals.execute(trader, key(), { signalId: crash.id })).duplicate, true);
+
+    // reviewed at 10000, the price is 30000 by execution: it buys the shares that still fit the limits, not none
+    const dear = await f.signals.propose(trader, key(), { ...f.long, conviction: 'medium', thesis: 'Got dearer' });
+    const sized = await f.signals.review(evaluator, key(), { signalId: dear.id });
+    await f.paper.quote(market, key(), { symbol: 'DEMO', bidPaise: '30000', askPaise: '30000', observedAt: new Date(Date.now() + 1000).toISOString(), sourceId: f.e.sourceId });
+    const filled = await f.signals.execute(trader, key(), { signalId: dear.id });
+    assert.ok(Number(filled.quantity) >= 1 && Number(filled.quantity) < Number(sized.quantity), `${filled.quantity} of ${sized.quantity}`);
+
+    // once a bot is under release control, direct orders are refused: it trades only through reviewed proposals
+    await f.db.transaction(async tx => {
+      const releaseId = crypto.randomUUID();
+      await tx.query(`INSERT INTO bot_releases(id,bot_id,version,model,prompt_version,code_fingerprint,settings,notes,author)
+        VALUES($1,'bot-one',1,'m','p','a1b2c3d4e5f60718','{}'::jsonb,'n','owner')`, [releaseId]);
+      await tx.query(`INSERT INTO bot_release_stages(id,bot_id,release_id,stage,reason,decided_by) VALUES($1,'bot-one',$2,'active','r','owner')`, [crypto.randomUUID(), releaseId]);
+    });
+    await assert.rejects(() => f.paper.reserve(trader, key(), { botId: 'bot-one', symbol: 'DEMO', side: 'sell', quantity: 1, evidenceId: f.e.evidenceId }),
+      says(/only through reviewed proposals/));
     assert.equal((await f.ops.verifyAudit(owner)).valid, true);
   } finally { await f.db.close(); }
 });

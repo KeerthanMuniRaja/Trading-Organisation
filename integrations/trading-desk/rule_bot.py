@@ -31,6 +31,7 @@ import signal_scorer as sc  # noqa: E402
 
 MODEL = 'rules:top3-momentum-6m'
 LOOKBACK, KEEP, TARGET_PCT, HORIZON_DAYS, EXPIRY_DAYS = 126, 3, 33, 30, 7
+STATE = daily.ROOT / '.local' / 'trading-desk' / 'rule-bot'
 RULE_VERSION = hashlib.sha256(f'top{KEEP}|return-{LOOKBACK}-sessions|target-{TARGET_PCT}|horizon-{HORIZON_DAYS}'.encode()).hexdigest()[:16]
 
 
@@ -99,36 +100,66 @@ def load(cache):
     return datasets, combined
 
 
-def run(bot_id, source_id, env=os.environ, cache=daily.DAILY, opener=None, now=None, dry_run=False):
+def settled(signal):
+    """A proposal that will not change the holdings any more: executed, lapsed, or not accepted at review."""
+    review = signal.get('review')
+    return bool(signal.get('execution') or signal.get('lapse') or (review and review['outcome'] != 'accepted'))
+
+
+def run(bot_id, source_id, env=os.environ, cache=daily.DAILY, opener=None, now=None, dry_run=False, state_dir=STATE):
+    """The month's ranking is decided ONCE (first run of the month) and kept in a local decision file, so the bot trades on
+    one ranking a month however often the cycle runs. Exits go first; entries follow on a later run, once the exits have
+    executed and freed the budget (as in the backtest, which sold and bought in the same rebalance). A rerun sends only
+    what is still missing."""
     from urllib import request as urlrequest
     opener = opener or urlrequest.urlopen
     now = now or datetime.now(timezone.utc)
     trader = eod_trader.bot_credential(env, bot_id)
     if not trader:
         raise ValueError(f'Configure exactly one trader credential bound to {bot_id}')
-    datasets, fingerprint = load(cache)
-    rows = ranking(datasets, now)
-    if len(rows) < KEEP:
-        return {'state': 'waiting', 'reason': 'not enough settled history'}
     month = now.strftime('%Y-%m')
-    mine = sc.post(*trader, '/v1/trading/signals/query', {'limit': 200}, opener)['signals']
-    if any(s['createdAt'][:7] == month and s.get('model') == MODEL and s['botId'] == bot_id for s in mine):
-        return {'state': 'already-decided', 'month': month}
+    path = state_dir / f'{bot_id}-{month}.json'
+    mine = [s for s in sc.post(*trader, '/v1/trading/signals/query', {'limit': 200}, opener)['signals']
+            if s['createdAt'][:7] == month and s.get('model') == MODEL and s['botId'] == bot_id]
     holdings = held(trader, bot_id, opener)
-    if dry_run:
-        return {'state': 'dry-run', 'month': month, 'ranking': [list(r[:2]) for r in rows], 'holdings': sorted(holdings),
-                'proposals': [[p['action'], p['symbol']] for p in proposals(rows, holdings, bot_id, None, now)]}
-    plan = proposals(rows, holdings, bot_id, None, now)
+    decision = json.loads(path.read_text(encoding='utf-8')) if path.exists() else None
+    if decision is None:
+        if mine:
+            return {'state': 'already-decided', 'month': month, 'reason': 'proposals exist from before decision files were kept'}
+        datasets, fingerprint = load(cache)
+        rows = ranking(datasets, now)
+        if len(rows) < KEEP:
+            return {'state': 'waiting', 'reason': 'not enough settled history'}
+        if dry_run:
+            return {'state': 'dry-run', 'month': month, 'ranking': [list(r[:2]) for r in rows], 'holdings': sorted(holdings),
+                    'proposals': [[p['action'], p['symbol']] for p in proposals(rows, holdings, bot_id, None, now)]}
+        evidence_id = None
+        if proposals(rows, holdings, bot_id, None, now):
+            reporter, checker = sc.principals(env, 'researcher'), sc.principals(env, 'evaluator')
+            published = sc.close_time(max(r[4] for r in rows)).isoformat().replace('+00:00', 'Z')
+            evidence_id = eod_trader.evidence_for(ranking_text(rows, fingerprint), published, source_id, reporter, checker, opener)
+        decision = {'month': month, 'decidedAt': now.isoformat(), 'ranking': [[r[0], r[1]] for r in rows], 'evidenceId': evidence_id}
+        state_dir.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(decision, indent=2), encoding='utf-8')
+    rows = [tuple(r) for r in decision['ranking']]
+    top = [r[0] for r in rows[:KEEP]]
+    sent = {(s['action'], s['symbol']) for s in mine}
+    plan = [p for p in proposals(rows, holdings, bot_id, decision['evidenceId'], now) if (p['action'], p['symbol']) not in sent]
+    exits = [p for p in plan if p['action'] == 'exit']
     if not plan:
-        return {'state': 'nothing-to-change', 'month': month, 'top': [r[0] for r in rows[:KEEP]], 'holdings': sorted(holdings)}
-    reporter, checker = sc.principals(env, 'researcher'), sc.principals(env, 'evaluator')
-    published = sc.close_time(max(r[4] for r in rows)).isoformat().replace('+00:00', 'Z')
-    evidence_id = eod_trader.evidence_for(ranking_text(rows, fingerprint), published, source_id, reporter, checker, opener)
+        return {'state': 'month-complete' if mine else 'nothing-to-change', 'month': month, 'top': top, 'holdings': sorted(holdings)}
+    if not exits and any(s['action'] == 'exit' and not settled(s) for s in mine):
+        return {'state': 'waiting-for-exits', 'month': month, 'top': top}
     made = []
-    for p in proposals(rows, holdings, bot_id, evidence_id, now):
-        result = sc.post(*trader, '/v1/trading/signals', p, opener)
+    for p in exits or plan:
+        try:
+            result = sc.post(*trader, '/v1/trading/signals', p, opener)
+        except RuntimeError as error:
+            if 'suspended' in str(error):  # the owner suspended the bot: no new risk, which is not a failure of the cycle
+                return {'state': 'suspended', 'month': month, 'proposals': made, 'reason': 'the bot is suspended; entries wait until the owner resumes it'}
+            raise
         made.append({'action': p['action'], 'symbol': p['symbol'], 'signalId': result['id']})
-    return {'state': 'proposed', 'month': month, 'top': [r[0] for r in rows[:KEEP]], 'proposals': made}
+    return {'state': 'proposed', 'month': month, 'top': top, 'proposals': made}
 
 
 def describe():
@@ -145,6 +176,7 @@ def main(argv=None):
     parser.add_argument('--bot')
     parser.add_argument('--source', help='Owner-approved market-data source id for the ranking evidence')
     parser.add_argument('--cache', type=Path, default=daily.DAILY)
+    parser.add_argument('--state', type=Path, default=STATE, help='Folder of monthly decision files')
     parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args(argv)
     if args.describe:
@@ -152,7 +184,7 @@ def main(argv=None):
         return
     if not args.bot or not args.source:
         parser.error('--bot and --source are required')
-    print(json.dumps(run(args.bot, args.source, cache=args.cache, dry_run=args.dry_run), indent=2))
+    print(json.dumps(run(args.bot, args.source, cache=args.cache, dry_run=args.dry_run, state_dir=args.state), indent=2))
 
 
 if __name__ == '__main__':

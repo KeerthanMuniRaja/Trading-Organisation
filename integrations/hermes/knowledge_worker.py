@@ -14,7 +14,21 @@ from knowledge import propose_knowledge, validate_plan
 from inference_reporting import flush_report, mark_uncertain, timed_inference
 
 
-def run_once(client, settings, body, request_key, directory, proposer=propose_knowledge, *, workflow='knowledge'):
+def endpoint_reachable(settings):
+    """Before a request is marked as started: is the model server there at all? A request is single-use (one report per
+    request), so an outage found AFTER marking it would block it for good. Probing first keeps the commonest outage (the
+    local server not running) harmless: nothing is started, and the same request runs on the next try. The Hermes
+    engine runs its own subprocess and is not probed."""
+    if settings.engine != 'direct':
+        return
+    from openai_compat import Endpoint, EndpointError, list_models
+    try:
+        list_models(Endpoint.create(settings.base_url, settings.model, settings.api_key), timeout=10.0)
+    except EndpointError as exc:
+        raise HermesError('Model endpoint not reachable (' + exc.code + '); nothing was started, retry when it is up') from None
+
+
+def run_once(client, settings, body, request_key, directory, proposer=propose_knowledge, *, workflow='knowledge', probe=endpoint_reachable):
     if workflow not in ('knowledge', 'sources'):
         raise HermesError('Unknown learning workflow')
     if workflow == 'sources':
@@ -51,6 +65,7 @@ def run_once(client, settings, body, request_key, directory, proposer=propose_kn
             if datetime.fromisoformat(ticket['expiresAt'].replace('Z', '+00:00')) <= datetime.now(timezone.utc):
                 raise HermesError('Knowledge request expired')
             client.post(route + '/preflight', {'requestId': ticket['id']})
+            probe(settings)  # raises before anything is marked started if the model server is down
             record['inferenceStarted'] = True
             save(path, record)
             try:

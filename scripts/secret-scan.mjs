@@ -15,14 +15,16 @@ export const RULES = [
   ['slack-token', /\bxox[abposr]-[A-Za-z0-9-]{10,}\b/],
   ['principals-with-token', /PRINCIPALS_JSON\s*=\s*['"]?\[\s*\{[^\n]*"token"\s*:\s*"[A-Za-z0-9_-]{40,}"/],
   ['assigned-secret', /\b(api[_-]?key|secret|password|passwd|token)\b\s*[:=]\s*['"][A-Za-z0-9+/_-]{32,}['"]/i],
+  // JSON keeps the key in quotes ("token": "..."), which the rule above does not see
+  ['json-secret', /"(api[_-]?key|apiKey|secret|password|token|accessToken)"\s*:\s*"[A-Za-z0-9+/_.-]{32,}"/i],
 ];
 export const FORBIDDEN_PATHS = [/^\.env$/, /^\.env\.(?!example$)/, /(^|\/)\.local\//, /(^|\/)\.data\//, /owner-signing-key/, /credentials\.json$/, /\.pem$/];
 // Test code builds fake credentials on purpose, so only the loose heuristics are relaxed there; real key and token
 // formats are flagged everywhere. The scanner's own source holds the patterns, not secrets.
 const TEST_PATH = /(^|\/)test\/|\.test\.(mjs|ts)$|(^|\/)test_[^/]+\.py$/;
-const RELAXED_IN_TESTS = new Set(['assigned-secret', 'principals-with-token']);
+const RELAXED_IN_TESTS = new Set(['assigned-secret', 'principals-with-token', 'json-secret']);
 const SELF = /(^|\/)scripts\/secret-scan(\.test)?\.mjs$/;
-const TEXT = /\.(m?js|ts|py|json|md|sql|ya?ml|txt|toml|cfg|ini|sh|ps1|cmd|html|css|env)$|^Dockerfile$|^\.[a-z]+ignore$/i;
+const TEXT = /\.(m?js|ts|py|jsonl?|md|sql|ya?ml|txt|toml|cfg|ini|sh|ps1|cmd|html|css|env|log|xml|csv)$|^Dockerfile$|^\.[a-z]+ignore$/i;
 
 export function scanText(path, text) {
   const findings = [];

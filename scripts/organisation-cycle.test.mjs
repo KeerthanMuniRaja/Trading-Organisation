@@ -46,14 +46,15 @@ test('runbooks: transient failures retry with back-off; postconditions can degra
       run: async () => (++calls < 3 ? { code: 1, tail: 'network' } : { code: 0, output: '[{"symbol":"INFY.NS","state":"downloaded"}]' }) });
     assert.deepEqual([results[0].status, results[0].tries, slept], ['done', 3, [30000, 90000]]);
 
-    assert.deepEqual(verifyMarketData('noise\n[{"symbol":"A","state":"downloaded"},{"symbol":"B","state":"kept-previous","issues":[{"check":"extreme-move"}]}]'),
-      { status: 'degraded', note: 'previous data kept for B' });
+    assert.deepEqual(verifyMarketData('noise\n[{"symbol":"A","state":"downloaded"},{"symbol":"B","state":"kept-previous","issues":[{"check":"extreme-move","date":"2026-10-15","changePct":-25}]}]'),
+      { status: 'degraded', note: 'previous data kept for B; large move kept back, check the news: B -25% on 2026-10-15 (if real: daily.py accept-move --symbol B --date 2026-10-15)' });
     assert.deepEqual(verifyMarketData('[{"symbol":"HDFCBANK.NS","state":"downloaded","warnings":[{"check":"corporate-action-suspected","factor":2,"likelyExDate":"2026-11-03"}]}]'),
       { status: 'degraded', note: 'possible split or bonus, record it in /v1/corporate-actions: HDFCBANK x2 from 2026-11-03' });
     assert.equal(verifyMarketData('[{"symbol":"A","state":"downloaded","warnings":[{"check":"gaps"}]}]').status, 'done');
     assert.equal(verifyMarketData('Traceback ...').status, 'failed');
     assert.equal(verifyFeed('> npm\n{"state":"fetch-failed","code":"FEED_TIMEOUT","evidenceIds":["a","b"]}').status, 'failed');
     assert.equal(verifyFeed('{"state":"awaiting-review","submitted":3,"evidenceIds":["a"],"rejected":[{"index":1}]}').status, 'done');
+    assert.equal(verifyFeed('{"state":"backoff","consecutiveFailures":2}').status, 'failed'); // an outage must reach escalation
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

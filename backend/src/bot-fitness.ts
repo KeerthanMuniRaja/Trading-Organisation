@@ -108,7 +108,8 @@ export class BotFitness {
     const bot = (await tx.query('SELECT state FROM bots WHERE id=$1', [input.botId])).rows[0];
     requireThat(bot, 'Bot not found', 404);
     requireThat(bot.state !== 'retired', 'Retired bots keep their history but receive no new fitness reports');
-    requireThat(input.periodTo <= new Date().toISOString().slice(0, 10), 'A fitness period cannot end in the future', 400);
+    // India trading day: between 00:00 and 05:30 IST the UTC date is still yesterday
+    requireThat(input.periodTo <= new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10), 'A fitness period cannot end in the future', 400);
     if (input.evidenceId) {
       const e = (await tx.query(`SELECT e.status,e.author,s.approved FROM evidence e JOIN sources s ON s.id=e.source_id WHERE e.id=$1`,
         [input.evidenceId])).rows[0];

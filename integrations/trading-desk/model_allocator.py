@@ -73,6 +73,7 @@ def run(bot_id, run_name, source_id, env=os.environ, cache=daily.DAILY, root=ai.
     if (now.date() - date.fromisoformat(day)).days > CURRENT_DAYS:
         return {'state': 'waiting', 'month': day, 'reason': 'no current decision (the next month has not been decided)'}
     trader = eod_trader.bot_credential(env, bot_id) or bridge.credential(env, bot_id)
+    usage = report_usage(env, bot_id, run_name, state, day, opener)
     mine = sc.post(*trader, '/v1/trading/signals/query', {'limit': 200}, opener)['signals']
     if any(s['createdAt'][:10] >= day and s.get('model') == state['model'][:120] for s in mine):
         return {'state': 'already-proposed', 'month': day}
@@ -80,15 +81,53 @@ def run(bot_id, run_name, source_id, env=os.environ, cache=daily.DAILY, root=ai.
     facts, fingerprint = recompute(day, letters, cache)
     if facts != entry['facts']:
         raise ValueError(f'The facts the model saw on {day} no longer match the checked data; not proposing on them')
-    planned = bridge.from_allocator(state, day, letters, bot_id, ['EVIDENCE'], now)
+    current = held_weights(trader, bot_id, letters, opener)
+    planned = bridge.from_allocator(state, day, letters, bot_id, ['EVIDENCE'], now, current=current)
     if dry_run or not planned:
         return {'state': 'dry-run' if dry_run else 'no-material-change', 'month': day,
                 'proposals': [[p['action'], p['symbol'], p.get('targetWeightPct')] for p in planned]}
     reporter, checker = sc.principals(env, 'researcher'), sc.principals(env, 'evaluator')
     published = sc.close_time(day).isoformat().replace('+00:00', 'Z')
     evidence_id = eod_trader.evidence_for(facts_text(day, facts, letters, fingerprint), published, source_id, reporter, checker, opener)
-    sent = bridge.submit(bridge.from_allocator(state, day, letters, bot_id, [evidence_id], now), env, opener)
-    return {'state': 'proposed', 'month': day, 'model': state['model'], 'proposals': [[r['action'], r['symbol'], r['id']] for r in sent]}
+    sent = bridge.submit(bridge.from_allocator(state, day, letters, bot_id, [evidence_id], now, current=current), env, opener)
+    return {'state': 'proposed', 'month': day, 'model': state['model'], 'usageReported': usage,
+            'proposals': [[r['action'], r['symbol'], r['id']] for r in sent]}
+
+
+def held_weights(trader, bot_id, letters, opener):
+    """What the bot actually holds, as whole percent of its budget by letter (market value, or cost when unpriced), so
+    a rejected, lapsed or smaller-than-planned trade is proposed again instead of being assumed done. Trims are not
+    proposed: an exit sells the whole position."""
+    from urllib import request as urlrequest
+    from urllib.error import HTTPError
+    base, token = trader
+    req = urlrequest.Request(base + '/v1/paper/performance', method='GET', headers={'Authorization': 'Bearer ' + token})
+    try:
+        with opener(req, timeout=15) as response:
+            report = json.loads(response.read(1_000_000))
+    except HTTPError as error:
+        error.close()
+        raise RuntimeError(f'/v1/paper/performance refused (HTTP {error.code})') from None
+    mine = next((b for b in report['bots'] if b['botId'] == bot_id), None)
+    budget = int(mine['budgetPaise']) if mine else 0
+    by_symbol = {p['symbol']: int(p['marketValuePaise']) for p in (mine or {}).get('openPositions', []) if int(p['quantity']) > 0}
+    return {k: (round(by_symbol.get(bridge.ticker(s), 0) * 100 / budget) if budget else 0) for k, s in letters.items()}
+
+
+def report_usage(env, bot_id, run_name, state, day, opener):
+    """COST-01: the model call that decided this month, reported to the backend's compute usage (identical reports are
+    recorded once), so the digest and department budgets see model use outside the backend's own tickets. Best effort:
+    a refused report never blocks the trading decision."""
+    tokens = list(state['months'][day].get('tokens') or [])  # [promptTokens, completionTokens], either may be missing
+    prompt = tokens[0] if len(tokens) > 0 else 0
+    completion = tokens[1] if len(tokens) > 1 else 0
+    body = {'botId': bot_id, 'model': state['model'][:120], 'runLabel': f'ai-allocator:{run_name}:{day}'[:160], 'periodFrom': day, 'periodTo': day,
+            'calls': 1, 'promptTokens': int(prompt or 0), 'completionTokens': int(completion or 0), 'latencyMs': 0}
+    try:
+        sc.post(*sc.principals(env, 'researcher'), '/v1/compute/usage/reports', body, opener)
+        return True
+    except RuntimeError:
+        return False
 
 
 def main(argv=None):

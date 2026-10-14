@@ -63,6 +63,19 @@ test('a rejected proposal frees the capability for a better-argued one; a closed
   } finally { await f.db.close(); }
 });
 
+test('a retired lead no longer leads, and no longer blocks births in the department', async () => {
+  const f = await setup(); try {
+    await f.org.retire(owner, key(), { botId: 'bot-one', reason: 'Replaced' }); // no lessons, no open work
+    const desk = (await f.depts.registry(owner)).departments.find((d: { id: string }) => d.id === 'desk')!;
+    assert.equal(desk.leadBotId, null);
+    const proposal = await f.births.propose(researcher, key(), f.birth);
+    const born = await f.births.decide(owner, key(), { proposalId: proposal.id, outcome: 'approved', note: 'Go' });
+    assert.equal(born.mentorId, null);
+    await assert.rejects(async () => f.births.decide(owner, key(), { proposalId: (await f.births.propose(researcher, key(), { ...f.birth, botId: 'other-reader',
+      specialty: 'other-news' })).id, outcome: 'approved', note: 'x', mentorId: 'bot-one' }), says(/retired/)); // naming a retired mentor is refused
+  } finally { await f.db.close(); }
+});
+
 test('birth routes are guarded by role', async () => {
   const { cfg } = config(), db = await Database.open(), app = await createApp(cfg, db, true);
   try {

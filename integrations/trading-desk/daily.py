@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import argparse
 from bisect import bisect_left
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 import hashlib
 import json
@@ -74,6 +74,15 @@ def validate(dataset):
     return bars
 
 
+def settled_only(bars, now):
+    """Drops today's bar while its session is unfinished (before 16:00 IST: 15:30 close plus 30 minutes to settle). The
+    provider serves the running session as a daily bar during market hours; stored, it would later pass as a close."""
+    india = now + timedelta(hours=5, minutes=30)
+    if bars and bars[-1]['date'] == india.date().isoformat() and (india.hour, india.minute) < (16, 0):
+        return bars[:-1]
+    return bars
+
+
 def fetch(symbols, years=5, cache=DAILY, refresh=False):
     """Owner-run download of adjusted daily bars. Existing files are kept unless `refresh` re-downloads them
     (needed to score forward tests on new days; adjusted history may shift slightly after new dividends)."""
@@ -103,11 +112,30 @@ def fetch(symbols, years=5, cache=DAILY, refresh=False):
             # Adjustment and rounding can break OHLC order by a paisa; restore the envelope without moving open/close.
             bars.append({'date': index.date().isoformat(), 'openPaise': o, 'highPaise': max(h, o, c), 'lowPaise': min(low, o, c),
                          'closePaise': c, 'volume': int(row['Volume'])})
+        bars = settled_only(bars, datetime.now(timezone.utc))
         dataset = {'schemaVersion': 1, 'symbol': symbol, 'interval': '1d', 'priceBasis': 'adjusted', 'source': 'yahoo-via-yfinance',
                    'providerVersion': yf.__version__, 'retrievedAt': datetime.now(timezone.utc).isoformat(), 'bars': bars}
         validate(dataset)
         results.append(store(path, dataset, cache))
     return results
+
+
+def accepted_moves(cache=DAILY):
+    """{symbol: [session dates]} of large moves the owner checked against the news and confirmed as real."""
+    path = cache / 'accepted-moves.json'
+    return json.loads(path.read_text(encoding='utf-8')) if path.exists() else {}
+
+
+def accept_move(symbol, day, cache=DAILY):
+    """Owner step after a refresh was kept back for an extreme move: confirm the move is real (results, news, a crash)
+    so the next refresh is accepted. Only that one session is confirmed."""
+    if symbol not in datasets.UNIVERSE:
+        raise ValueError('SYMBOL_NOT_IN_UNIVERSE')
+    date.fromisoformat(day)
+    moves = accepted_moves(cache)
+    moves[symbol] = sorted(set(moves.get(symbol, [])) | {day})
+    (cache / 'accepted-moves.json').write_text(json.dumps(moves, indent=2), encoding='utf-8')
+    return moves[symbol]
 
 
 def store(path, dataset, cache=DAILY):
@@ -116,7 +144,7 @@ def store(path, dataset, cache=DAILY):
     import data_steward
     old = json.loads(path.read_text(encoding='utf-8')) if path.exists() else None
     peers = [json.loads(p.read_text(encoding='utf-8')) for p in sorted(cache.glob('*-1d.json')) if p != path]
-    quality = data_steward.review(dataset, old, peers)
+    quality = data_steward.review(dataset, old, peers, accepted=accepted_moves(cache).get(dataset['symbol'], []))
     bars = dataset['bars']
     summary = {'symbol': dataset['symbol'], 'bars': len(bars), 'from': bars[0]['date'], 'to': bars[-1]['date'],
                'quality': quality['verdict'], 'fingerprint': quality['fingerprint']}
@@ -395,10 +423,16 @@ def main(argv=None):
     for name in ('run', 'finalise', 'register', 'forward'):
         p = sub.add_parser(name)
         p.add_argument('--name', required=True)
+    a = sub.add_parser('accept-move', help='Owner: confirm a large move the steward kept back is real (checked against the news)')
+    a.add_argument('--symbol', required=True, help='e.g. RELIANCE.NS')
+    a.add_argument('--date', required=True, help='The session date of the move, YYYY-MM-DD')
     args = parser.parse_args(argv)
     symbols = sorted(datasets.UNIVERSE)
     if args.command == 'fetch':
         print(json.dumps(fetch(symbols, args.years, refresh=args.refresh), indent=2))
+        return
+    if args.command == 'accept-move':
+        print(json.dumps({'symbol': args.symbol, 'acceptedMoves': accept_move(args.symbol, args.date)}))
         return
     if args.command in ('register', 'forward'):
         if not re.fullmatch(r'[A-Za-z0-9_-]{1,60}', args.name):

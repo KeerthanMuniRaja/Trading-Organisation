@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { fixture, config, owner, researcher, evaluator, trader, key } from './helpers.js';
 import { EvidenceClaims } from '../src/evidence-claims.js';
 import { KnowledgeAsOf } from '../src/knowledge-asof.js';
-import { Database } from '../src/database.js';
+import { Database, audit } from '../src/database.js';
 import { createApp } from '../src/app.js';
 
 const ARTICLE = 'Reliance Industries on Friday reported a 12% rise in quarterly net profit, helped by retail growth across its stores.';
@@ -68,6 +68,26 @@ test('a source revoked before the cutoff makes its evidence unusable at that cut
     assert.equal((await asOf.snapshot(owner, { asOf: verified })).evidence[0]!.statusAtCutoff, 'verified');
     assert.deepEqual((await asOf.snapshot(owner, { asOf: verified })).evidence[0]!.changesAfterCutoff.map(c => c.status), ['source-revoked']);
     assert.equal((await asOf.snapshot(owner, { asOf: after })).evidence[0]!.statusAtCutoff, 'source-revoked');
+  } finally { await f.db.close(); }
+});
+
+test('a lesson accepted through a source-learning workflow counts as verified from that decision', async () => {
+  const f = await fixture(); try {
+    clock = databaseClock(f.db);
+    await f.org.sources(owner, key(), { id: 'wire', name: 'Wire', url: 'https://wire.example.org/feed', approved: true });
+    await f.org.bot(owner, key(), { id: 'analyst', name: 'Analyst', department: 'desk', specialty: 'earnings', method: 'reasoning', contribution: 'As-of fixture', budgetPaise: '0' });
+    const evidence = (await f.org.evidence(researcher, key(), { sourceId: 'wire', kind: 'news', content: ARTICLE, publishedAt: '2025-01-03T10:00:00Z' })).id as string;
+    await f.org.reviewEvidence(evaluator, key(), { evidenceId: evidence, status: 'verified' });
+    const lesson = await f.org.lesson(researcher, key(), { botId: 'analyst', content: 'Retail growth drove the profit rise.', evidenceId: evidence });
+    const before = await tick();
+    // the workflow's acceptance, as source-learning records it: the lesson becomes verified, the event names the request
+    await f.db.transaction(async tx => {
+      await tx.query("UPDATE lessons SET status='verified',reviewer='evaluator' WHERE id=$1", [lesson.id]);
+      await audit(tx, evaluator, 'source.learning.accepted', crypto.randomUUID(), { lessonId: lesson.id, reason: 'Matches the article', demonstratedLearning: false });
+    });
+    const asOf = new KnowledgeAsOf(f.db);
+    assert.equal((await asOf.snapshot(owner, { asOf: before, botId: 'analyst' })).lessons[0]?.verifiedAtCutoff ?? false, false);
+    assert.equal((await asOf.snapshot(owner, { asOf: await tick(), botId: 'analyst' })).lessons[0]!.verifiedAtCutoff, true);
   } finally { await f.db.close(); }
 });
 

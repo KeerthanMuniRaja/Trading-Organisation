@@ -26,6 +26,7 @@ export async function run(env = process.env, { fetchImpl = fetch, now = new Date
     const active = view.ok ? view.body.active : null;
     const report = await call('POST', '/v1/bots/fitness/live', { botId: bot.id, ...(active ? { releaseId: active } : {}) }, ['live', bot.id, active, day]);
     if (report.status === 409) continue; // no scored calls yet
+    if (/System halted/.test(JSON.stringify(report.body ?? ''))) { results.push({ botId: bot.id, state: 'skipped', reason: 'system halted' }); continue; }
     if (!report.ok) { results.push({ botId: bot.id, state: 'failed', reason: `HTTP ${report.status}` }); continue; }
     const row = { botId: bot.id, releaseId: active, verdict: report.body.verdict, pValue: report.body.pValue ?? null, newReport: !report.body.duplicate };
     if (active && report.body.verdict !== 'insufficient-evidence') {

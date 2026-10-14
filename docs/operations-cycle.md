@@ -23,6 +23,7 @@ Three pieces that make the organisation run on its own and stay auditable. They 
 | `live-fitness` | Files each bot's fitness report from its scored paper calls; once there is a verdict, re-evaluates its active release with it | backend |
 | `paper-snapshot` | Records today's per-bot P&L mark (evaluator credential) | backend |
 | `alerts` | Evaluates alert rules and delivers new alerts | backend |
+| `owner-digest` | Writes the day's summary to `.local/digests/<day>.md` | backend |
 
 **Resuming:** a daily journal (`.local/cycles/<day>.json`) makes reruns resume. Finished steps are skipped, and only failed or skipped ones run again. `--force` reruns everything.
 
@@ -46,7 +47,7 @@ A same-day rerun repeated nothing.
 
 Restarting is not counted as repair. Escalations stay open until someone resolves the incident.
 
-**The cycle never trades, funds or changes limits.** Scheduling it is the owner's choice: a scheduled task, or `--minutes`-style sessions.
+**The cycle never trades, funds or changes limits.** Scheduling it is the owner's choice. There is no built-in schedule: run `npm run cycle` after 16:00 IST, or set up an operating-system scheduled task. A rerun on the same day skips steps already done, so run it after the close, not before.
 
 ## What was known when (KG-01): `POST /v1/knowledge/as-of`
 

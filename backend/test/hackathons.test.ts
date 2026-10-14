@@ -15,13 +15,16 @@ async function setup() {
     await f.org.bot(owner, key(), { id, name: id, department: 'research', specialty: id, method: 'test', contribution: 'Hackathon fixture ' + id, budgetPaise: '0' });
   const contest = { id: 'monthly-allocation-2026', title: 'Beat the basket monthly', question: 'Which monthly allocation rule beats holding the basket after costs?',
     metric: 'net return over the window (%)', higherIsBetter: true, baseline: 'equal-weight buy and hold',
-    entryDeadline: new Date(Date.now() + 60_000).toISOString(), maxEntriesPerBot: 2, windowFrom: '2026-11-01', windowTo: '2027-04-30' };
+    entryDeadline: new Date(Date.now() + 60_000).toISOString(), maxEntriesPerBot: 2,
+    windowFrom: new Date(Date.now() + 20 * 86_400_000).toISOString().slice(0, 10), windowTo: new Date(Date.now() + 200 * 86_400_000).toISOString().slice(0, 10) };
   return { ...f, e, hack: new Hackathons(f.db), contest };
 }
 
 test('one full hackathon: concealed window, versioned entries, independent judging, findings, closure', async () => {
   const f = await setup(); try {
     assert.throws(() => f.hack.create(researcher, key(), f.contest)); // only the owner poses challenges
+    // a window that opens before entries close could be fitted by the entrants: refused
+    assert.throws(() => f.hack.create(owner, key(), { ...f.contest, windowFrom: new Date().toISOString().slice(0, 10) }), says(/after the entry deadline/));
     const created = await f.hack.create(owner, key(), f.contest);
     assert.match(created.windowCommit, /^[0-9a-f]{64}$/);
 
@@ -43,7 +46,7 @@ test('one full hackathon: concealed window, versioned entries, independent judgi
     await assert.rejects(() => f.hack.closeEntries(owner, key(), { hackathonId: f.contest.id }), says(/deadline/));
     await f.db.transaction(tx => tx.query("UPDATE hackathons SET entry_deadline=now()-interval '1 second' WHERE id=$1", [f.contest.id]));
     const judging = await f.hack.closeEntries(owner, key(), { hackathonId: f.contest.id });
-    assert.deepEqual([judging.windowFrom, judging.windowTo, judging.commitVerified], ['2026-11-01', '2027-04-30', true]);
+    assert.deepEqual([judging.windowFrom, judging.windowTo, judging.commitVerified], [f.contest.windowFrom, f.contest.windowTo, true]);
     await assert.rejects(() => f.hack.enter(trader, key(), { hackathonId: f.contest.id, botId: 'bot-one', title: 'Late', spec: { rule: 'late' } }), says(/closed/));
 
     const entries = (await f.hack.view(owner, { hackathonId: f.contest.id })).entries;

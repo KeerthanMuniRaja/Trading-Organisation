@@ -1,5 +1,7 @@
 # Remaining work to build the self-growing trading organisation
 
+> **Status claims superseded, 14 October 2026.** The [audit of 14 October](audit-2026-10-14.md) checked every requirement ID against the code and tests. Some items this page calls missing now exist: hackathons, departments, alert delivery and Docker sandboxing. Others are built but not yet used by the daily workflow. The requirement definitions below remain the plan.
+
 **Assessment date:** 6 October 2026  
 **Original codebase snapshot:** v0.1.25, migrations 001–019; updates through v0.1.32 / migration 022 follow.
 **Purpose:** turn the owner's original vision into an implementation-backed completion plan.

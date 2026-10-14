@@ -44,11 +44,14 @@ BOT_ID = re.compile(r'^[a-zA-Z0-9_-]{1,80}$')
 # ---------- owner configuration ----------
 def load_config(path):
     value = json.loads(Path(path).read_text(encoding='utf-8'))
-    allowed = {'recipientBotIds', 'primarySourceIds', 'holdDays', 'maxModelCallsPerCycle'}
+    allowed = {'recipientBotIds', 'primarySourceIds', 'holdDays', 'maxModelCallsPerCycle', 'looseCorroborationVerifies'}
     if not isinstance(value, dict) or set(value) - allowed or 'recipientBotIds' not in value:
         raise ValueError(f'Config keys: {sorted(allowed)}; recipientBotIds is required')
     config = {'recipientBotIds': value['recipientBotIds'], 'primarySourceIds': value.get('primarySourceIds', []),
-              'holdDays': value.get('holdDays', 7), 'maxModelCallsPerCycle': value.get('maxModelCallsPerCycle', 20)}
+              'holdDays': value.get('holdDays', 7), 'maxModelCallsPerCycle': value.get('maxModelCallsPerCycle', 20),
+              'looseCorroborationVerifies': value.get('looseCorroborationVerifies', False)}
+    if not isinstance(config['looseCorroborationVerifies'], bool):
+        raise ValueError('looseCorroborationVerifies: true or false (default false: corroborated items wait for review)')
     if not (isinstance(config['recipientBotIds'], list) and 1 <= len(config['recipientBotIds']) <= 5
             and all(isinstance(b, str) and BOT_ID.match(b) for b in config['recipientBotIds'])):
         raise ValueError('recipientBotIds: 1-5 organisation bot ids')
@@ -124,10 +127,14 @@ def evidence_decision(obs, record, own_claims, clusters, config, now):
         return 'rejected', 'no-claim-survived-recheck'
     if 'contradicted' in bases:
         return 'hold', 'contradicted'
-    if 'corroborated' in bases:
-        return 'verified', 'corroborated'
     if 'primary-source' in bases:
         return 'verified', 'primary-source'
+    # The local corroboration groups reports by share and event type within 72 hours, so two different facts
+    # ("profit up 12%" and "wins an order") can count as agreeing: the October review found it unsound and the backend
+    # replaced it with fact keys (same figure, same period; evidence-claims.md). Until claims carry fact keys, a
+    # corroborated item is held for a person to review unless the owner explicitly opts in (looseCorroborationVerifies).
+    if 'corroborated' in bases:
+        return ('verified', 'corroborated') if config.get('looseCorroborationVerifies') else ('hold', 'corroborated-by-loose-rule-needs-review')
     if now - datetime.fromisoformat(obs['publishedAt']) > timedelta(days=config['holdDays']):
         return 'rejected', f"uncorroborated-after-{config['holdDays']}-days"
     return 'hold', 'awaiting-corroboration'

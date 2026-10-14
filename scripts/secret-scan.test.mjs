@@ -15,9 +15,11 @@ test('credential patterns are found and reported without the secret itself', () 
     `PRINCIPALS_JSON='[{"id":"owner","role":"owner","token":"${fake('', 48)}"}]'`,
     `password = "${fake('', 40)}"`,
     'const harmless = "token budget per day";',
+    `{"id":"local-owner","role":"owner","token":"${fake('', 43)}"}`,
   ].join('\n');
   const findings = scanText('backend/src/x.ts', lines);
-  assert.deepEqual(findings.map(f => f.rule), ['private-key', 'github-token', 'anthropic-or-openai-key', 'principals-with-token', 'assigned-secret']);
+  assert.deepEqual(findings.map(f => f.rule), ['private-key', 'github-token', 'anthropic-or-openai-key', 'principals-with-token', 'json-secret',
+    'assigned-secret', 'json-secret']);
   assert.ok(findings.every(f => !JSON.stringify(f).includes('A1b2C3d4E5'))); // the value is never echoed
   // test code may assign generated fake credentials, but real key and token formats are flagged everywhere
   assert.deepEqual(scanText('backend/test/helpers.ts', lines).map(f => f.rule), ['private-key', 'github-token', 'anthropic-or-openai-key']);

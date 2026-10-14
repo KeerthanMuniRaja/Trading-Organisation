@@ -24,6 +24,17 @@ def synthetic_daily(symbol='RELIANCE.NS', years=5, drift=0.0004, seed=7):
     return {'schemaVersion': 1, 'symbol': symbol, 'interval': '1d', 'priceBasis': 'adjusted', 'source': 'synthetic-test', 'bars': bars}
 
 
+class SettledBarTests(unittest.TestCase):
+    def test_todays_bar_is_kept_only_after_the_session_has_settled(self):
+        from datetime import datetime, timezone
+        bars = [{'date': '2026-10-14'}, {'date': '2026-10-15'}]
+        during = datetime(2026, 10, 15, 8, 0, tzinfo=timezone.utc)   # 13:30 IST, market open
+        after = datetime(2026, 10, 15, 10, 31, tzinfo=timezone.utc)  # 16:01 IST
+        self.assertEqual([b['date'] for b in daily.settled_only(bars, during)], ['2026-10-14'])
+        self.assertEqual(len(daily.settled_only(bars, after)), 2)
+        self.assertEqual(len(daily.settled_only(bars[:1], during)), 1)  # yesterday's bar is never touched
+
+
 class CostTests(unittest.TestCase):
     def test_delivery_costs_on_one_lakh(self):
         self.assertEqual(daily.buy_costs(10_000_000), 11_863)   # STT + stamp + exchange/SEBI with GST
