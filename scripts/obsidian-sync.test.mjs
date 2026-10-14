@@ -15,6 +15,10 @@ test('vault export is selective, repeatable, and preserves user edits', async ()
   assert.equal(first.conflicts.length, 0);
   assert.equal((await syncVault(project, vault)).conflicts.length, 0);
   assert.equal(await readFile(join(vault, '.obsidian', 'app.json'), 'utf8'), '{"existing":true}');
+  // the home page leads with live operation and the honest status, not the superseded status pages
+  const home = await readFile(join(vault, 'Nexus', 'Home.md'), 'utf8');
+  assert.match(home, /## Operating now[\s\S]*docs\/live-testing[\s\S]*docs\/audit-2026-10-14/);
+  assert.doesNotMatch(home, /current-status\|Implementation status/);
   const note = join(vault, 'Nexus', 'Library', 'docs', 'guide.md');
   await writeFile(note, '# My edit');
   await writeFile(join(project, 'docs', 'guide.md'), '# New source');
