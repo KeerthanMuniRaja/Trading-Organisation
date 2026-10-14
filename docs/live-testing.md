@@ -42,4 +42,7 @@ The day's work runs **after the close**: decisions use settled daily closes, and
 
 - **A cycle step fails.** Rerun `npm.cmd run cycle`: completed steps are skipped. Three failed cycles in a row escalate as a warning incident.
 - **The readiness check says the market data is stale on a weekday.** It may be an exchange holiday. The check warns rather than blocking until the data is over 5 days old.
+- **The readiness check shows an old limit, or says the rule bot has no credential, although `.env` is right.** Settings already present as environment variables win over `.env`; terminals opened from an editor can carry old copies. Open a fresh terminal, or clear them first (`set MAX_ORDER_PAISE=` and so on for `MAX_EXPOSURE_PAISE`, `PRINCIPALS_JSON`, `DATABASE_PATH`), then restart the backend.
+- **The readiness check says `needs-owner` with "possible split or bonus".** A share's history was rescaled. Check the exchange notice and record the action ([corporate actions](corporate-actions.md)), so paper positions are rescaled too.
+- **The alert `release-failing-evaluation` appears.** A bot's live paper calls are now worse than staying in cash. Decide whether to roll back or revoke its release ([releases](releases.md#judged-on-live-paper-calls-fitness-02)).
 - **A bot needs stopping.** The owner can halt new risk, or roll back or revoke the bot's release (`POST /v1/releases/rollbacks`, `/stages`). Proposals from a bot without an active release are refused.

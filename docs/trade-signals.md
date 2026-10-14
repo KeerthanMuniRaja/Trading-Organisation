@@ -51,6 +51,12 @@ An accepted review is an **order intent**, not an order.
 - **A failed fill keeps its reservation.** With a stale price, the same call succeeds once fresh quotes arrive. If the price moved beyond the reservation, cancel the order and re-propose.
 - **Visibility.** The signal query shows each signal's execution.
 
+**Lapses (PAPER-03, migration 045).** An accepted proposal that expires without being executed can never be executed later. But if its execution stopped after reserving (a crash, or a fill refused because the price moved beyond the reservation), that reservation would otherwise hold the bot's budget and the shared capital forever.
+- **The sweep.** `POST /v1/trading/signals/lapses` with `{asOf}` (evaluator or owner) closes every such proposal: it cancels the stranded reservation and records the lapse once, append-only and audited.
+- **What is skipped.** Proposals still live are untouched. So is one whose fill already happened.
+- **Visibility.** The query shows `lapse` with the amount released.
+- **Automatic.** The end-of-day trader runs the sweep every day (step `LAPSE`).
+
 ## End-of-day execution at verified prices (no live feed needed)
 
 The paper engine normally fills at a live approved quote no older than 60 seconds. Without a paid real-time feed, no such quote exists. Faking freshness, by labelling yesterday's close as "now", would be dishonest. A daily or monthly organisation can instead trade **end of day**, the way the backtests already do:
@@ -64,6 +70,7 @@ The prices come from the steward-checked daily data. One identity reports them a
 
 | Step | What happens |
 | --- | --- |
+| **Lapse** | Accepted proposals that expired unexecuted are closed and any stranded reservation released (see Lapses above). |
 | **Mark** | Every share's latest settled close is reported, verified and recorded as its valuation mark ([verified marks](paper-performance.md#verified-end-of-day-marks-paper-02-migration-044)), so open positions show real P&L. |
 | **Review** | Proposals awaiting review (`pending: 'unreviewed'`) are priced at the latest settled close. The price reporter (researcher) submits it, the price checker (evaluator) verifies an exact match, and the evaluator reviews at that price. |
 | **Execute** | Accepted, unexecuted proposals (`pending: 'unexecuted'`) take the first session **open strictly after the review**, reported and verified the same way. The proposing bot then executes with its own bot-bound trader credential. |
@@ -124,6 +131,23 @@ Gross of costs, it was ahead of the basket in 32 of 50 months (p ≈ 0.03) but b
 4. set `RULE_BOT_ID`.
 
 `scripts/rule-bot-loop.test.mjs` proves the path end to end: the bot proposes the top 3 with verified evidence, the end-of-day trader accepts all three sized by target weight, and a second run in the same month proposes nothing.
+
+## The model allocator in the daily cycle
+
+When the local model is switched on, its allocator proposes like any other member. This is the path a stronger model plugs into later, unchanged.
+
+1. **Decide** (`model-allocator-decide`, only with `--with-model`). `ai_allocator.py forward` asks the model for the month's weights in its **pre-registered** forward test, at most 2 calls per run. The model sees anonymised facts only: no names, no dates.
+2. **Propose** ([`model_allocator.py`](../integrations/trading-desk/model_allocator.py), `model-allocator-propose`, no model needed). Once per decided month, while the decision is at most 7 days old:
+   - **Report.** The researcher reports the exact facts the model saw, with the shares named, as evidence.
+   - **Check.** The evaluator recomputes them from the steward-checked data and verifies only an exact match. If they no longer match, nothing is proposed. So the model's **inputs** are proven true, not just its output recorded.
+   - **Propose.** Material weight changes become proposals (`signals_bridge.from_allocator`: `enter-long` with `targetWeightPct`, or `exit`), sent with the allocator bot's own credential and stamped with the run's model and prompt version.
+   - **What is skipped.** Failed months, stale months and months already proposed propose nothing.
+
+**Switching it on (owner):**
+1. Register the forward test: `ai_allocator.py register --name <run>`, with the model server running.
+2. Create the allocator bot, bind a trader credential to it, register and evaluate a release for its model and prompt version, then qualify it (as for the rule bot).
+3. Set `MODEL_ALLOCATOR_RUN` and `MODEL_ALLOCATOR_BOT`.
+4. Run the cycle with `npm run cycle -- --with-model`.
 
 ## Closing the loop automatically: the signal scorer
 

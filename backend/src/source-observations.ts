@@ -11,7 +11,8 @@ export class SourceObservations {
   reviewQueue(actor:Actor,raw:unknown){
     permit(actor,'owner','evaluator');
     const input=parse(z.object({sourceId:id.optional(),after:z.uuid().optional(),
-      limit:z.number().int().min(1).max(50).default(20),includeBlocked:z.boolean().default(false)}).strict(),raw);
+      limit:z.number().int().min(1).max(50).default(20),includeBlocked:z.boolean().default(false),
+      includeOutOfScope:z.boolean().default(false)}).strict(),raw);
     return this.db.transaction(async tx=>{
       if(input.after){
         const anchor=(await tx.query('SELECT evidence_id FROM source_observations WHERE evidence_id=$1',[input.after])).rows[0];
@@ -21,14 +22,16 @@ export class SourceObservations {
       // Reviewed/withdrawn anchors remain valid so a decision between pages cannot shift offsets.
       const rows=(await tx.query(`SELECT o.evidence_id,o.source_id,o.url,o.title,o.observed_at,o.snapshot_hash,o.provenance,
         e.content,e.kind,e.published_at,e.author,e.status,s.name AS source_name,s.approved AS source_approved,
-        (s.approved AND e.author<>$1 AND e.published_at<=now()) AS ready_for_review
+        (s.approved AND e.author<>$1 AND e.published_at<=now()) AS ready_for_review,t.matched AS scope
         FROM source_observations o JOIN evidence e ON e.id=o.evidence_id JOIN sources s ON s.id=o.source_id
+        LEFT JOIN evidence_triage t ON t.evidence_id=e.id
         WHERE e.status='unverified' AND ($2::text IS NULL OR o.source_id=$2)
+        AND ($6::boolean OR t.decision IS DISTINCT FROM 'out-of-scope')
         AND ($3::boolean OR (s.approved AND e.author<>$1 AND e.published_at<=now()))
         AND ($4::uuid IS NULL OR (o.observed_at,o.evidence_id)>
           (SELECT observed_at,evidence_id FROM source_observations WHERE evidence_id=$4))
         ORDER BY o.observed_at,o.evidence_id LIMIT $5`,
-        [actor.id,input.sourceId??null,input.includeBlocked,input.after??null,input.limit+1])).rows;
+        [actor.id,input.sourceId??null,input.includeBlocked,input.after??null,input.limit+1,input.includeOutOfScope])).rows;
       const observations=rows.slice(0,input.limit).map(row=>({...row,
         evidence_id:String(row.evidence_id),ready_for_review:row.ready_for_review===true,
         status:String(row.status),provenance:String(row.provenance),blockers:[

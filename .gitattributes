@@ -1,0 +1,2 @@
+# migrations are checksummed: keep their bytes stable on every checkout
+*.sql text eol=lf

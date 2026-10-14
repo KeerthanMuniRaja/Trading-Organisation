@@ -48,6 +48,9 @@ test('runbooks: transient failures retry with back-off; postconditions can degra
 
     assert.deepEqual(verifyMarketData('noise\n[{"symbol":"A","state":"downloaded"},{"symbol":"B","state":"kept-previous","issues":[{"check":"extreme-move"}]}]'),
       { status: 'degraded', note: 'previous data kept for B' });
+    assert.deepEqual(verifyMarketData('[{"symbol":"HDFCBANK.NS","state":"downloaded","warnings":[{"check":"corporate-action-suspected","factor":2,"likelyExDate":"2026-11-03"}]}]'),
+      { status: 'degraded', note: 'possible split or bonus, record it in /v1/corporate-actions: HDFCBANK x2 from 2026-11-03' });
+    assert.equal(verifyMarketData('[{"symbol":"A","state":"downloaded","warnings":[{"check":"gaps"}]}]').status, 'done');
     assert.equal(verifyMarketData('Traceback ...').status, 'failed');
     assert.equal(verifyFeed('> npm\n{"state":"fetch-failed","code":"FEED_TIMEOUT","evidenceIds":["a","b"]}').status, 'failed');
     assert.equal(verifyFeed('{"state":"awaiting-review","submitted":3,"evidenceIds":["a"],"rejected":[{"index":1}]}').status, 'done');
@@ -96,7 +99,7 @@ test('the plan finds feed configs, keeps model steps off by default, and HTTP st
     await writeFile(join(dir, '.local', 'feed-fixture.json'), '{"enabled":false}');
     await writeFile(join(dir, '.local', 'feed-broken.json'), 'not json');
     const plan = await planSteps({ root: dir });
-    assert.deepEqual(plan.filter(s => s.id.startsWith('news-')).map(s => s.id), ['news-wire']); // only enabled feeds
+    assert.deepEqual(plan.filter(s => s.id.startsWith('news-')).map(s => s.id), ['news-wire', 'news-triage']); // only enabled feeds, then triage
     assert.equal(plan.find(s => s.id === 'claims-and-fact-check').skip, 'model steps not enabled (--with-model)');
     assert.ok((await planSteps({ root: dir, withModel: true })).find(s => s.id === 'claims-and-fact-check').cmd);
     const seen = [];

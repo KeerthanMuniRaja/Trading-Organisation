@@ -54,6 +54,7 @@ test('the end-of-day trader reviews at the verified close and executes at the ve
     assert.equal(lines.find(l => l.step === 'execute' && l.signalId === fresh.id)?.state ?? 'not-listed-yet', 'waiting');
     const position = (await f.db.transaction(tx => tx.query("SELECT quantity::text AS q FROM positions WHERE bot_id='bot-one' AND symbol='RELIANCE'"))).rows[0];
     assert.equal(position.q, '10');
+    assert.match(stdout, /lapsed 0,/); // the lapse sweep ran and found nothing expired
     // the position is valued at the verified latest close, not held at cost
     assert.deepEqual(lines.filter(l => l.step === 'mark').map(l => [l.symbol, l.state, l.pricePaise]), [['RELIANCE', 'marked', String(bars.at(-1).closePaise)]]);
     const held = (await new PaperPerformance(f.db).report(owner)).bots.find(b => b.botId === 'bot-one').openPositions[0];

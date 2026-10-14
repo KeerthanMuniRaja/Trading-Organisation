@@ -3,7 +3,8 @@
 Each run, from the steward-checked daily cache:
   MARK     every share's latest settled close is reported and verified the same way and recorded as its valuation mark,
            so open paper positions show real profit and loss without a live feed.
-  REVIEW  every proposal awaiting review, not expired: the price reporter (researcher) submits the latest settled
+  LAPSE    accepted proposals that expired without being executed are closed, releasing any reservation they left.
+  REVIEW every proposal awaiting review, not expired: the price reporter (researcher) submits the latest settled
            daily close as evidence, the price checker (evaluator) re-reads it and verifies an exact match, then the
            evaluator reviews the proposal priced at that close (used only when no live quote is fresh).
   EXECUTE  every accepted, not yet executed, not expired proposal: the first session OPEN strictly after the review is
@@ -104,6 +105,12 @@ def run(source_id, env=os.environ, cache=daily.DAILY, opener=None, now=None):
             results.append({'step': 'mark', 'symbol': symbol, 'state': 'unchanged' if mark.get('duplicate') else 'marked', 'pricePaise': mark['pricePaise']})
         except RuntimeError as error:
             results.append({'step': 'mark', 'symbol': symbol, 'state': 'failed', 'reason': str(error)[:200]})
+    try:  # LAPSE: accepted proposals that expired unexecuted are closed and their stranded reservations released (PAPER-03)
+        stamp = now.isoformat().replace('+00:00', 'Z')
+        for lapse in sc.post(*checker, '/v1/trading/signals/lapses', {'asOf': stamp}, opener)['lapsed']:
+            results.append({'step': 'lapse', 'signalId': lapse['signalId'], 'state': 'lapsed', 'releasedPaise': lapse['releasedPaise']})
+    except RuntimeError as error:
+        results.append({'step': 'lapse', 'state': 'failed', 'reason': str(error)[:200]})
     for s in pages(*checker, 'unreviewed', opener):
         dataset = dataset_for(cache, s['symbol'])
         bar = latest_close(dataset['bars'], now) if dataset else None
@@ -152,8 +159,8 @@ def main(argv=None):
     results = run(args.source, cache=args.cache)
     for r in results:
         print(json.dumps(r))
-    counts = {k: sum(r['state'] == k for r in results) for k in ('accepted', 'rejected', 'executed', 'waiting', 'failed', 'marked')}
-    print(f"marked {counts['marked']}, reviewed {counts['accepted'] + counts['rejected']} ({counts['accepted']} accepted), executed {counts['executed']}, "
+    counts = {k: sum(r['state'] == k for r in results) for k in ('accepted', 'rejected', 'executed', 'waiting', 'failed', 'marked', 'lapsed')}
+    print(f"marked {counts['marked']}, lapsed {counts['lapsed']}, reviewed {counts['accepted'] + counts['rejected']} ({counts['accepted']} accepted), executed {counts['executed']}, "
           f"waiting {counts['waiting']}, failed {counts['failed']}")
     if counts['failed']:
         sys.exit(1)

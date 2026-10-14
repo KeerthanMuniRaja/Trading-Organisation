@@ -46,6 +46,16 @@ The report is read-only: it cannot move money, change limits or alter a bot.
 
 The worst fall is the measure that matters before trusting a bot with more money. A bot can show a profit while having dropped deeply on the way.
 
+## Against simply holding the basket (BENCH-01)
+
+`POST /v1/paper/performance/benchmark` with `{botId?}` (owner, evaluator, or a trader for its own bot) answers the question that matters: *would this bot's money have done better just holding all the tracked shares equally?*
+
+- **The bot.** Its return on its whole budget, idle cash included, between its first and latest daily snapshot.
+- **The basket.** The equal-weight basket's **total return** over the same days, from verified daily marks. Splits, bonuses and dividends in between are restated, so a dividend counts as return, not as a fall. Every share marked on both days counts equally.
+- **Verdict.** `ahead-of-basket`, `behind-basket` or `level-with-basket`, with the difference in percentage points. Bots with one snapshot show `not-enough-days`.
+
+The owner digest shows the same comparison daily. It is descriptive: a few weeks prove nothing, and fitness reports judge significance.
+
 **Still to come in PAPER-01:**
 - partial fills;
 - liquidity and volume limits;

@@ -26,6 +26,8 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     { id: 'market-data', cmd: PY, args: [desk('daily.py'), 'fetch', '--refresh'], timeoutMs: 600_000, retries: 2, verify: verifyMarketData },
     ...feeds.map(f => ({ id: 'news-' + f.slice(5, -5), cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'run-feed-cycle.mjs'), 'run',
       join('.local', f), join('.local', 'feeds', f.slice(5, -5))], timeoutMs: 120_000, okCodes: [0], retries: 2, verify: verifyFeed })),
+    // KNOW-02: fixed backend rules set aside news about nothing the organisation tracks, before anyone reviews it
+    { id: 'news-triage', kind: 'http', method: 'POST', path: '/v1/evidence/triage', role: 'evaluator' },
     withModel
       ? { id: 'claims-and-fact-check', cmd: PY, args: [join(root, 'integrations', 'claims', 'autolearn.py'), 'run', '--config', join('.local', 'claims', 'autolearn.json'),
           '--cycles', '1'], timeoutMs: 3_600_000, requires: join(root, '.local', 'claims', 'autolearn.json') }
@@ -39,8 +41,17 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     process.env.RULE_BOT_ID
       ? { id: 'rule-bot', cmd: PY, args: [desk('rule_bot.py'), '--bot', process.env.RULE_BOT_ID, '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 }
       : { id: 'rule-bot', skip: 'no rule bot configured (RULE_BOT_ID)' },
+    // the model allocator: the model decides its month in the pre-registered forward test (model needed), then the
+    // decision becomes proposals with verified facts (no model); both only once the owner names the run and its bot
+    ...(process.env.MODEL_ALLOCATOR_RUN && process.env.MODEL_ALLOCATOR_BOT ? [
+      withModel ? { id: 'model-allocator-decide', cmd: PY, args: [desk('ai_allocator.py'), 'forward', '--name', process.env.MODEL_ALLOCATOR_RUN, '--max-calls', '2'], timeoutMs: 1_200_000 }
+        : { id: 'model-allocator-decide', skip: 'model steps not enabled (--with-model)' },
+      { id: 'model-allocator-propose', cmd: PY, args: [desk('model_allocator.py'), '--bot', process.env.MODEL_ALLOCATOR_BOT, '--run', process.env.MODEL_ALLOCATOR_RUN,
+        '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 },
+    ] : [{ id: 'model-allocator', skip: 'no model allocator configured (MODEL_ALLOCATOR_RUN, MODEL_ALLOCATOR_BOT)' }]),
     { id: 'eod-trading', cmd: PY, args: [desk('eod_trader.py'), '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 },
     { id: 'score-signals', cmd: PY, args: [desk('signal_scorer.py'), '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 },
+    { id: 'live-fitness', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'live-fitness.mjs')], timeoutMs: 120_000 },
     { id: 'paper-snapshot', kind: 'http', method: 'POST', path: '/v1/paper/performance/snapshots', role: 'evaluator' },
     { id: 'alerts', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'deliver-alerts.mjs')], timeoutMs: 120_000 },
     { id: 'owner-digest', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'daily-digest.mjs')], timeoutMs: 120_000 },
@@ -63,7 +74,12 @@ export function verifyMarketData(output) {
   const results = lastJson(output);
   if (!Array.isArray(results)) return { status: 'failed', note: 'no refresh report' };
   const held = results.filter(r => r.state === 'kept-previous' || r.state === 'rejected' || r.state === 'skipped').map(r => r.symbol);
-  return held.length ? { status: 'degraded', note: 'previous data kept for ' + held.join(', ') } : { status: 'done' };
+  // CORP-01: an accepted refresh that rescaled the whole past looks like a split or bonus the owner must record
+  const actions = results.flatMap(r => (r.warnings ?? []).filter(w => w.check === 'corporate-action-suspected')
+    .map(w => `${r.symbol.replace(/\.NS$/, '')} x${w.factor} from ${w.likelyExDate ?? 'unknown date'}`));
+  const notes = [...(held.length ? ['previous data kept for ' + held.join(', ')] : []),
+    ...(actions.length ? ['possible split or bonus, record it in /v1/corporate-actions: ' + actions.join(', ')] : [])];
+  return notes.length ? { status: 'degraded', note: notes.join('; ') } : { status: 'done' };
 }
 
 /** Postcondition: the feed run reported a usable state. */

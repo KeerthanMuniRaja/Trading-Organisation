@@ -33,6 +33,18 @@ class StewardTests(unittest.TestCase):
         r = ds.rewrite(old['bars'], new['bars'])
         self.assertEqual((r['adjustmentSteps'], r['rewritten']), (1, False))
 
+    def test_an_adjusted_bonus_is_accepted_but_flagged_for_the_owner_to_record(self):
+        old = series(BASE)
+        # the day after the old file ends, a 1:1 bonus goes ex: the provider halves the whole past, today trades near half
+        new = series([round(c / 2) for c in BASE] + [50100])
+        result = ds.review(new, old, today=date.fromisoformat(new['bars'][-1]['date']))
+        self.assertEqual(result['verdict'], 'warning')
+        flag = next(i for i in result['issues'] if i['check'] == 'corporate-action-suspected')
+        self.assertEqual((flag['factor'], flag['likelyExDate']), (2.0, new['bars'][-1]['date']))
+        self.assertIn('/v1/corporate-actions', flag['action'])
+        dividend = series([round(c * 0.97) for c in BASE] + [100300])  # a 3% dividend is not a corporate action
+        self.assertNotIn('corporate-action-suspected', [i['check'] for i in ds.review(dividend, old, today=TODAY)['issues']])
+
     def test_an_unadjusted_split_or_bad_print_is_rejected(self):
         halved = series(BASE[:20] + [c // 2 for c in BASE[20:]])  # a 1:1 bonus left unadjusted looks like a 50% crash
         result = ds.review(halved, today=TODAY)

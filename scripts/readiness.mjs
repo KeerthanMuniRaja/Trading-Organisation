@@ -55,10 +55,13 @@ export function assess(f, now) {
   else if (rb.activeModel !== RULE_MODEL) out.push(check('rule-bot', 'NO-GO', `${rb.id} has no active release of ${RULE_MODEL}`, 'activate-rule-bot.mjs apply --yes'));
   else out.push(check('rule-bot', 'GO', `${rb.id} qualified, release active, credential bound`));
 
-  const failed = f.lastCycle?.failed ?? [];
+  const failed = f.lastCycle?.failed ?? [], degraded = f.lastCycle?.degraded ?? [];
   out.push(!f.lastCycle ? check('last-cycle', 'WARN', 'no cycle has run yet', 'npm.cmd run cycle')
     : failed.length ? check('last-cycle', 'WARN', `${f.lastCycle.day}: failed ${failed.join(', ')}`, 'Read .local/cycles/' + f.lastCycle.day + '.json and rerun: npm.cmd run cycle')
       : check('last-cycle', 'GO', `${f.lastCycle.day}: no failed steps`));
+  // a degraded step finished but needs a person: e.g. data kept back by the steward, or a split to record
+  for (const d of degraded) out.push(check('needs-owner', 'WARN', `${d.id}: ${d.note}`, d.note.includes('corporate-actions')
+    ? 'Check the exchange notice, then record it: POST /v1/corporate-actions' : 'Read .local/cycles/' + f.lastCycle.day + '.json'));
   out.push(f.backupAt === null ? check('backup', 'WARN', 'no backup yet', 'Stop the API, npm.cmd run backup -- create, restart')
     : now - f.backupAt > 2 * DAY ? check('backup', 'WARN', `last backup ${new Date(f.backupAt).toISOString().slice(0, 16)}Z (over 2 days)`, 'Stop the API, npm.cmd run backup -- create, restart')
       : check('backup', 'GO', `last backup ${new Date(f.backupAt).toISOString().slice(0, 16)}Z`));
@@ -98,7 +101,9 @@ export async function gather(env, { fetchImpl = fetch, root = ROOT } = {}) {
   let lastCycle = null;
   if (days.length) {
     const journal = JSON.parse(await readFile(join(cycles, days.at(-1)), 'utf8'));
-    lastCycle = { day: days.at(-1).slice(0, 10), failed: Object.entries(journal.steps ?? {}).filter(([, s]) => s.status === 'failed').map(([id]) => id) };
+    const steps = Object.entries(journal.steps ?? {});
+    lastCycle = { day: days.at(-1).slice(0, 10), failed: steps.filter(([, s]) => s.status === 'failed').map(([id]) => id),
+      degraded: steps.filter(([, s]) => s.status === 'degraded').map(([id, s]) => ({ id, note: String(s.reason ?? 'finished with a caveat') })) };
   }
   const backups = join(root, '.local', 'backups');
   let backupAt = null;

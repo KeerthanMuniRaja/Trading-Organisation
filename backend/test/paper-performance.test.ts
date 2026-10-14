@@ -81,6 +81,34 @@ test('verified daily closes mark positions when they are newer than the last quo
   } finally { await f.db.close(); }
 });
 
+test('each bot is compared with holding the basket over the same days, with a dividend counted as return', async () => {
+  const f = await fixture(); try {
+    const e = await f.evidence();
+    await f.org.bot(owner, key(), { id: 'bot-one', name: 'bot-one', department: 'desk', specialty: 'one', method: 'test', contribution: 'Benchmark fixture', budgetPaise: '1000000' });
+    await f.org.bot(owner, key(), { id: 'bot-new', name: 'bot-new', department: 'desk', specialty: 'two', method: 'test', contribution: 'Benchmark fixture', budgetPaise: '1000000' });
+    await f.db.transaction(async tx => {
+      // bot-one: equity 1,000,000 ten days ago, 1,030,000 today (+3%); bot-new has one day only
+      for (const [bot, ago, unrealised] of [['bot-one', 10, '0'], ['bot-one', 0, '30000'], ['bot-new', 0, '0']] as const)
+        await tx.query(`INSERT INTO paper_performance_snapshots(id,day,bot_id,budget_paise,realised_paise,unrealised_paise,open_positions,unpriced_or_stale,recorder)
+          VALUES($1,((now() AT TIME ZONE 'UTC') + interval '330 minutes')::date-$2::int,$3,1000000,0,$4,0,0,'evaluator')`, [crypto.randomUUID(), ago, bot, unrealised]);
+      // basket: AAA 100 -> 104 (+4%), BBB 200 -> 199.98 after a 2 dividend (+1% total return, not -0.01%): basket +2.5%
+      for (const [symbol, ago, price] of [['AAA', 10, 10000], ['AAA', 0, 10400], ['BBB', 10, 20000], ['BBB', 0, 19998]] as const)
+        await tx.query(`INSERT INTO price_marks(id,symbol,price_paise,observed_at,evidence_id,recorded_by)
+          VALUES($1,$2,$3,date_trunc('day',now())-($4::int * interval '1 day')+interval '10 hours'-interval '1 minute',$5,'evaluator')`,
+          [crypto.randomUUID(), symbol, price, ago, e.evidenceId]);
+      await tx.query(`INSERT INTO dividends(id,symbol,amount_per_share_paise,ex_date,evidence_id,recorded_by)
+        VALUES($1,'BBB',200,((now() AT TIME ZONE 'UTC') + interval '330 minutes')::date-3,$2,'owner')`, [crypto.randomUUID(), e.evidenceId]);
+    });
+    const perf = new PaperPerformance(f.db);
+    const { bots } = await perf.benchmark(owner, {});
+    const one = bots.find(b => b.botId === 'bot-one')!;
+    assert.deepEqual([one.returnPct, one.basketReturnPct, one.basketShares, one.excessPct, one.verdict], [3, 2.5, 2, 0.5, 'ahead-of-basket']);
+    assert.equal(bots.find(b => b.botId === 'bot-new')!.verdict, 'not-enough-days');
+    assert.deepEqual((await perf.benchmark(trader, { botId: 'bot-new' })).bots.map(b => b.botId), ['bot-one']); // traders see their own bot only
+    assert.throws(() => perf.benchmark(researcher, {}));
+  } finally { await f.db.close(); }
+});
+
 test('equity statistics: total return and worst peak-to-trough fall', () => {
   assert.deepEqual(curveStats([100n, 110n, 99n, 120n]), { returnPct: 20, maxDrawdownPct: 10 }); // fell 11 from a 110 peak
   assert.deepEqual(curveStats([100n, 100n]), { returnPct: 0, maxDrawdownPct: 0 });

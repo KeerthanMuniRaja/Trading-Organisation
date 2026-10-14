@@ -38,6 +38,22 @@ The worker gate refuses to run if the registry cannot be reached. An unverified 
 
 An evaluation is valid for **180 days**. Staging a release as canary or active needs an evaluation newer than that. An active release whose newest evaluation is older raises the `release-evaluation-expired` alert until it is re-tested on recent data. Markets change, so a qualification earned long ago must be re-earned.
 
+## Judged on live paper calls (FITNESS-02)
+
+A release is usually first evaluated on backtests, which are data already seen. The real test is new days, so the backend files that judgment itself.
+
+**The live report.** `POST /v1/bots/fitness/live` with `{botId, releaseId?}` (evaluator or owner) builds a fitness report from the bot's scored `enter-long` and `exit` calls, optionally for one release. Nobody types the numbers:
+- **Judged against staying in cash:** a long is right only if it beat round-trip costs, an exit only if the price then fell.
+- **Same test as before:** the same exact sign test and thresholds as every fitness report. Fewer than 20 decided calls is `insufficient-evidence`.
+- **Linked to the release:** for a release, the report carries that release's model, so it can evaluate the release.
+- **No duplicates:** identical numbers file nothing new.
+
+**Every day.** The cycle step `live-fitness` (`npm run fitness:live`) files the report for each bot's active release. Once there is a real verdict, it **re-evaluates the active release** with it. The newest evaluation decides, so a release that is worse than cash on new days loses its eligibility.
+
+**When a release fails.** An active release whose newest evaluation is not active-eligible raises the `release-failing-evaluation` alert. The owner decides whether to roll back or revoke it; nothing changes automatically.
+
+**Limitation.** In a strongly rising market, most longs beat cash, so this test is lenient on long-only bots. Compare with the scorecard's realised P&L and the equal-weight basket before trusting an `adds-value` verdict.
+
 ## Enforced in the trading path (migration 043)
 
 Release control does not depend on workers remembering to call the gate. **The backend enforces it at proposal time:**

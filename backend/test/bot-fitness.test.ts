@@ -2,8 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture, config, owner, researcher, evaluator, key } from './helpers.js';
 import { BotFitness, judge, recommend, signTestTail } from '../src/bot-fitness.js';
+import { BotReleases } from '../src/bot-releases.js';
+import { OwnerAlerts } from '../src/alerts.js';
 import { Database } from '../src/database.js';
 import { createApp } from '../src/app.js';
+
+const says = (pattern: RegExp) => (error: any) => pattern.test(JSON.stringify(error?.getResponse?.() ?? error?.message));
 
 async function setup() {
   const f = await fixture();
@@ -68,6 +72,51 @@ test('history produces recommendations, never actions', async () => {
     const bot = (await f.db.transaction(tx => tx.query("SELECT state,budget_paise FROM bots WHERE id='trend-analyst'"))).rows[0]!;
     assert.deepEqual([bot.state, String(bot.budget_paise)], ['school', '0']); // nothing changed automatically
     assert.equal(recommend([]), 'no-reports');
+  } finally { await f.db.close(); }
+});
+
+test('a live report is computed from scored paper calls, can fail an active release, and raises an alert', async () => {
+  const f = await fixture(); try {
+    const e = await f.evidence();
+    await f.org.bot(owner, key(), { id: 'momentum-rules', name: 'Rules', department: 'desk', specialty: 'momentum', method: 'rules', contribution: 'Live fixture', budgetPaise: '0' });
+    const fitness = new BotFitness(f.db), releases = new BotReleases(f.db);
+    const release = await releases.create(researcher, key(), { botId: 'momentum-rules', model: 'rules:top3', promptVersion: 'r1', codeFingerprint: 'a1b2c3d4e5f60718', notes: 'Rule' });
+    const seen = await fitness.report(evaluator, key(), { botId: 'momentum-rules', role: 'allocator', baseline: 'equal-weight-basket', testName: 'backtest (seen)',
+      periodFrom: '2022-08-01', periodTo: '2026-09-30', judged: 50, wins: 32, losses: 18, model: 'rules:top3' });
+    await releases.evaluate(evaluator, key(), { releaseId: release.id, fitnessReportId: seen.id });
+    await releases.stage(owner, key(), { releaseId: release.id, stage: 'active', reason: 'Backtest' });
+    assert.deepEqual((await new OwnerAlerts(f.db, f.cfg).cycle(owner, key())).raised.filter(a => a.rule === 'release-failing-evaluation'), []);
+
+    await assert.rejects(() => fitness.live(evaluator, key(), { botId: 'momentum-rules' }), says(/No scored live paper calls/));
+    // 24 scored calls of this release on new days (6 right), a no-action call (ignored), and 2 right calls made before any release
+    await f.db.transaction(async tx => {
+      const call = async (action: string, correct: boolean, releaseId: string | null) => {
+        const id = crypto.randomUUID();
+        await tx.query(`INSERT INTO trade_signals(id,bot_id,symbol,action,horizon_days,conviction,thesis,invalidation,expires_at,model,prompt_version,author,content_hash,release_id,created_at)
+          VALUES($1,'momentum-rules','DEMO',$2,30,'high','Rule','Rule',now()-interval '20 days','rules:top3','r1','trader',$4,$3,now()-interval '40 days')`, [id, action, releaseId, 'hash-' + id]);
+        await tx.query(`INSERT INTO trade_signal_outcomes(id,signal_id,exit_price_paise,observed_at,move_bps,correct,evidence_id,evaluator)
+          VALUES($1,$2,10000,now(),0,$3,$4,'evaluator')`, [crypto.randomUUID(), id, correct, e.evidenceId]);
+      };
+      for (let i = 0; i < 24; i++) await call(i % 2 ? 'exit' : 'enter-long', i < 6, release.id);
+      await call('no-action', true, release.id);
+      for (let i = 0; i < 2; i++) await call('enter-long', true, null);
+    });
+
+    const live = await fitness.live(evaluator, key(), { botId: 'momentum-rules', releaseId: release.id });
+    assert.equal(live.verdict, 'worse-than-baseline'); // 6 right, 18 wrong: p ~ 0.011
+    const stored = (await fitness.query(owner, { botId: 'momentum-rules' })).reports[0]!;
+    assert.deepEqual([stored.testName, stored.baseline, stored.judged, stored.wins, stored.losses, stored.model], ['live-paper release v1', 'cash', 24, 6, 18, 'rules:top3']);
+    assert.equal((await fitness.live(evaluator, key(), { botId: 'momentum-rules', releaseId: release.id })).duplicate, true); // same numbers, nothing new
+    await fitness.live(owner, key(), { botId: 'momentum-rules' }); // every release: 26 actionable calls, 8 right (no-action is not counted)
+    const all = (await fitness.query(owner, { botId: 'momentum-rules' })).reports[0]!;
+    assert.deepEqual([all.testName, all.judged, all.wins, all.model], ['live-paper all releases', 26, 8, null]);
+    assert.throws(() => fitness.live(researcher, key(), { botId: 'momentum-rules' }));
+
+    const evaluation = await releases.evaluate(evaluator, key(), { releaseId: release.id, fitnessReportId: live.id });
+    assert.equal(evaluation.activeEligible, false);
+    const raised = (await new OwnerAlerts(f.db, f.cfg).cycle(owner, key())).raised.filter(a => a.rule === 'release-failing-evaluation');
+    assert.deepEqual(raised.map(a => a.subject), ['momentum-rules/v1']);
+    assert.equal((await releases.view(owner, { botId: 'momentum-rules' })).active, release.id); // the owner decides; nothing was rolled back
   } finally { await f.db.close(); }
 });
 

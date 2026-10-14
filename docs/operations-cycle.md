@@ -11,12 +11,16 @@ Three pieces that make the organisation run on its own and stay auditable. They 
 | `backend-health` | Stops the cycle if the API is down | backend running |
 | `market-data` | Refreshes daily prices for the eight shares | internet (Yahoo) |
 | `news-<feed>` | One poll of every **enabled** feed in `.local/feed-*.json`. Each feed's own poll interval is respected. | internet (approved publishers) |
+| `news-triage` | Sets aside waiting news that names no tracked share or market driver ([relevance triage](evidence-triage.md)) | backend |
 | `claims-and-fact-check` | Claim analyst (model) plus fact-checker (no model), via `autolearn.py --cycles 1` | `--with-model`, local model server, `.local/claims/autolearn.json` |
 | `chain-links` | Adds inferred driver links to the verified headlines | verified headlines exist |
 | `forward-daily-rules`, `forward-portfolio` | Scores the pre-registered forward tests on new days | none |
 | `rule-bot` | Once a month, the model-free rule bot proposes its top-3 momentum trades ([trade signals](trade-signals.md#the-rule-bot-a-model-free-member)) | `RULE_BOT_ID` set, the bot qualified, a trader credential bound to it |
+| `model-allocator-decide` | The model allocator decides any new month in its pre-registered forward test (at most 2 model calls) | `--with-model`, `MODEL_ALLOCATOR_RUN` and `MODEL_ALLOCATOR_BOT` set |
+| `model-allocator-propose` | Turns a current decided month into proposals, citing the facts the model saw, recomputed and verified by the evaluator ([trade signals](trade-signals.md#the-model-allocator-in-the-daily-cycle)) | `MODEL_ALLOCATOR_RUN` and `MODEL_ALLOCATOR_BOT` set; no model needed |
 | `eod-trading` | Reviews waiting proposals at the verified close, executes accepted ones at the verified next open | backend, daily data |
 | `score-signals` | Scores proposals whose horizon has passed | backend, daily data |
+| `live-fitness` | Files each bot's fitness report from its scored paper calls; once there is a verdict, re-evaluates its active release with it | backend |
 | `paper-snapshot` | Records today's per-bot P&L mark (evaluator credential) | backend |
 | `alerts` | Evaluates alert rules and delivers new alerts | backend |
 

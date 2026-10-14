@@ -7,6 +7,8 @@ Checks on a new download, against the previous version and the other shares:
   history-rewrite   on overlapping days, adjusted prices may be rescaled by ONE factor (a new dividend or split moves
                     the whole past); differences that are not a single scale mean history changed (reject)
   shrunk-history    the new file covers fewer old days than the previous one (reject)
+  corporate-action-suspected  the whole past rescaled by more than 20% (a split or bonus): accepted, but the owner
+                    must record the action so paper positions are rescaled (warning)
   stale             the last bar is more than 7 calendar days old (warning)
   gaps              sessions missing where most other shares traded (warning)
 Rejected downloads leave the previous file in place (fail closed).
@@ -62,6 +64,22 @@ def rewrite(old_bars, new_bars, tolerance=REWRITE_TOLERANCE):
             'latestScale': round(statistics.median(r for _, r in pairs[-20:]), 6), 'rewritten': rewritten}
 
 
+ACTION_SCALE = 0.20         # a whole-history rescale beyond 20% is a split or bonus, not a dividend
+
+
+def suspected_action(old_bars, new_bars, r):
+    """A split or bonus rescales the whole past by its ratio (a 1:1 bonus halves it). Dividends move it by a few percent.
+    Returns the likely factor and the first session not in the previous file (the ex-date, on a daily refresh)."""
+    scale = r.get('latestScale')
+    if not scale or abs(scale - 1) <= ACTION_SCALE:
+        return None
+    last_old = old_bars[-1]['date']
+    first_new = next((b['date'] for b in new_bars if b['date'] > last_old), None)
+    factor = round(1 / scale, 3)
+    return {'factor': factor, 'likelyExDate': first_new, 'sharesAfterPerShare': factor,
+            'action': 'Possible split or bonus: check the exchange notice and record it (POST /v1/corporate-actions) so positions are rescaled'}
+
+
 def gaps(bars, peer_dates, share=0.75):
     """Sessions (within this file's span) on which at least `share` of peers traded but this share has no bar."""
     mine = {b['date'] for b in bars}
@@ -85,6 +103,9 @@ def review(new, old=None, peers=(), today=None):
         r = rewrite(old['bars'], bars)
         if r['rewritten']:
             issues.append({'check': 'history-rewrite', 'severity': 'reject', **r})
+        action = suspected_action(old['bars'], bars, r)
+        if action:
+            issues.append({'check': 'corporate-action-suspected', 'severity': 'warning', **action})
         if bars[0]['date'] > old['bars'][0]['date'] and len(bars) < len(old['bars']) - 5:
             issues.append({'check': 'shrunk-history', 'severity': 'reject', 'oldBars': len(old['bars']), 'newBars': len(bars)})
     age = ((today or date.today()) - date.fromisoformat(bars[-1]['date'])).days

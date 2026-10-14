@@ -170,7 +170,7 @@ test('an accepted proposal executes once as a linked paper order and fill; retri
     await assert.rejects(() => f.signals.execute(evaluator, key(), { signalId: buy.id })); // only trader credentials execute
     await assert.rejects(() => f.signals.execute({ id: 'other', role: 'trader', botId: 'bot-two' }, key(), { signalId: buy.id }), says(/proposing bot/));
 
-    // a stale quote makes the fill fail, but the reservation stays and the same call succeeds once prices are fresh
+    // a stale quote stops the execution before anything is reserved; the same call succeeds once prices are fresh
     await f.db.transaction(tx => tx.query("UPDATE quotes SET observed_at=now()-interval '5 minutes'"));
     await assert.rejects(() => f.signals.execute(trader, key(), { signalId: buy.id }), says(/Fresh approved quote/));
     await f.paper.quote(market, key(), { symbol: 'DEMO', bidPaise: '10000', askPaise: '10000', observedAt: new Date().toISOString(), sourceId: f.e.sourceId });
@@ -257,6 +257,36 @@ test('cursor pagination reaches every signal; the unscored filter returns only r
     const unscored = await f.signals.query(owner, { pending: 'unscored', limit: 200 });
     assert.deepEqual(unscored.signals.map(s => s.id).sort(), ids.filter((_, i) => i % 2 === 0).sort());
     assert.throws(() => f.signals.query(owner, { before: 'not-a-cursor' }));
+  } finally { await f.db.close(); }
+});
+
+test('an accepted proposal that expires unexecuted lapses once, releasing the reservation its failed fill left behind', async () => {
+  const f = await setup(); try {
+    const soon = () => new Date(Date.now() + 1500).toISOString();
+    const stuck = await f.signals.propose(trader, key(), { ...f.long, conviction: 'medium', expiresAt: soon() });
+    const untried = await f.signals.propose(trader, key(), { ...f.long, conviction: 'low', expiresAt: soon() });
+    const live = await f.signals.propose(trader, key(), { ...f.long, conviction: 'low' });
+    for (const s of [stuck, untried, live]) await f.signals.review(evaluator, key(), { signalId: s.id });
+    // the execution crashed after reserving and before filling: its reservation, under the execution's own key, is left behind
+    const review = (await f.signals.query(owner, {})).signals.find(s => s.id === stuck.id)!.review!;
+    await f.paper.reserve(trader, `sigexec-reserve-${stuck.id}`, { botId: 'bot-one', symbol: 'DEMO', side: 'buy', quantity: Number(review.quantity), evidenceId: f.e.evidenceId });
+    const held = (await f.db.transaction(tx => tx.query("SELECT reserved_paise::text AS r FROM orders WHERE status='reserved'"))).rows;
+    assert.equal(held.length, 1);
+    await new Promise(r => setTimeout(r, 1800));
+    await assert.rejects(() => f.signals.execute(trader, key(), { signalId: stuck.id }), says(/expired before execution/)); // can never resume
+
+    assert.throws(() => f.signals.lapse(trader, key(), { asOf: new Date().toISOString() }));
+    const sweep = await f.signals.lapse(evaluator, key(), { asOf: new Date().toISOString() });
+    assert.deepEqual(sweep.lapsed.map(l => [l.signalId, l.releasedPaise]).sort(),
+      [[stuck.id, held[0]!.r], [untried.id, '0']].sort()); // the live proposal is untouched
+    assert.equal((await f.db.transaction(tx => tx.query("SELECT count(*)::int AS n FROM orders WHERE status='reserved'"))).rows[0]!.n, 0);
+    assert.deepEqual((await f.signals.lapse(evaluator, key(), { asOf: new Date().toISOString() })).lapsed, []); // once only
+    const view = (await f.signals.query(owner, {})).signals;
+    assert.equal(view.find(s => s.id === stuck.id)!.lapse!.releasedPaise, held[0]!.r);
+    assert.equal(view.find(s => s.id === live.id)!.lapse, null);
+    await assert.rejects(() => f.db.transaction(tx => tx.query('DELETE FROM trade_signal_lapses')));
+    assert.throws(() => f.signals.lapse(evaluator, key(), { asOf: inDays(1) }), says(/future/));
+    assert.equal((await f.ops.verifyAudit(owner)).valid, true);
   } finally { await f.db.close(); }
 });
 

@@ -38,6 +38,9 @@ test('each blocker is named with what to do', () => {
   assert.match(dear.find(c => c.id === 'order-limit').detail, /below one share of ICICIBANK; those proposals will be rejected/);
   assert.equal(verdict(dear), 'GO WITH WARNINGS');
   assert.ok(assess({ ...ready, credentials: { missing: ['owner'] } }, WED_MORNING).every(c => c.status === 'GO' || c.action));
+  const split = assess({ ...ready, lastCycle: { day: '2026-10-13', failed: [], degraded: [{ id: 'market-data',
+    note: 'possible split or bonus, record it in /v1/corporate-actions: HDFCBANK x2 from 2026-10-13' }] } }, WED_MORNING).find(c => c.id === 'needs-owner');
+  assert.deepEqual([split.status, split.action], ['WARN', 'Check the exchange notice, then record it: POST /v1/corporate-actions']);
 });
 
 test('a run reads the backend and local files, writes the report, and never sends a change', async () => {

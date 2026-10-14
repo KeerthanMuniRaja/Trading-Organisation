@@ -2,7 +2,7 @@ import { Body, Controller, Post, Req } from '@nestjs/common';
 import { z } from 'zod';
 import { Actor, parse, permit } from './core.js';
 import { Database } from './database.js';
-import { compute as paperPerformance } from './paper-performance.js';
+import { compare as againstBasket, compute as paperPerformance } from './paper-performance.js';
 import { usageByBot } from './compute-usage.js';
 import { Allow } from './security.js';
 
@@ -31,12 +31,22 @@ export class OwnerDigest {
           (SELECT COALESCE(SUM(realised_paise),0) FROM trade_signal_executions WHERE created_at >= ${since})::text AS realised,
           (SELECT COUNT(*) FROM trade_signal_outcomes WHERE created_at >= ${since})::int AS scored,
           (SELECT COUNT(*) FROM trade_signal_outcomes WHERE created_at >= ${since} AND correct)::int AS right,
-          (SELECT COUNT(*) FROM trade_signal_challenges WHERE created_at >= ${since})::int AS challenges`);
+          (SELECT COUNT(*) FROM trade_signal_challenges WHERE created_at >= ${since})::int AS challenges,
+          (SELECT COUNT(*) FROM trade_signal_lapses WHERE created_at >= ${since})::int AS lapsed,
+          (SELECT COALESCE(SUM(released_paise),0) FROM trade_signal_lapses WHERE created_at >= ${since})::text AS released,
+          (SELECT COUNT(*) FROM corporate_actions WHERE created_at >= ${since})::int AS corporate_actions`);
+      // FITNESS-02: each bot's newest verdict on its live paper calls (whatever the window)
+      const live = (await tx.query(`SELECT DISTINCT ON (bot_id) bot_id,verdict,judged,wins,test_name FROM bot_fitness_reports
+        WHERE test_name LIKE 'live-paper%' ORDER BY bot_id,created_at DESC,id DESC`, [])).rows
+        .map(r => ({ botId: r.bot_id, verdict: r.verdict, judged: r.judged, right: r.wins, scope: String(r.test_name).slice('live-paper '.length) }));
       const knowledge = await one(`SELECT
           (SELECT COUNT(*) FROM evidence WHERE received_at >= ${since})::int AS received,
           (SELECT COUNT(*) FROM evidence WHERE reviewed_at >= ${since} AND status='verified')::int AS verified,
           (SELECT COUNT(*) FROM evidence WHERE reviewed_at >= ${since} AND status='rejected')::int AS rejected,
-          (SELECT COUNT(*) FROM evidence WHERE status='unverified')::int AS backlog`);
+          (SELECT COUNT(*) FROM evidence e WHERE e.status='unverified'
+            AND NOT EXISTS (SELECT 1 FROM evidence_triage t WHERE t.evidence_id=e.id AND t.decision='out-of-scope'))::int AS backlog,
+          (SELECT COUNT(*) FROM evidence e JOIN evidence_triage t ON t.evidence_id=e.id
+            WHERE e.status='unverified' AND t.decision='out-of-scope')::int AS "setAside"`);
       const alerts = (await tx.query(`SELECT severity,COUNT(*)::int AS n FROM owner_alerts WHERE resolved_at IS NULL GROUP BY severity`)).rows;
       const topAlerts = (await tx.query(`SELECT severity,rule,message FROM owner_alerts WHERE resolved_at IS NULL
         ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END, raised_at DESC LIMIT 5`)).rows;
@@ -58,9 +68,14 @@ export class OwnerDigest {
       return { windowHours: input.hours, generatedAt: new Date().toISOString(), mode: 'paper', halted,
         money: { realisedPaise: money.realised.toString(), unrealisedPaise: money.unrealised.toString(), totalPaise: (money.realised + money.unrealised).toString(),
           realisedInWindowPaise: trading.realised,
+          stalePositions: perf.reduce((n, b) => n + b.openPositions.filter(p => p.stale).length, 0),
           byBot: perf.filter(b => b.totalPaise !== '0').map(b => ({ botId: b.botId, totalPaise: b.totalPaise, returnOnBudgetPct: b.returnOnBudgetPct })) },
         trading: { proposed: trading.proposed, accepted: trading.accepted, rejected: trading.rejected, executed: trading.executed,
-          challenges: trading.challenges, scored: trading.scored, accuracy: trading.scored ? Number((trading.right / trading.scored).toFixed(3)) : null },
+          challenges: trading.challenges, scored: trading.scored, accuracy: trading.scored ? Number((trading.right / trading.scored).toFixed(3)) : null,
+          lapsed: trading.lapsed, releasedPaise: trading.released, corporateActions: trading.corporate_actions },
+        liveFitness: live,
+        // BENCH-01: each bot against simply holding the basket over the same days
+        benchmark: (await againstBasket(tx, null)).filter(b => b.verdict !== 'not-enough-days'),
         knowledge, alerts: Object.fromEntries(alerts.map(a => [a.severity, a.n])), needsOwner,
         bots: { best: accuracy.slice(0, 3), weakest: accuracy.slice(-3).reverse().filter(b => !accuracy.slice(0, 3).includes(b)) },
         compute: { tokens: tokens.toString() },

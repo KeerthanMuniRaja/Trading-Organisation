@@ -68,7 +68,9 @@ export async function conditions(tx: Sql, config: Config): Promise<Condition[]> 
       message: `${bot} (${role}) was worse than ${baseline} in its last two fitness reports: review for retraining or retirement.` });
   }
 
-  const backlog = Number((await tx.query(`SELECT COUNT(*)::int AS n FROM evidence WHERE status='unverified' AND received_at < now() - ($1::int * interval '1 hour')`,
+  // KNOW-02: items triaged out of scope are set aside, not waiting for anyone
+  const backlog = Number((await tx.query(`SELECT COUNT(*)::int AS n FROM evidence e WHERE e.status='unverified' AND e.received_at < now() - ($1::int * interval '1 hour')
+    AND NOT EXISTS (SELECT 1 FROM evidence_triage t WHERE t.evidence_id=e.id AND t.decision='out-of-scope')`,
     [BACKLOG_HOURS])).rows[0]!.n);
   if (backlog >= BACKLOG_COUNT) out.push({ rule: 'evidence-backlog', severity: 'warning', subject: 'unverified-evidence',
     message: `${backlog} pieces of evidence have waited over ${BACKLOG_HOURS} hours for review.`, detail: { count: backlog } });
@@ -90,6 +92,15 @@ export async function conditions(tx: Sql, config: Config): Promise<Condition[]> 
   for (const r of staleReleases) out.push({ rule: 'release-evaluation-expired', severity: 'warning', subject: `${r.bot_id}/v${r.version}`,
     message: `Active release v${r.version} of ${r.bot_id} was last evaluated more than ${EVALUATION_VALID_DAYS} days ago: re-test it on recent data.`,
     detail: { botId: r.bot_id, releaseId: String(r.id) } });
+
+  // FITNESS-02: an active release whose newest evaluation (e.g. on live paper calls) no longer allows active use
+  const failing = (await tx.query(`SELECT r.id,r.bot_id,r.version,e.fitness_verdict FROM bot_releases r
+      JOIN (SELECT DISTINCT ON (release_id) release_id,stage FROM bot_release_stages ORDER BY release_id,sequence DESC) st ON st.release_id=r.id AND st.stage='active'
+      JOIN (SELECT DISTINCT ON (release_id) release_id,active_eligible,fitness_verdict FROM bot_release_evaluations ORDER BY release_id,created_at DESC,id DESC) e
+        ON e.release_id=r.id WHERE e.active_eligible=false ORDER BY r.bot_id`)).rows;
+  for (const r of failing) out.push({ rule: 'release-failing-evaluation', severity: 'warning', subject: `${r.bot_id}/v${r.version}`,
+    message: `Active release v${r.version} of ${r.bot_id} is now ${r.fitness_verdict} in its newest evaluation: owner decides whether to roll back or revoke it.`,
+    detail: { botId: r.bot_id, releaseId: String(r.id), verdict: r.fitness_verdict } });
 
   // COST-01: department budget ceilings should be covered by capital actually available in Wallet 1
   const ceilings = BigInt((await tx.query("SELECT COALESCE(SUM(budget_paise),0)::text AS v FROM departments WHERE status='active'")).rows[0]!.v);

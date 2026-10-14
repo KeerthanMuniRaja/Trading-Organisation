@@ -7,8 +7,10 @@ import { render, run } from './daily-digest.mjs';
 
 const digest = { windowHours: 24, generatedAt: '2026-10-14T18:00:00.000Z', mode: 'paper', halted: false,
   money: { realisedPaise: '25000', unrealisedPaise: '-1200', totalPaise: '23800', realisedInWindowPaise: '25000', byBot: [{ botId: 'bot-one', totalPaise: '23800', returnOnBudgetPct: 2.38 }] },
-  trading: { proposed: 4, accepted: 2, rejected: 2, executed: 2, challenges: 1, scored: 3, accuracy: 0.667 },
-  knowledge: { received: 55, verified: 10, rejected: 3, backlog: 120 }, alerts: { warning: 1 },
+  trading: { proposed: 4, accepted: 2, rejected: 2, executed: 2, challenges: 1, scored: 3, accuracy: 0.667, lapsed: 1, releasedPaise: '98800', corporateActions: 0 },
+  benchmark: [{ botId: 'momentum-rules', from: '2026-10-15', to: '2026-11-14', days: 22, returnPct: -1.2, basketReturnPct: 0.8, excessPct: -2, verdict: 'behind-basket' }],
+  liveFitness: [{ botId: 'momentum-rules', scope: 'release v1', verdict: 'insufficient-evidence', right: 2, judged: 3 }],
+  knowledge: { received: 55, verified: 10, rejected: 3, backlog: 120, setAside: 40 }, alerts: { warning: 1 },
   needsOwner: ['warning: 20 pieces of evidence have waited over 24 hours for review.'],
   bots: { best: [{ botId: 'bot-one', scored: 6, accuracy: 0.667 }], weakest: [] }, compute: { tokens: '45000' }, note: 'Paper results.' };
 
@@ -19,6 +21,13 @@ test('the digest renders as a readable note with what needs the owner first', ()
   assert.match(text, /Total P&L ₹238 \(realised ₹250, open −₹12\)/);
   assert.match(text, /4 proposed, 2 accepted, 2 rejected, 2 executed, 1 challenges/);
   assert.match(text, /best: bot-one 67% of 6/);
+  assert.match(text, /1 accepted proposal\(s\) expired unexecuted; ₹988 of reservations released/);
+  assert.match(text, /momentum-rules \(release v1\): insufficient-evidence, 2 of 3 right/);
+  assert.doesNotMatch(text, /corporate action/); // only shown when there is one
+  assert.match(text, /120 waiting for review \(40 more set aside as out of scope\)/);
+  assert.match(text, /momentum-rules 2026-10-15\.\.2026-11-14: -1\.2% vs basket \+0\.8% — behind by 2 points/);
+  assert.match(render({ ...digest, benchmark: [] }), /No bot has two daily snapshots yet/);
+  assert.match(render({ ...digest, liveFitness: undefined }), /No bot has scored live calls yet/); // older backends
 });
 
 test('the run writes the note locally and sends only a short summary to an optional webhook', async () => {
