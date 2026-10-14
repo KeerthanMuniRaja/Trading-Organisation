@@ -55,7 +55,7 @@ For the real move, take a fresh backup immediately before it and keep the Window
 
 ## One verification gate and pinned environments (DEP-01)
 
-`npm.cmd run verify` (`scripts/verify-all.mjs`) runs every test suite in the repository (since 14 October 2026) and reports one pass or fail. The only exceptions are the historical copies under `integrations/trading-desk-next` and `trading-desk-v1`. A suite whose Python environment is missing is reported as skipped, not passed. Each suite's log goes to `.local/verify/<suite>.log`. The checks are:
+`npm.cmd run verify` (`scripts/verify-all.mjs`) runs every test suite in the repository (since 14 October 2026) and reports one pass or fail. A suite whose Python environment is missing is reported as skipped, not passed. Each suite's log goes to `.local/verify/<suite>.log`. The checks are:
 - the secret scan;
 - the backend build;
 - the full backend test suite;

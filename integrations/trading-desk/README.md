@@ -1,6 +1,6 @@
 # Trading desk
 
-> **Version 2** (9 October 2026): eight shares, session-clock meetings, forecast and news analysts, a live paper desk, automatic learning from results, fitness verdicts and the strategy tournament. Version 1, which produced `eight-weeks-v1`, is archived unchanged in [trading-desk-v1](../trading-desk-v1/README.md) so its walk-forward learning test can still be run.
+> **Version 2** (9 October 2026): eight shares, session-clock meetings, forecast and news analysts, a live paper desk, automatic learning from results, fitness verdicts and the strategy tournament. Version 1, which produced `eight-weeks-v1`, was archived in `integrations/trading-desk-v1` until 14 October 2026; it is removed from the working tree and remains in the git history.
 
 The first team of distinct bots that make decisions together. It trades one share at a time on paper, on historical replay data or on delayed live 5-minute bars, for a small universe of liquid NSE shares. It is research only: it uses no wallets, broker orders, backend writes or real money.
 

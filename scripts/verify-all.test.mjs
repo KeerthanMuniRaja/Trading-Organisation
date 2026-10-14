@@ -31,6 +31,6 @@ test('test counts are read from both runners', () => {
   assert.equal(count('.....\nRan 106 tests in 38.1s\nOK'), '106 ran');
   assert.equal(count('nothing'), null);
   assert.ok(suites().some(s => s.id === 'claims'));
-  // every test file in the repository belongs to some suite (the historical trading-desk copies excepted)
+  // every test file in the repository belongs to some suite
   for (const id of ['integration-tests', 'hermes', 'market-replay', 'skfolio']) assert.ok(suites().some(s => s.id === id), id);
 });
