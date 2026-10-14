@@ -58,6 +58,14 @@ export class OwnerDigest {
         GROUP BY s.bot_id HAVING COUNT(*) >= 5 ORDER BY accuracy DESC,s.bot_id`, [])).rows
         .map(r => ({ botId: r.bot_id, scored: r.scored, accuracy: Number(Number(r.accuracy).toFixed(3)) }));
       const tokens = [...(await usageByBot(tx, Math.max(1, Math.ceil(input.hours / 24)))).values()].reduce((s, u) => s + u.tokens, 0n);
+      // the organisation around the trading: who is paused, which departments and contests are running
+      const suspended = (await tx.query(`SELECT bot_id FROM (SELECT DISTINCT ON (bot_id) bot_id,suspended FROM bot_suspensions ORDER BY bot_id,sequence DESC) s
+        WHERE suspended ORDER BY bot_id`, [])).rows.map(r => String(r.bot_id));
+      const org = await one(`SELECT
+          (SELECT COUNT(*) FROM departments WHERE status='active')::int AS "departmentsActive",
+          (SELECT COUNT(*) FROM departments WHERE status='closed')::int AS "departmentsClosed",
+          (SELECT COUNT(*) FROM hackathons WHERE status='open')::int AS "hackathonsOpen",
+          (SELECT COUNT(*) FROM hackathons WHERE status='judging')::int AS "hackathonsJudging"`, []);
       const halted = (await one('SELECT halted FROM system_lock WHERE id=1', [])).halted as boolean;
       const needsOwner = [
         ...(halted ? ['New risk is HALTED.'] : []),
@@ -74,6 +82,7 @@ export class OwnerDigest {
           challenges: trading.challenges, scored: trading.scored, accuracy: trading.scored ? Number((trading.right / trading.scored).toFixed(3)) : null,
           lapsed: trading.lapsed, releasedPaise: trading.released, corporateActions: trading.corporate_actions },
         liveFitness: live,
+        organisation: { suspendedBots: suspended, ...org },
         // BENCH-01: each bot against simply holding the basket over the same days
         benchmark: (await againstBasket(tx, null)).filter(b => b.verdict !== 'not-enough-days'),
         knowledge, alerts: Object.fromEntries(alerts.map(a => [a.severity, a.n])), needsOwner,

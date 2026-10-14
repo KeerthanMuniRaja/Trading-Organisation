@@ -64,6 +64,8 @@ test('a department closes only when its members hold no paper risk', async () =>
     const desk = (await f.departments.registry(owner)).departments.find(d => d.id === 'desk')!;
     assert.deepEqual([desk.status, desk.leadBotId, desk.overBudget], ['closed', null, false]);
     assert.ok(desk.closedAt);
+    // its bot takes no new risk any more: closing suspended it until the owner resumes it
+    await assert.rejects(() => f.paper.reserve(trader, key(), { botId: 'bot-one', symbol: 'DEMO', side: 'buy', quantity: 1, evidenceId: f.e.evidenceId }), says(/suspended/));
     // a closed department can be proposed and approved again, with a fresh charter
     const reopen = await f.departments.propose(researcher, key(), { ...f.open, mandate: 'Daily-horizon paper trading', rationale: 'New evidence' });
     await f.departments.decide(owner, key(), { proposalId: reopen.id, outcome: 'approved', budgetPaise: '1300000', note: 'Reopened' });

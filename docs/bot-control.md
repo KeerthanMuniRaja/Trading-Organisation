@@ -15,4 +15,8 @@ Code: [`backend/src/bot-control.ts`](../backend/src/bot-control.ts) and `organis
 
 **Under suspension.** The rule bot reports `suspended` instead of failing the cycle when its entries are refused.
 
+**Closing a department suspends its bots.** Closing requires them to hold no positions or orders; closing then suspends each of them (reason "Department … closed"). They take no new risk until the owner moves or resumes them. Reopening the department does not resume them automatically.
+
+**In the digest.** The owner digest lists suspended bots under "Organisation".
+
 **A note on budget changes and equity curves.** A daily snapshot records the budget of its day, so a budget change appears as a step in that bot's equity curve. Read the history around a change with that in mind.

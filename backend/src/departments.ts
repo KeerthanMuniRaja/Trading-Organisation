@@ -4,6 +4,7 @@ import { Actor, digest, id, parse, permit, requireThat, uuid } from './core.js';
 import { Database, Sql, audit } from './database.js';
 import { compute } from './paper-performance.js';
 import { Allow } from './security.js';
+import { isSuspended } from './bot-control.js';
 
 // Department registry (ORG-01). A department is a charter: mandate, lead and an owner-set budget ceiling for the sum of
 // its members' budgets. Members are the bots carrying the department's id as their department label.
@@ -74,6 +75,13 @@ export class Departments {
             EXISTS (SELECT 1 FROM orders o WHERE o.bot_id=b.id AND o.status='reserved'))`, [p.department_id])).rows;
           requireThat(!risk.length, `Close members' positions and orders first: ${risk.map(r => r.id).join(', ')}`);
           await tx.query(`UPDATE departments SET status='closed',closed_at=now(),lead_bot_id=NULL WHERE id=$1`, [p.department_id]);
+          // a closed department's bots take no new risk until the owner moves or resumes them (LIFE-02)
+          for (const b of (await tx.query("SELECT id FROM bots WHERE department=$1 AND state<>'retired' ORDER BY id", [p.department_id])).rows) {
+            if (await isSuspended(tx, b.id)) continue;
+            await tx.query('INSERT INTO bot_suspensions(id,bot_id,suspended,reason,decided_by) VALUES($1,$2,true,$3,$4)',
+              [uuid(), b.id, `Department ${p.department_id} closed`, actor.id]);
+            await audit(tx, actor, 'bot.suspended', b.id, { reason: `Department ${p.department_id} closed` });
+          }
         }
       }
       const decisionId = uuid();

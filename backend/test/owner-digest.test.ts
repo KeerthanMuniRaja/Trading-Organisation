@@ -28,6 +28,7 @@ test('the digest summarises money, trading, knowledge and what needs the owner',
     assert.equal(d.money.unrealisedPaise, '10000'); // 25 shares marked 400 paise above cost
     assert.equal(d.knowledge.backlog, 1);
     assert.deepEqual([d.trading.lapsed, d.trading.releasedPaise, d.trading.corporateActions, d.money.stalePositions, d.liveFitness], [0, '0', 0, 0, []]);
+    assert.deepEqual(d.organisation, { suspendedBots: [], departmentsActive: 0, departmentsClosed: 0, hackathonsOpen: 0, hackathonsJudging: 0 });
     assert.equal(d.halted, true);
     assert.equal(d.needsOwner[0], 'New risk is HALTED.');
     assert.throws(() => new OwnerDigest(f.db).digest(trader, {}));

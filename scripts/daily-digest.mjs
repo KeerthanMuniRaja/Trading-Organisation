@@ -32,6 +32,10 @@ export function render(d) {
       : `- ${b.botId} ${b.from}..${b.to}: ${b.returnPct > 0 ? '+' : ''}${b.returnPct}% vs basket ${b.basketReturnPct > 0 ? '+' : ''}${b.basketReturnPct}%`
         + ` — ${b.excessPct > 0 ? 'ahead' : b.excessPct < 0 ? 'behind' : 'level'} by ${Math.abs(b.excessPct)} points`)
       : ['- No bot has two daily snapshots yet.']), '',
+    '## Organisation',
+    `- Suspended bots: ${(d.organisation?.suspendedBots ?? []).join(', ') || 'none'}`,
+    ...(d.organisation ? [`- Departments: ${d.organisation.departmentsActive} active, ${d.organisation.departmentsClosed} closed; `
+      + `hackathons: ${d.organisation.hackathonsOpen} open, ${d.organisation.hackathonsJudging} being judged`] : []), '',
     '## Live fitness (paper calls on new days)',
     ...((d.liveFitness ?? []).length ? d.liveFitness.map(f => `- ${f.botId} (${f.scope}): ${f.verdict}, ${f.right} of ${f.judged} right`)
       : ['- No bot has scored live calls yet.']), '',

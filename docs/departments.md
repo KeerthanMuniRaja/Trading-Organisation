@@ -21,7 +21,7 @@ A **department** is a charter with:
 | Action | Route | Who | Rules |
 | --- | --- | --- | --- |
 | Propose opening or closing | `POST /v1/departments/proposals` | researcher or evaluator bots | Must cite 1–10 verified pieces of evidence from approved sources, such as an opportunity or a record of failure. Opening needs a name and mandate. Duplicate proposals return the original. |
-| Decide | `POST /v1/departments/decisions` | **owner only** | Approving an opening requires the budget ceiling. Approving a closure is refused while any member holds a paper position or a reserved order, so closing never strands risk. Each proposal is decided once. |
+| Decide | `POST /v1/departments/decisions` | **owner only** | Approving an opening requires the budget ceiling. Approving a closure is refused while any member holds a paper position or a reserved order, so closing never strands risk. An approved closure **suspends** its bots, so they take no new risk until the owner moves or resumes them ([bot control](bot-control.md)). Each proposal is decided once. |
 | Appoint a lead | `POST /v1/departments/leads` | **owner only** | The lead must be a member and not retired. |
 | View | `GET /v1/departments` | owner, researcher, evaluator | Shows each department's members, latest fitness verdicts, budget use (with `overBudget` when members' budgets exceed the ceiling), combined paper P&L, and pending proposals |
 

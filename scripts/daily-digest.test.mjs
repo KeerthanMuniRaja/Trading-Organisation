@@ -9,6 +9,7 @@ const digest = { windowHours: 24, generatedAt: '2026-10-14T18:00:00.000Z', mode:
   money: { realisedPaise: '25000', unrealisedPaise: '-1200', totalPaise: '23800', realisedInWindowPaise: '25000', byBot: [{ botId: 'bot-one', totalPaise: '23800', returnOnBudgetPct: 2.38 }] },
   trading: { proposed: 4, accepted: 2, rejected: 2, executed: 2, challenges: 1, scored: 3, accuracy: 0.667, lapsed: 1, releasedPaise: '98800', corporateActions: 0 },
   benchmark: [{ botId: 'momentum-rules', from: '2026-10-15', to: '2026-11-14', days: 22, returnPct: -1.2, basketReturnPct: 0.8, excessPct: -2, verdict: 'behind-basket' }],
+  organisation: { suspendedBots: ['old-bot'], departmentsActive: 2, departmentsClosed: 1, hackathonsOpen: 1, hackathonsJudging: 0 },
   liveFitness: [{ botId: 'momentum-rules', scope: 'release v1', verdict: 'insufficient-evidence', right: 2, judged: 3 }],
   knowledge: { received: 55, verified: 10, rejected: 3, backlog: 120, setAside: 40 }, alerts: { warning: 1 },
   needsOwner: ['warning: 20 pieces of evidence have waited over 24 hours for review.'],
@@ -27,6 +28,8 @@ test('the digest renders as a readable note with what needs the owner first', ()
   assert.match(text, /120 waiting for review \(40 more set aside as out of scope\)/);
   assert.match(text, /momentum-rules 2026-10-15\.\.2026-11-14: -1\.2% vs basket \+0\.8% — behind by 2 points/);
   assert.match(render({ ...digest, benchmark: [] }), /No bot has two daily snapshots yet/);
+  assert.match(text, /Suspended bots: old-bot/);
+  assert.match(text, /Departments: 2 active, 1 closed; hackathons: 1 open, 0 being judged/);
   assert.match(render({ ...digest, liveFitness: undefined }), /No bot has scored live calls yet/); // older backends
 });
 

@@ -8,6 +8,31 @@ Daily operation is in the [live testing runbook](docs/live-testing.md).
 
 The model-free [rule bot](docs/trade-signals.md#the-rule-bot-a-model-free-member) keeps proposals flowing without the local model. Owner activation: `npm run rulebot -- plan | credential --yes | apply --yes`.
 
+### State on 14 October 2026 (read this first)
+
+**Live setup.**
+- **Order limit:** ₹5,000 per order (`MAX_ORDER_PAISE=500000`).
+- **Rule bot:** `momentum-rules` is active and qualified for paper trading. Its release v1 is evaluated on the regime study (seen data, p ≈ 0.03).
+- **Backup:** the live database was backed up before the changes. Migrations 049 and 050 apply on the next backend start.
+
+**Audit.**
+- **What was done.** Four independent reviews checked every planned idea against the code. The trading bugs they found are fixed and tested.
+- **Where to read.** [docs/audit-2026-10-14.md](docs/audit-2026-10-14.md) is the honest status page. It supersedes the older status claims in `current-status.md` and `remaining-work-assessment.md`.
+
+**Verification.** `npm run verify` runs every test suite (644 tests), and all pass.
+
+**Owner controls.** Suspend or resume a bot, change a bot's budget, and retire a bot with nothing learned ([bot control](docs/bot-control.md)).
+
+**Still needs the owner.**
+- The local model, for the learning loop and the model allocator.
+- An alert channel (`ALERT_WEBHOOK_URL`).
+- A daily schedule.
+- Confirming the market-data licence.
+
+**Pitfalls.**
+- **Environment variables win over `.env`.** A terminal that already has `MAX_ORDER_PAISE`, `PRINCIPALS_JSON` or `DATABASE_PATH` set ignores `.env`. If the readiness check shows the old limit, open a fresh terminal.
+- **Large price moves.** The data steward keeps back a refresh with a move over 20% until the owner confirms it: `daily.py accept-move --symbol X --date D`.
+
 ## Current development update — v0.1.35, 7 October 2026
 
 The checkout now includes v0.1.34's explicit direct-structured-v1 production engine and migration 023, which adds the optional research-methods-v1 assessment rubric. Existing research-basics-v1 records/defaults remain unchanged. The direct worker requests task schemas and binds tickets to the owner-selected engine; it is separate from Hermes, not a fallback or an upgrade of the pinned Hermes path.
