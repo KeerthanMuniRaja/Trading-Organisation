@@ -92,9 +92,12 @@ class FakeModel(BaseHTTPRequestHandler):
         self.reply(200, {'object': 'list', 'data': [{'id': 'fixture-model'}, {'id': 'other'}]})
 
     def do_POST(self):
+        # read the request before any reply: answering 401 with an unread body can reset the connection on Windows,
+        # which the client then (correctly) reports as unreachable instead of unauthorised
+        raw = self.rfile.read(int(self.headers.get('Content-Length') or 0))
         if not self.authorised():
             return
-        body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        body = json.loads(raw)
         FakeModel.bodies.append(body)
         if FakeModel.mode == 'slow':
             time.sleep(2)
