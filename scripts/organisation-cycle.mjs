@@ -72,6 +72,8 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     // RND-03: with the model on, R&D first invents new ideas (specifications only, at most 3 a month, each raising the bar)
     { id: 'rnd-scout', cmd: PY, args: [desk('rnd_scout.py'), ...(withModel ? ['--invent', 'model'] : []), ...(process.env.RND_SOURCE
       ? ['--propose', '--source', process.env.RND_SOURCE, '--department', process.env.RND_DEPARTMENT || 'desk'] : [])], timeoutMs: 300_000 },
+    // KNOW-05: the organisation's live knowledge (research, regime, news links, scenario record) for the agents and the digest
+    { id: 'knowledge-refresh', cmd: PY, args: [desk('live_knowledge.py'), 'refresh'], timeoutMs: 120_000 },
     // the model-free rule bot proposes once a month, before the end-of-day trader reviews; it runs only once the owner
     // has created and qualified it and named it here (RULE_BOT_ID), with a trader credential bound to it
     // AUTO-05 self-repair: a code fix under the same rule is prepared as a release by the agents, and the standing
@@ -277,9 +279,13 @@ export async function escalate(step, streak, summary, env = process.env, fetchIm
   return 'outbox';
 }
 
+async function recordUnknown(path, entry) {
+  try { await mkdir(dirname(path), { recursive: true }); await writeFile(path, JSON.stringify(entry) + '\n', { flag: 'a' }); } catch { /* never stop the cycle */ }
+}
+
 export async function runCycle({ steps, journalPath, streaksPath = join(dirname(journalPath), 'streaks.json'), force = false, run = runProcess,
   http = runHttp, now = () => new Date(), sleep = ms => new Promise(r => setTimeout(r, ms)), escalateStep = escalate,
-  gate = g => releaseCheck(g, { run }), budget = g => computeCheck(g) }) {
+  gate = g => releaseCheck(g, { run }), budget = g => computeCheck(g), unknownsPath = join(dirname(journalPath), 'unknown-problems.jsonl') }) {
   let journal = { startedAt: now().toISOString(), steps: {} };
   try { journal = JSON.parse(await readFile(journalPath, 'utf8')); } catch { /* first run today */ }
   let streaks = {};
@@ -303,6 +309,9 @@ export async function runCycle({ steps, journalPath, streaksPath = join(dirname(
     if (outcome.status === 'failed' || outcome.status === 'degraded') {
       const known = diagnose(step.id, `${outcome.reason ?? ''}\n${outcome.summary ?? ''}`);
       if (known) outcome.playbook = known;
+      // a failure nobody has seen before is kept, so its cause and fix can be added to the playbook
+      if (known?.id === 'unknown') await recordUnknown(unknownsPath, { at: now().toISOString(), step: step.id, status: outcome.status,
+        text: String(outcome.reason ?? outcome.summary ?? '').slice(-500) });
     }
     if (outcome.status === 'failed') {
       const streak = (streaks[step.id]?.failures ?? 0) + 1;

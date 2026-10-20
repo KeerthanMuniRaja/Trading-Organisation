@@ -35,5 +35,10 @@ test('the cycle writes the matching fix into the journal of a failed step', asyn
     assert.equal(results[1].playbook.id, 'feed-failing');
     const journal = JSON.parse(await readFile(journalPath, 'utf8'));
     assert.equal(journal.steps['news-wire'].playbook.decidedBy, 'owner');
+    // a failure nobody knows is kept for the playbook
+    await runCycle({ steps: [{ id: 'brand-new-step', cmd: 'x' }], journalPath, run: async () => ({ code: 3, tail: 'strange error' }),
+      sleep: async () => {}, escalateStep: async () => 'none' });
+    const unknown = (await readFile(join(dir, 'unknown-problems.jsonl'), 'utf8')).trim().split('\n').map(l => JSON.parse(l));
+    assert.deepEqual([unknown.length, unknown[0].step, unknown[0].text], [1, 'brand-new-step', 'strange error']);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });

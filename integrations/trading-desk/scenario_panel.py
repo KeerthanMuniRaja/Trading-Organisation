@@ -66,10 +66,12 @@ def schema(symbols):
             'symbol': {'enum': symbols}, 'direction': {'enum': ['up', 'down', 'flat']}, 'why': {'type': 'string', 'maxLength': 200}}}}}}
 
 
-def ask_panel(llm, story):
-    """Each persona's answer for the story's shares; an invalid or failed answer counts as no view (flat)."""
+def ask_panel(llm, story, regime=None):
+    """Each persona's answer for the story's shares; an invalid or failed answer counts as no view (flat). `regime` is the
+    organisation's own market-regime summary (background, the same for every persona)."""
     answers = {}
-    user = json.dumps({'story': story['title'], 'countries': story['countries'], 'drivers': story['drivers'], 'shares': story['symbols']})
+    user = json.dumps({'story': story['title'], 'countries': story['countries'], 'drivers': story['drivers'], 'shares': story['symbols'],
+                       **({'marketRegime': regime} if regime else {})})
     for name, who in PERSONAS.items():
         try:
             value, _ = llm(SYSTEM.format(who=who), user, schema(story['symbols']))
@@ -104,7 +106,9 @@ def run(llm, now=None, stories_path=STORIES, out=OUT, cache=daily.DAILY, limit=2
     if not stories or not dates:
         return {'day': day, 'state': 'nothing-to-rehearse', 'stories': len(stories)}
     as_of = dates[bisect_right(dates, day) - 1]  # the last settled session the panel could know
-    calls = [c for story in stories for c in panel_calls(story, ask_panel(llm, story), day, as_of)]
+    import live_knowledge
+    regime = live_knowledge.briefing(Path(out).parent)['marketRegime']
+    calls = [c for story in stories for c in panel_calls(story, ask_panel(llm, story, regime if regime != 'unknown' else None), day, as_of)]
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open('a', encoding='utf-8') as handle:
         for c in calls:

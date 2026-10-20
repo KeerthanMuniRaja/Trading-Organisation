@@ -62,6 +62,21 @@ test('the market regime is shown as advice, with what our history says about it'
   assert.doesNotMatch(render(digest), /Market regime/);
 });
 
+test('the research section and failures the playbook does not know yet', () => {
+  const known = { unknown: [{ at: '2026-10-20T11:00:00Z', step: 'odd-step', status: 'failed', text: 'x' }], live: { research: {
+    ideasTried: 17, from: '2017-12', through: '2026-09', bar: 0.002941, passing: [],
+    best: [{ name: 'momentum-6m-top3', ahead: 61, behind: 45, averageExcessPct: 0.003, beatsRandomPct: 81 }],
+    lowestRisk: { name: 'equal-weight-distribution', maxDrawdownPct: -9.05, sharpe: 0.9 }, basket: { maxDrawdownPct: -35.28, sharpe: 0.79 },
+    walkForward: { outOfSampleMonths: 70, ahead: 33, behind: 37, averageExcessPct: -0.349 } } } };
+  const text = render(digest, null, null, known);
+  assert.match(text, /## Research \(seen history, net of costs\)\n- 17 ideas tried on 2017-12..2026-09; passing: none \(bar 0.002941\)/);
+  assert.match(text, /momentum-6m-top3: 61\/45 months vs the basket, 0.003% a month, beats 81% of random pickers/);
+  assert.match(text, /Lowest risk: equal-weight-distribution, worst fall -9.05% \(basket -35.28%\), Sharpe 0.9 \(basket 0.79\)/);
+  assert.match(text, /walk-forward\): 33\/37 months, -0.349% a month/);
+  assert.match(text, /1 cycle failure\(s\) the problem playbook does not know \(odd-step\)/);
+  assert.ok(text.indexOf('playbook does not know') < text.indexOf('## Money'));
+});
+
 test('the run writes the note locally and sends only a short summary to an optional webhook', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'digest-'));
   try {
@@ -71,7 +86,7 @@ test('the run writes the note locally and sends only a short summary to an optio
       return url.endsWith('/v1/owner/digest') ? { ok: true, json: async () => digest } : { ok: true };
     };
     const env = { PRINCIPALS_JSON: JSON.stringify([{ id: 'e', role: 'evaluator', token: 'eval-token' }]), ALERT_WEBHOOK_URL: 'https://notify.example/t' };
-    const result = await run(env, { fetchImpl, outDir: dir, world: null, regime: null });
+    const result = await run(env, { fetchImpl, outDir: dir, world: null, regime: null, knowledge: null });
     assert.equal(result.webhook, true);
     assert.match(await readFile(join(dir, '2026-10-14.md'), 'utf8'), /Needs you/);
     assert.equal(sent[1].auth, undefined); // the backend credential never goes to the webhook

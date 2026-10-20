@@ -73,3 +73,26 @@ Two lessons stand out:
   limits, sources or data confirmations. When a cycle step fails or degrades, the matching entry goes into the day's
   journal, the console, the escalation incident and the morning readiness check. A new problem gets an entry once its
   cause is known.
+- **Unknown problems** go to `.local/cycles/unknown-problems.jsonl`. The digest lists them under **Needs you** for 7 days,
+  so the playbook grows with the organisation's own failures.
+
+## Live knowledge (KNOW-05)
+
+After the scout, the cycle step `knowledge-refresh` (`live_knowledge.py refresh`) writes
+`.local/trading-desk/knowledge/live.json`. It gathers what the organisation currently knows:
+- the latest research on the 8 shares: ideas tried, passing ideas, the best three with their statistics, the lowest-risk
+  idea, the random baseline and the walk-forward verdict;
+- the NIFTY 50 screen;
+- today's regime and its study verdict;
+- the news links that carry information;
+- the scenario panel's record.
+
+The numbers in the method cards are a dated snapshot. `live.json` is always current.
+
+**The agents use it.** `live_knowledge.briefing()` is a short context, under 4 KB, so it fits the 4B model. It holds today's
+regime and six decision lessons: costs, momentum, trend, regime, walk-forward and survivorship. The context is used by:
+- **the debate desk's bull and bear,** as `organisationKnowledge`: background they may use but never cite as evidence;
+- **the scenario panel's personas,** as `marketRegime`;
+- **R&D's idea invention,** which also gets every method lesson and each idea's random-baseline result.
+
+The digest has a **Research** section with the same evidence.

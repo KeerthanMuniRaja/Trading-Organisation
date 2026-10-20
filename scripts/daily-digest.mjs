@@ -35,6 +35,27 @@ export async function marketRegime(root = join(dirname(fileURLToPath(import.meta
   return now ? { ...now, study: await read('study.json') } : null;
 }
 
+/** KNOW-05: the live knowledge (.local/trading-desk/knowledge/live.json) and failures the playbook does not know yet. */
+export async function knowledgeSummary(root = join(dirname(fileURLToPath(import.meta.url)), '..'), now = Date.now()) {
+  let live = null, unknown = [];
+  try { live = JSON.parse(await readFile(join(root, '.local', 'trading-desk', 'knowledge', 'live.json'), 'utf8')); } catch { /* not made yet */ }
+  try {
+    unknown = (await readFile(join(root, '.local', 'cycles', 'unknown-problems.jsonl'), 'utf8')).split('\n').filter(l => l.trim()).map(l => JSON.parse(l))
+      .filter(u => now - Date.parse(u.at) < 7 * 86_400_000);
+  } catch { /* none */ }
+  return live || unknown.length ? { live, unknown } : null;
+}
+
+export function researchLines(k) {
+  if (!k?.live?.research) return [];
+  const r = k.live.research, wf = r.walkForward, safe = r.lowestRisk;
+  return ['## Research (seen history, net of costs)',
+    `- ${r.ideasTried} ideas tried on ${r.from}..${r.through}; passing: ${r.passing.join(', ') || 'none'} (bar ${r.bar})`,
+    ...r.best.slice(0, 2).map(b => `- ${b.name}: ${b.ahead}/${b.behind} months vs the basket, ${b.averageExcessPct}% a month, beats ${b.beatsRandomPct ?? '?'}% of random pickers`),
+    ...(safe ? [`- Lowest risk: ${safe.name}, worst fall ${safe.maxDrawdownPct}% (basket ${r.basket.maxDrawdownPct}%), Sharpe ${safe.sharpe} (basket ${r.basket.sharpe})`] : []),
+    ...(wf ? [`- Choosing the best past idea each year (walk-forward): ${wf.ahead}/${wf.behind} months, ${wf.averageExcessPct}% a month`] : []), ''];
+}
+
 export function regimeLine(r) {
   if (!r) return null;
   const s = r.study, severe = s?.levels?.SEVERE, normal = s?.levels?.NORMAL;
@@ -44,9 +65,12 @@ export function regimeLine(r) {
     + (s ? `. On our history: ${s.verdict}; falls over 5% within ${s.horizonSessions} sessions followed ${Math.round(100 * (severe?.fallOver5PctShare ?? 0))}% of SEVERE days and ${Math.round(100 * (normal?.fallOver5PctShare ?? 0))}% of NORMAL days` : '');
 }
 
-export function render(d, world = null, regime = null) {
+export function render(d, world = null, regime = null, known = null) {
   const t = d.trading, k = d.knowledge, m = d.money;
-  const needs = [...d.needsOwner, ...(world?.coverage?.advice ?? [])];
+  const unknown = known?.unknown ?? [];
+  const needs = [...d.needsOwner, ...(world?.coverage?.advice ?? []),
+    ...(unknown.length ? [`${unknown.length} cycle failure(s) the problem playbook does not know (${[...new Set(unknown.map(u => u.step))].join(', ')}): `
+      + 'find the cause and add an entry to integrations/trading-desk/knowledge/problems.json (log: .local/cycles/unknown-problems.jsonl)'] : [])];
   const lines = [
     `# Organisation digest — ${d.generatedAt.slice(0, 10)}`, '',
     `Window: last ${d.windowHours} hours · mode: ${d.mode}${d.halted ? ' · **NEW RISK HALTED**' : ''}`, '',
@@ -81,6 +105,7 @@ export function render(d, world = null, regime = null) {
     `- ${k.received} items received, ${k.verified} verified, ${k.rejected} rejected; ${k.backlog} waiting for review`
       + (k.setAside ? ` (${k.setAside} more set aside as out of scope)` : ''), '',
     ...worldLines(world),
+    ...researchLines(known),
     '## Bots (90-day scored accuracy, 5+ calls)',
     ...(d.bots.best.length ? d.bots.best.map(b => `- best: ${b.botId} ${Math.round(b.accuracy * 100)}% of ${b.scored}`) : ['- No bot has 5 scored calls yet.']),
     ...d.bots.weakest.map(b => `- weakest: ${b.botId} ${Math.round(b.accuracy * 100)}% of ${b.scored}`), '',
@@ -90,13 +115,13 @@ export function render(d, world = null, regime = null) {
 }
 
 export async function run(env = process.env, { fetchImpl = fetch, outDir = join(dirname(fileURLToPath(import.meta.url)), '..', '.local', 'digests'),
-  world = worldSummary, regime = marketRegime } = {}) {
+  world = worldSummary, regime = marketRegime, knowledge = knowledgeSummary } = {}) {
   const s = settings(env);
   const response = await fetchImpl(s.base + '/v1/owner/digest', { method: 'POST', redirect: 'error', body: '{}',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + s.token } });
   if (!response.ok) throw new Error(`digest refused (HTTP ${response.status})`);
   const digest = await response.json();
-  const text = render(digest, world ? await world() : null, regime ? await regime() : null);
+  const text = render(digest, world ? await world() : null, regime ? await regime() : null, knowledge ? await knowledge() : null);
   await mkdir(outDir, { recursive: true });
   const path = join(outDir, digest.generatedAt.slice(0, 10) + '.md');
   await writeFile(path, text);
