@@ -49,6 +49,8 @@ python -m venv .local\tradingagents-venv
 .local\tradingagents-venv\Scripts\python.exe -m pip install -r integrations\tradingagents\requirements.txt
 ```
 
+**Installed on 20 October 2026** with the owner's approval: TradingAgents 0.7.0 from commit `e8f5503`. Our wrapper builds its graph with the local model settings. `requirements.lock.txt` records every dependency version installed then; to reproduce exactly, install the lock first, then `requirements.txt` with `--no-deps`.
+
 Then set it up as a member:
 1. **Create the bot** (owner), with zero budget: `POST /v1/bots` with `{ id: "tradingagents", department: "desk", specialty: "multi-agent-research", method: "tradingagents", budgetPaise: "0" }`.
 2. **Give it a credential:** `npm run bot-credential -- --bot tradingagents --yes`.
