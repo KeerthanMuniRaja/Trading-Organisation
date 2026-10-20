@@ -35,6 +35,8 @@ export function suites({ quick = false } = {}) {
       'scripts/rule-bot-loop.test.mjs', 'scripts/activate-rule-bot.test.mjs', 'scripts/readiness.test.mjs',
       'scripts/live-fitness.test.mjs', 'scripts/model-allocator-loop.test.mjs', 'scripts/agenda.test.mjs', 'scripts/bot-credential.test.mjs', 'scripts/learning-cycle.test.mjs', 'scripts/prune-env-backups.test.mjs', 'scripts/autonomy.test.mjs', 'scripts/release-renewal.test.mjs', 'scripts/supervisor.test.mjs', 'scripts/debate-setup.test.mjs'] },
     { id: 'trading-desk', cmd: REPLAY, args: ['-m', 'unittest', ...DESK_TESTS], cwd: join(ROOT, 'integrations', 'trading-desk'), requires: REPLAY },
+    // the TradingAgents member's governance, tested with a stand-in engine (the real package is not needed)
+    { id: 'tradingagents', cmd: REPLAY, args: ['-m', 'unittest', 'test_tradingagents'], cwd: join(ROOT, 'integrations', 'tradingagents'), requires: REPLAY },
     { id: 'quant-advisor', cmd: SKFOLIO, args: ['-m', 'unittest', 'test_quant_advisor'], cwd: join(ROOT, 'integrations', 'trading-desk'), requires: SKFOLIO },
     { id: 'claims', cmd: REPLAY, args: ['-m', 'unittest', 'test_claims', 'test_http_security', 'test_autolearn', 'test_refresh_headlines'],
       cwd: join(ROOT, 'integrations', 'claims'), requires: REPLAY },

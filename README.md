@@ -48,6 +48,7 @@ Every decision waiting on the owner (recommendations, new bots, departments, rel
 - **Model allocator.** Built and tested, not yet switched on. It needs the local model and its own forward test.
 - **R&D scout.** Every cycle it screens 13 strategy ideas against the basket, net of costs and corrected for the number of ideas tried. It proposes a new specialist only for an idea that passes; none does yet ([R&D scout](docs/rnd-scout.md)).
 - **Management review.** Every cycle it reviews each working bot and files recommendations for the owner agenda ([management](docs/management.md)).
+- **TradingAgents member.** Built; it needs the model and an approved install. The open-source TradingAgents firm (analysts, debate, trader, risk team, portfolio manager) is reused as one governed bot. It decides weekly, proposes in shadow until it has earned a release on its own scored calls, and then trades under the same rules as everyone ([TradingAgents member](integrations/tradingagents/README.md)).
 - **Debate desk.** Built; it needs the model and a one-time `scripts/debate-setup.mjs`. A bull and a bear researcher argue every proposal before review, citing only verified evidence, and are scored on whether they were right.
 - **Reflections.** Every scored call becomes a verified factual lesson for its bot: what it did, the share's move, the basket's move and the alpha. So each bot remembers its own results ([reference review](docs/reference-review-2026-10-20.md)).
 

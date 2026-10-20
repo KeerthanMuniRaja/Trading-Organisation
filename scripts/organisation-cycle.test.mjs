@@ -3,7 +3,19 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { planSteps, runCycle, runHttp, escalate, releaseCheck, computeCheck, verifyMarketData, verifyFeed, ESCALATE_AFTER } from './organisation-cycle.mjs';
+import { planSteps, runCycle, runHttp, escalate, releaseCheck, computeCheck, taSteps, verifyMarketData, verifyFeed, ESCALATE_AFTER } from './organisation-cycle.mjs';
+
+test('TradingAgents decides only weekly with the model and its own environment; its member proposes every cycle', () => {
+  const friday = Date.parse('2026-10-23T11:00:00Z'), tuesday = Date.parse('2026-10-20T11:00:00Z');
+  const ids = s => s.map(x => [x.id, x.skip ? 'skip' : 'run']);
+  assert.deepEqual(ids(taSteps({ withModel: true, root: '/r', desk: x => x, now: friday, env: {} })), [['tradingagents', 'skip']]);
+  const env = { TA_BOT_ID: 'tradingagents' };
+  assert.deepEqual(ids(taSteps({ withModel: true, root: '/r', desk: x => x, now: friday, env })), [['tradingagents-decide', 'run'], ['tradingagents-propose', 'run']]);
+  const decide = taSteps({ withModel: true, root: '/r', desk: x => x, now: friday, env })[0];
+  assert.deepEqual([decide.args.slice(-2), decide.computeGate.botId, /tradingagents-venv/.test(decide.requires)], [['--day', '2026-10-23'], 'tradingagents', true]);
+  assert.match(taSteps({ withModel: true, root: '/r', desk: x => x, now: tuesday, env })[0].skip, /weekly/);
+  assert.match(taSteps({ withModel: false, root: '/r', desk: x => x, now: friday, env })[0].skip, /model steps/);
+});
 
 const steps = [
   { id: 'backend-health', critical: true, kind: 'http', path: '/v1/health' },

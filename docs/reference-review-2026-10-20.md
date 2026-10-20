@@ -44,7 +44,11 @@ A LangGraph framework that simulates a trading firm:
 | Vendor fallback chain | Single market-data source (Yahoo) | Owner decision (licences); noted |
 | Checkpoints, resumable runs | Cycle journal resumes; idempotent commands | Equivalent |
 
-**Reuse as a dependency:** TradingAgents could later run as **one governed bot**. Its final decision would become a proposal with a release, a fitness record and the release gate, like the model allocator. That needs installing it (a download, so owner approval). With a 4B model it would also be slow: about 12 model calls per share per decision.
+**Reused as a dependency (owner's direction, 20 October: "instead of developing from scratch we can use it").** TradingAgents now runs as **one governed member** ([integrations/tradingagents](../integrations/tradingagents/README.md)):
+- **Pinned:** the exact commit `e8f5503`, installed only into its own environment.
+- **Decides:** weekly with our local model.
+- **Proposes:** in shadow first, earning its first release on 20 scored shadow calls. It trades only through our review, release gate, scoring and money rules.
+- **To start:** the install itself is a download and waits for the owner's approval.
 
 ## FinceptTerminal (Fincept, AGPL-3.0)
 

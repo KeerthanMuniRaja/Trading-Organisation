@@ -1,0 +1,104 @@
+"""TradingAgents decisions (TA-01): runs the open-source TradingAgents firm (Tauric Research, Apache-2.0) for our shares and
+writes its ratings to a decisions file. Data only: this process has no credential and never talks to our backend; the
+governed side (ta_bot.py) turns the file into proposals, under release control, review, scoring and fitness.
+
+Inside TradingAgents: market, news and fundamentals analysts; bull and bear researchers in debate; a trader; a risk team;
+and a portfolio manager who issues a five-tier rating (Buy, Overweight, Hold, Underweight, Sell). Its own data comes from
+Yahoo Finance and SEC EDGAR (no API key), and our local model serves every role through its OpenAI-compatible endpoint.
+
+Runs in its own environment, so our pinned research environment is never touched:
+  .local\\tradingagents-venv\\Scripts\\python.exe integrations\\tradingagents\\ta_decide.py --day 2026-10-23
+"""
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import sys
+
+ROOT = Path(__file__).resolve().parents[2]
+OUT = ROOT / '.local' / 'tradingagents' / 'decisions'
+SYMBOLS = ['AXISBANK', 'HDFCBANK', 'ICICIBANK', 'INFY', 'ITC', 'NTPC', 'RELIANCE', 'SBIN']
+RATINGS = ('BUY', 'OVERWEIGHT', 'HOLD', 'UNDERWEIGHT', 'SELL')
+ANALYSTS = ['market', 'news', 'fundamentals']
+SETTINGS = {'max_debate_rounds': 1, 'max_risk_discuss_rounds': 1, 'max_tool_rounds': 8, 'holding_period_days': 5, 'output_language': 'English'}
+
+
+def config_version():
+    """The settings that define how this member decides (its prompt version): our overrides and analyst choice."""
+    return hashlib.sha256(json.dumps({'settings': SETTINGS, 'analysts': ANALYSTS}, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def rating_of(decision):
+    """The five-tier rating from TradingAgents' decision (whatever its shape), or None when it states none clearly."""
+    text = json.dumps(decision, default=str) if not isinstance(decision, str) else decision
+    found = {r for r in RATINGS if re.search(rf'(?<![A-Z]){r}(?![A-Z])', text.upper())}
+    # 'OVERWEIGHT' and 'UNDERWEIGHT' are not 'BUY'/'SELL'; exactly one rating must remain
+    return found.pop() if len(found) == 1 else None
+
+
+def rationale_of(state):
+    for key in ('final_trade_decision', 'investment_plan', 'trader_investment_plan'):
+        value = (state or {}).get(key) if isinstance(state, dict) else None
+        if value:
+            return str(value)[:1500]
+    return ''
+
+
+def default_graph(env):
+    from tradingagents.default_config import DEFAULT_CONFIG
+    from tradingagents.graph.trading_graph import TradingAgentsGraph
+    import tradingagents
+    config = DEFAULT_CONFIG.copy()
+    model = env.get('HERMES_MODEL') or 'local-model'
+    config.update(SETTINGS, llm_provider='openai_compatible', backend_url=env.get('HERMES_MODEL_BASE_URL') or 'http://127.0.0.1:8080/v1',
+                  quick_think_llm=model, deep_think_llm=model,
+                  results_dir=str(ROOT / '.local' / 'tradingagents' / 'logs'), data_cache_dir=str(ROOT / '.local' / 'tradingagents' / 'cache'),
+                  memory_log_path=str(ROOT / '.local' / 'tradingagents' / 'memory.md'))
+    try:
+        graph = TradingAgentsGraph(selected_analysts=ANALYSTS, debug=False, config=config)
+    except TypeError:  # older signatures take the analysts only through the CLI
+        graph = TradingAgentsGraph(debug=False, config=config)
+    return graph, {'engine': 'tradingagents', 'engineVersion': getattr(tradingagents, '__version__', 'unknown'), 'model': model}
+
+
+def decide(day, symbols=SYMBOLS, graph=None, meta=None, env=os.environ, out=OUT, now=None):
+    """One decision per share for `day` (the last settled session). Resumable: a share already decided is not rerun."""
+    if graph is None:
+        graph, meta = default_graph(env)
+    out.mkdir(parents=True, exist_ok=True)
+    path = out / f'{day}.json'
+    record = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {
+        'day': day, **meta, 'configVersion': config_version(), 'settings': SETTINGS, 'analysts': ANALYSTS, 'decisions': {}}
+    for symbol in symbols:
+        if symbol in record['decisions'] and record['decisions'][symbol].get('rating'):
+            continue
+        started = (now or datetime.now(timezone.utc)).isoformat()
+        try:
+            state, decision = graph.propagate(f'{symbol}.NS', day)
+            record['decisions'][symbol] = {'rating': rating_of(decision), 'rationale': rationale_of(state), 'startedAt': started,
+                                           'finishedAt': datetime.now(timezone.utc).isoformat()}
+        except Exception as error:  # noqa: BLE001 - recorded, never guessed; a rerun retries the share
+            record['decisions'][symbol] = {'rating': None, 'error': f'{type(error).__name__}: {str(error)[:200]}', 'startedAt': started}
+        tmp = path.with_suffix('.tmp')
+        tmp.write_text(json.dumps(record, indent=2), encoding='utf-8')
+        os.replace(tmp, path)
+    return record
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--day', required=True, help='the last settled session (YYYY-MM-DD)')
+    parser.add_argument('--symbols', default=','.join(SYMBOLS))
+    args = parser.parse_args(argv)
+    record = decide(args.day, [s for s in args.symbols.split(',') if s in SYMBOLS])
+    print(json.dumps({'day': record['day'], 'ratings': {s: d.get('rating') for s, d in record['decisions'].items()},
+                      'errors': sum(1 for d in record['decisions'].values() if d.get('error'))}, indent=2))
+
+
+if __name__ == '__main__':
+    main()

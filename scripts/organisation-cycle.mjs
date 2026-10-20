@@ -79,6 +79,9 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
       { id: 'model-allocator-propose', cmd: PY, args: [desk('model_allocator.py'), '--bot', process.env.MODEL_ALLOCATOR_BOT, '--run', process.env.MODEL_ALLOCATOR_RUN,
         '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 },
     ] : [{ id: 'model-allocator', skip: 'no model allocator configured (MODEL_ALLOCATOR_RUN, MODEL_ALLOCATOR_BOT)' }]),
+    // TA-01: TradingAgents decides weekly (Fridays, model needed, in its own environment) and its member proposes from the
+    // decisions file every cycle; it trades only once it has earned a release on its own shadow record
+    ...taSteps({ withModel, root, desk }),
     // DEBATE-01: a bull and a bear argue every proposal before the review (model needed; two debater bots configured)
     withModel && process.env.DEBATE_BULL_BOT && process.env.DEBATE_BEAR_BOT
       ? { id: 'debate', cmd: PY, args: [desk('debate.py')], timeoutMs: 1_800_000, computeGate: { botId: process.env.DEBATE_BEAR_BOT } }
@@ -97,6 +100,20 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     { id: 'owner-digest', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'daily-digest.mjs')], timeoutMs: 120_000 },
   ];
   return steps;
+}
+
+/** The TradingAgents member's steps: decide (weekly, with the model, only if its environment is installed), then propose. */
+export function taSteps({ withModel, root, desk, now = Date.now(), env = process.env }) {
+  if (!env.TA_BOT_ID) return [{ id: 'tradingagents', skip: 'no TradingAgents member configured (TA_BOT_ID)' }];
+  const ta = p => join(root, 'integrations', 'tradingagents', p);
+  const venv = join(root, '.local', 'tradingagents-venv', ...(process.platform === 'win32' ? ['Scripts', 'python.exe'] : ['bin', 'python']));
+  const india = new Date(now + 330 * 60_000), weekday = india.getUTCDay(), day = india.toISOString().slice(0, 10);
+  const decideDay = Number(env.TA_WEEKDAY ?? 5);
+  const decide = !withModel ? { id: 'tradingagents-decide', skip: 'model steps not enabled (--with-model)' }
+    : weekday !== decideDay ? { id: 'tradingagents-decide', skip: `decides weekly (India weekday ${decideDay})` }
+      : { id: 'tradingagents-decide', cmd: venv, args: [ta('ta_decide.py'), '--day', day], timeoutMs: 6 * 3_600_000, requires: venv,
+        computeGate: { botId: env.TA_BOT_ID } };
+  return [decide, { id: 'tradingagents-propose', cmd: PY, args: [ta('ta_bot.py'), 'all', '--source', env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 }];
 }
 
 /** The last JSON value printed by a step (an object or an array), or null. */

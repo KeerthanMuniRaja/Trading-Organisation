@@ -24,7 +24,10 @@ const reportSchema = z.object({
 }).strict()
   .refine(v => v.wins + v.losses <= v.judged, 'Wins and losses cannot exceed judged decisions')
   .refine(v => v.periodFrom <= v.periodTo, 'Period must start before it ends');
-const liveSchema = z.object({ botId: id, releaseId: z.uuid().optional() }).strict();
+// `model` (without a release) judges the calls the bot made under that model before it had a release, e.g. a new member's
+// shadow calls, so its first release can be evaluated on its own live record (the report is named with that model)
+const liveSchema = z.object({ botId: id, releaseId: z.uuid().optional(), model: z.string().trim().min(1).max(120).optional() }).strict()
+  .refine(v => !(v.releaseId && v.model), 'Give a release or a model, not both');
 const querySchema = z.object({ botId: id, limit: z.number().int().min(1).max(100).default(50) }).strict();
 
 /** One-sided exact binomial tail: P(X >= k) for X ~ Binomial(n, 1/2), computed in log space. */
@@ -87,7 +90,7 @@ export class BotFitness {
     permit(actor, 'owner', 'evaluator');
     const input = parse(liveSchema, raw);
     return this.db.command(actor, 'bot-fitness-live', key, input, async tx => {
-      let model: string | undefined, label = 'all releases';
+      let model: string | undefined = input.model, label = input.model ? `model ${input.model} (shadow, before release)` : 'all releases';
       if (input.releaseId) {
         const release = (await tx.query('SELECT bot_id,version,model FROM bot_releases WHERE id=$1', [input.releaseId])).rows[0];
         requireThat(release && release.bot_id === input.botId, 'Release not found for this bot', 404);
@@ -96,7 +99,8 @@ export class BotFitness {
       const calls = (await tx.query(`SELECT COUNT(*)::int AS n,COUNT(*) FILTER (WHERE o.correct)::int AS right,
           to_char(MIN(s.created_at) AT TIME ZONE 'UTC','YYYY-MM-DD') AS first,to_char(MAX(o.created_at) AT TIME ZONE 'UTC','YYYY-MM-DD') AS last
         FROM trade_signals s JOIN trade_signal_outcomes o ON o.signal_id=s.id
-        WHERE s.bot_id=$1 AND s.action IN ('enter-long','exit') AND ($2::uuid IS NULL OR s.release_id=$2)`, [input.botId, input.releaseId ?? null])).rows[0]!;
+        WHERE s.bot_id=$1 AND s.action IN ('enter-long','exit') AND ($2::uuid IS NULL OR s.release_id=$2)
+          AND ($3::text IS NULL OR (s.model=$3 AND s.release_id IS NULL))`, [input.botId, input.releaseId ?? null, input.model ?? null])).rows[0]!;
       requireThat(calls.n > 0, 'No scored live paper calls yet', 409);
       return this.file(tx, actor, { botId: input.botId, role: 'trader', baseline: 'cash', testName: `live-paper ${label}`,
         periodFrom: calls.first, periodTo: calls.last, judged: calls.n, wins: calls.right, losses: calls.n - calls.right, failed: 0, model });
