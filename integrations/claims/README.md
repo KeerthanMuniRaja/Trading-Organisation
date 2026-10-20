@@ -88,6 +88,10 @@ The backend independently enforces:
 
 Recipient bots get the lessons directly. Every other bot can find them through the existing knowledge discovery and transfer.
 
+Optional `"analystBotId": "<bot id>"` names a bot that stands for the claim analyst. Its model calls then count against that bot's department compute budget:
+- **Before:** the step asks `POST /v1/compute/allowance`, and skips its model calls for the day once the budget is used.
+- **After:** it reports the tokens it used to `/v1/compute/usage/reports`.
+
 **Run** (owner-started, finite sessions; the backend and the local model must be running, and `.env` must hold exactly one researcher and one evaluator credential):
 
 ```cmd

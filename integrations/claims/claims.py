@@ -358,17 +358,21 @@ def run_extract(observations, llm, run_dir, model, max_calls):
     state = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {'model': model, 'contractVersion': CONTRACT_VERSION, 'results': {}}
     if state['model'] != model or state['contractVersion'] != CONTRACT_VERSION:
         raise ValueError('This run used a different model or contract; choose a new run name')
-    calls = 0
+    calls, prompt_tokens, completion_tokens = 0, 0, 0
     for obs in observations:
         if obs['evidenceId'] in state['results']:
             continue
         if calls >= max_calls:
             break
-        state['results'][obs['evidenceId']] = extract_one(llm, obs)
+        record = state['results'][obs['evidenceId']] = extract_one(llm, obs)
         calls += 1
+        used = record.get('tokens') or [0, 0]
+        prompt_tokens += int(used[0] or 0)
+        completion_tokens += int(used[1] or 0)
         save(path, state)
     results = state['results'].values()
-    return {'observations': len(state['results']), 'callsThisRun': calls, 'remaining': sum(o['evidenceId'] not in state['results'] for o in observations),
+    return {'observations': len(state['results']), 'callsThisRun': calls, 'tokensThisRun': [prompt_tokens, completion_tokens],
+            'remaining': sum(o['evidenceId'] not in state['results'] for o in observations),
             'failedExtractions': sum(r['outcome'] == 'failed' for r in results),
             'accepted': sum(len(r['accepted']) for r in results), 'rejected': sum(len(r['rejected']) for r in results)}
 
