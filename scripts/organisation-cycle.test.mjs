@@ -147,6 +147,11 @@ test('the plan finds feed configs, keeps model steps off by default, and HTTP st
     assert.deepEqual(plan.filter(s => s.id.startsWith('news-')).map(s => s.id), ['news-wire', 'news-triage']); // only enabled feeds, then triage
     assert.equal(plan.find(s => s.id === 'claims-and-fact-check').skip, 'model steps not enabled (--with-model)');
     assert.ok((await planSteps({ root: dir, withModel: true })).find(s => s.id === 'claims-and-fact-check').cmd);
+    // the academy and lifecycle cycles run daily, each with only its own role (they answer 'disabled' until enabled)
+    const academy = plan.filter(s => ['academy-exams', 'lifecycle', 'research-dispatch', 'memory-research', 'memory-review'].includes(s.id));
+    assert.deepEqual(academy.map(s => [s.id, s.role]), [['academy-exams', 'evaluator'], ['lifecycle', 'evaluator'], ['research-dispatch', 'evaluator'],
+      ['memory-research', 'researcher'], ['memory-review', 'evaluator']]);
+    assert.ok(plan.findIndex(s => s.id === 'lifecycle') < plan.findIndex(s => s.id === 'eod-trading'));
     const seen = [];
     const env = { PRINCIPALS_JSON: JSON.stringify([{ id: 'o', role: 'owner', token: 'owner-secret' }, { id: 'e', role: 'evaluator', token: 'eval-secret' }]) };
     await runHttp({ id: 'paper-snapshot', kind: 'http', method: 'POST', path: '/v1/paper/performance/snapshots', role: 'evaluator' }, env,

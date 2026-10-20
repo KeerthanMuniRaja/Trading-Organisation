@@ -18,6 +18,13 @@ The organisation now manages itself like a firm, with the owner as CEO:
 - **Fact-checking.** Verified claims are recorded in the backend claim registry, with fact keys.
 - **Holidays.** Readiness reads an owner-supplied `.local/nse-holidays.json`.
 - **CI.** `.github/workflows/verify.yml` runs the full gate on GitHub. It runs for the first time on the next push.
+- **Later the same day:**
+  - **R&D bots:** `rnd_bot.py` onboards R&D-born bots (release, fitness, evaluation) and runs them monthly, gated by their release. `npm run bot-credential -- --bot <id> --yes` gives a bot its trader credential, and the agenda has a `budget` item.
+  - **Partial fills:** at most 1% of the session's volume (`maxQuantity` on execution).
+  - **Budgets:** department ceilings are enforced, and `POST /v1/compute/allowance` gates the model allocator's model step.
+  - **Learning:** the cycle advances open learning workflows (with the model).
+  - **Academy:** exams, lifecycle, dispatch, experiments and memory cycles run daily, and stay disabled until their policies are on.
+  - **Credential backups:** `npm run env:prune` prunes old `.env` backups (owner, `--yes`).
 - **On the next backend start:** migration 051 applies. Take a backup first.
 
 ### State on 14 October 2026

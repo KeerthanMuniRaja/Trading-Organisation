@@ -42,6 +42,13 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
       timeoutMs: 120_000, requires: join(root, '.local', 'claims', 'auto', 'verified-headlines.json') },
     { id: 'forward-daily-rules', cmd: PY, args: [desk('daily.py'), 'forward', '--name', 'forward-from-2026-10-09'], timeoutMs: 300_000 },
     { id: 'forward-portfolio', cmd: PY, args: [desk('portfolio_daily.py'), 'forward', '--name', 'portfolio-forward-from-2026-10-09'], timeoutMs: 300_000 },
+    // ORG-03: the academy and lifecycle run every day. Each backend cycle answers 'disabled' until the owner enables its
+    // policy, so these cost nothing until then: exams and remediation for students, lifecycle (births from blueprints,
+    // school to college, reputation, retirement requests), research dispatch, registered experiments, reviewed memory.
+    ...[['academy-exams', '/v1/skills/cycles', 'evaluator'], ['academy-remediation', '/v1/skills/remediation/cycles', 'evaluator'],
+      ['lifecycle', '/v1/lifecycle/cycles', 'evaluator'], ['research-dispatch', '/v1/dispatch/cycles', 'evaluator'],
+      ['experiment-reviews', '/v1/development/experiments/cycles', 'evaluator'], ['memory-research', '/v1/learning/cycles', 'researcher'],
+      ['memory-review', '/v1/learning/cycles', 'evaluator']].map(([id, path, role]) => ({ id, kind: 'http', method: 'POST', path, role })),
     // RND-01: R&D screens its fixed catalogue of strategy ideas every day (no model); it turns a robust one into verified
     // evidence and a birth proposal for the owner's agenda only once the owner named an approved research source
     { id: 'rnd-scout', cmd: PY, args: [desk('rnd_scout.py'), ...(process.env.RND_SOURCE

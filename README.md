@@ -72,10 +72,12 @@ All amounts are integer paise in balanced double-entry journals ([financial mode
 | Stage | Steps |
 | --- | --- |
 | Check | Health, then market-data refresh (settled bars only; moves over 20% wait for the owner's confirmation) |
-| Learn | News feeds, then relevance triage, then claims and fact-check (needs the model), then chain links |
-| Test | Forward tests, then the R&D scout's screen of strategy ideas |
-| Propose | Rule bot, then the model allocator (needs the model) |
-| Trade | Review at the verified close, fill at the next verified open, then score signals and live fitness |
+| Learn | News feeds, then relevance triage, then claims and fact-check (needs the model), then learning workflows (needs the model), then chain links |
+| Test | Forward tests |
+| Academy | Exams, remediation, lifecycle (school to college, reputation, retirement requests), research dispatch, experiments and reviewed memory. Each does nothing until you enable its policy |
+| Research | The R&D scout's screen of strategy ideas |
+| Propose | Rule bot, then R&D-born bots (onboarded and gated by their release), then the model allocator (needs the model) |
+| Trade | Review at the verified close, fill at the next verified open (at most 1% of that session's volume), then score signals and live fitness |
 | Manage | After the paper snapshot: the management review of every working bot (recommendations for the owner agenda) |
 | Report | Paper snapshot, then alerts, then the owner digest |
 
