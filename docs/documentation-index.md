@@ -40,6 +40,7 @@ The preferred experimental model is constrained Qwen3.5-4B Q4_K_M on the direct 
 - [Market regime and adopted trading-skill methods](market-regime.md)
 - [World news](world-news.md)
 - [Scenario panel](scenario-panel.md)
+- [Intraday monitor (real-time testing)](intraday-monitor.md)
 - [Relevance triage](evidence-triage.md)
 - [Evidence claims and the fact-checker](evidence-claims.md)
 - [Reference review: TradingAgents and FinceptTerminal](reference-review-2026-10-20.md)

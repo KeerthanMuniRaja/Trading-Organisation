@@ -21,6 +21,8 @@ function localLines(f) {
   if (research) out.push(`Research  ${research.ideasTried} ideas on ${research.from}..${research.through}: ${research.passing.length ? 'passing ' + research.passing.join(', ') : 'none passes'}`
     + `; best ${research.best[0]?.name ?? '?'}${research.lowestRisk ? `; lowest risk ${research.lowestRisk.name} (worst fall ${research.lowestRisk.maxDrawdownPct}%)` : ''}`
     + `${f.knowledge.unknown?.length ? `; ${f.knowledge.unknown.length} unknown cycle problem(s)` : ''}`);
+  if (f.intraday) out.push(`Intraday  ${f.intraday.mode} ${f.intraday.day}: basket ${f.intraday.final.basketMovePct}%, positions ${f.intraday.final.lossPct}%; `
+    + `events: ${f.intraday.events.map(e => e.rule + ':' + e.subject).join(', ') || 'none'}`);
   if (f.regime) out.push(`Regime    ${f.regime.risk} on ${f.regime.date} (${f.regime.distributionDays} distribution days; ${f.regime.breadth200d ?? '?'}/${f.regime.shares} above 200-day); advisory ceiling ${f.regime.exposureCeilingPct}%`);
   if (f.world && !f.world.error) {
     const w = f.world, s = w.stories;
@@ -104,6 +106,7 @@ export async function gather(env = process.env, { fetchImpl = fetch, root = ROOT
   facts.world = await worldSummary({ root, now });
   facts.regime = await marketRegime(root);
   facts.knowledge = await knowledgeSummary(root, now);
+  facts.intraday = await json(join(root, '.local', 'intraday', 'latest.json'));
   if (facts.world?.coverage?.advice?.length && facts.digest) facts.digest.needsOwner = [...(facts.digest.needsOwner ?? []), ...facts.world.coverage.advice];
   return facts;
 }

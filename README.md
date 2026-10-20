@@ -110,7 +110,8 @@ The daily routine and recovery steps are in the [live testing runbook](docs/live
 | Scenario panel, debate desk, TradingAgents | Built and tested, waiting for the model |
 | Model allocator, learning loop | Built and tested, waiting for the model |
 | Departments, births, hackathons, compute budgets | Backend rules tested, not used by the cycle yet |
-| Live money, partial fills, intraday trading | Not built (paper only, by design) |
+| Intraday monitor (mark-to-market, warnings, crash brake) | Done and tested on 38 replayed days; a live feed adapter waits for the owner's broker choice |
+| Live money, intraday trading | Not built (paper only, by design) |
 
 **Still needs the owner:**
 - the local model for the learning loop and the allocator;
@@ -178,6 +179,7 @@ In the full run on 20 October 2026, 636 of 637 tests passed. The one failure was
 | [Paper performance](docs/paper-performance.md), [corporate actions](docs/corporate-actions.md) | P&L, the basket benchmark, splits and dividends |
 | [R&D scout](docs/rnd-scout.md), [research methods](docs/research-methods.md), [market regime](docs/market-regime.md) | How ideas are tested, what 10 years said, the knowledge base and the problem playbook |
 | [World news](docs/world-news.md), [scenario panel](docs/scenario-panel.md) | Sources by country, stories, world drivers and the persona panel |
+| [Intraday monitor](docs/intraday-monitor.md) | Real-time testing: live mark-to-market, crash brake, replay of recorded days; what a live feed still needs |
 | [Vision and principles](docs/knowledge-base/01-vision-and-principles.md), [bot lifecycle](docs/knowledge-base/11-research-development-and-bot-lifecycle.md) | The organisation we are building |
 | [Architecture](docs/architecture.md), [API](docs/api.md), [security](docs/security-and-operations.md) | Services, roles and authority boundaries |
 | [Documentation index](docs/documentation-index.md) | Every document, including the dated version history |
