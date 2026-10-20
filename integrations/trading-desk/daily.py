@@ -31,6 +31,8 @@ import datasets  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 DAILY = ROOT / '.local' / 'trading-desk' / 'daily'
+RESEARCH = ROOT / '.local' / 'trading-desk' / 'daily-research'   # NIFTY 50 files for research only, never traded
+UNIVERSES = {'desk': (lambda: datasets.UNIVERSE, DAILY), 'nifty50': (lambda: datasets.NIFTY50, RESEARCH)}
 TOURNAMENTS = ROOT / '.local' / 'trading-desk' / 'daily-tournaments'
 CAPITAL = 5_000_000           # Rs 50,000 notional per share, so the fixed depository charge is realistic
 SLIPPAGE_BPS = 5
@@ -55,7 +57,7 @@ def sell_costs(value):
 
 # ---------- data ----------
 def validate(dataset):
-    if (dataset.get('schemaVersion') != 1 or dataset.get('symbol') not in datasets.UNIVERSE or dataset.get('interval') != '1d'
+    if (dataset.get('schemaVersion') != 1 or dataset.get('symbol') not in datasets.KNOWN or dataset.get('interval') != '1d'
             or dataset.get('priceBasis') != 'adjusted' or dataset.get('source') not in ('yahoo-via-yfinance', 'synthetic-test')):
         raise ValueError('INVALID_DAILY_METADATA')
     bars = dataset.get('bars')
@@ -144,9 +146,10 @@ def accepted_moves(cache=DAILY):
 def accept_move(symbol, day, cache=DAILY):
     """Owner step after a refresh was kept back for an extreme move: confirm the move is real (results, news, a crash)
     so the next refresh is accepted. Only that one session is confirmed."""
-    if symbol not in datasets.UNIVERSE:
+    if symbol not in datasets.KNOWN:
         raise ValueError('SYMBOL_NOT_IN_UNIVERSE')
     date.fromisoformat(day)
+    cache.mkdir(parents=True, exist_ok=True)
     moves = accepted_moves(cache)
     moves[symbol] = sorted(set(moves.get(symbol, [])) | {day})
     (cache / 'accepted-moves.json').write_text(json.dumps(moves, indent=2), encoding='utf-8')
@@ -435,19 +438,22 @@ def main(argv=None):
     f = sub.add_parser('fetch')
     f.add_argument('--years', type=int, default=5, choices=range(2, 11))
     f.add_argument('--refresh', action='store_true', help='Re-download cached shares to include the newest days')
+    f.add_argument('--universe', choices=sorted(UNIVERSES), default='desk', help='nifty50: research-only files in daily-research')
     for name in ('run', 'finalise', 'register', 'forward'):
         p = sub.add_parser(name)
         p.add_argument('--name', required=True)
     a = sub.add_parser('accept-move', help='Owner: confirm a large move the steward kept back is real (checked against the news)')
     a.add_argument('--symbol', required=True, help='e.g. RELIANCE.NS')
     a.add_argument('--date', required=True, help='The session date of the move, YYYY-MM-DD')
+    a.add_argument('--universe', choices=sorted(UNIVERSES), default='desk')
     args = parser.parse_args(argv)
     symbols = sorted(datasets.UNIVERSE)
     if args.command == 'fetch':
-        print(json.dumps(fetch(symbols, args.years, refresh=args.refresh), indent=2))
+        members, cache = UNIVERSES[args.universe]
+        print(json.dumps(fetch(sorted(members()), args.years, cache=cache, refresh=args.refresh), indent=2))
         return
     if args.command == 'accept-move':
-        print(json.dumps({'symbol': args.symbol, 'acceptedMoves': accept_move(args.symbol, args.date)}))
+        print(json.dumps({'symbol': args.symbol, 'acceptedMoves': accept_move(args.symbol, args.date, UNIVERSES[args.universe][1])}))
         return
     if args.command in ('register', 'forward'):
         if not re.fullmatch(r'[A-Za-z0-9_-]{1,60}', args.name):

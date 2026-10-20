@@ -150,13 +150,38 @@ def monthly(table, dates, rules, through=None):
     return [r for r in rows if through is None or r['month'] <= through]
 
 
-def scout(through=None, cache=daily.DAILY, ledger_path=None):
-    """Every idea's results, best first. `through` (YYYY-MM) limits the months, so a result can be recomputed later."""
-    dates, table = pd.aligned(daily.load(sorted(daily.datasets.UNIVERSE), cache))
+RANDOM_RULES = 100   # random pickers of 3 shares a month: the baseline an edge has to beat (vectorbt)
+
+
+def full_history(all_bars, slack_days=31):
+    """Shares whose history starts with the earliest one (within a month); later listings or joiners are left out, so
+    every rule is judged on the same months. Returns (kept bars, {left-out symbol: first date})."""
+    if not all_bars:
+        return {}, {}
+    from datetime import date
+    first = {s: b[0]['date'] for s, b in all_bars.items()}
+    earliest = min(date.fromisoformat(d) for d in first.values())
+    kept = {s: b for s, b in all_bars.items() if (date.fromisoformat(first[s]) - earliest).days <= slack_days}
+    return kept, {s: d for s, d in first.items() if s not in kept}
+
+
+def scout(through=None, cache=daily.DAILY, ledger_path=None, universe='desk', randoms=RANDOM_RULES):
+    """Every idea's results, best first. `through` (YYYY-MM) limits the months, so a result can be recomputed later.
+    universe 'nifty50' screens the research-only NIFTY 50 files (never traded; survivorship-biased)."""
+    import research_checks as rc
+    members = daily.datasets.UNIVERSE if universe == 'desk' else daily.datasets.NIFTY50
+    loaded, excluded = full_history(daily.load(sorted(members), cache)) if universe != 'desk' else (daily.load(sorted(members), cache), {})
+    dates, table = pd.aligned(loaded)
     tried = entries(ledger_path)
-    rows = monthly(table, dates, {name: e[3] for name, e in tried.items()}, through)
+    rules = {name: e[3] for name, e in tried.items()}
+    rows = monthly(table, dates, rules, through)
     if not rows:
         raise ValueError('Not enough daily history for the catalogue')
+    last_index = max(i for i, d in enumerate(dates) if d[:7] <= rows[-1]['month'])
+    checks = rc.check_rules(rules, table, dates, [i for i in rc.decision_days(dates, START) if i <= last_index])
+    pickers = {f'random-{k}': rc.random_rule(k, 3) for k in range(randoms)}
+    random_rows = monthly(table, dates, pickers, through) if randoms else []
+    random_avg = sorted(statistics.fmean(r['rules'][n] - r['basketPct'] for r in random_rows) for n in pickers) if randoms else []
     data = hashlib.sha256(json.dumps([[r['month'], round(r['basketPct'], 6)] for r in rows]).encode()).hexdigest()[:16]
     threshold = ALPHA / len(tried)  # every idea ever tried, invented ones included
     half = len(rows) // 2
@@ -166,18 +191,33 @@ def scout(through=None, cache=daily.DAILY, ledger_path=None):
         ahead, behind = sum(e > 0 for e in excess), sum(e < 0 for e in excess)
         halves = [[sum(e > 0 for e in part), sum(e < 0 for e in part)] for part in (excess[:half], excess[half:])]
         p = sign_p(ahead, behind)
+        lookahead = checks[name]['lookahead']
         reasons = ([f'only {ahead + behind} months differ from the basket'] if ahead + behind < MIN_MONTHS else []) \
             + ([f'p={p:.4f} is not below {threshold:.4f}'] if p >= threshold else []) \
-            + ([f'not ahead in both halves ({halves[0][0]}/{halves[0][1]}, {halves[1][0]}/{halves[1][1]})'] if any(a <= b for a, b in halves) else [])
+            + ([f'not ahead in both halves ({halves[0][0]}/{halves[0][1]}, {halves[1][0]}/{halves[1][1]})'] if any(a <= b for a, b in halves) else []) \
+            + ([f'lookahead bias: its decision on {lookahead[0]} changes when later days are removed'] if lookahead else [])
+        average = sum(excess) / len(excess)
         out.append({'name': name, 'description': description, 'specialty': specialty, 'method': method, 'alreadyServedBy': served,
-                    'months': len(rows), 'ahead': ahead, 'behind': behind, 'averageExcessPct': round(sum(excess) / len(excess), 3),
-                    'pValue': round(p, 6), 'halves': halves, 'passes': not reasons, 'reasons': reasons, 'spec': spec, 'source': source})
+                    'months': len(rows), 'ahead': ahead, 'behind': behind, 'averageExcessPct': round(average, 3),
+                    'pValue': round(p, 6), 'halves': halves, 'passes': not reasons, 'reasons': reasons, 'spec': spec, 'source': source,
+                    'stats': rc.stats([r['rules'][name] for r in rows], excess),
+                    'beatsRandomPct': rc.percentile(average, random_avg), 'warmupSensitive': bool(checks[name]['warmup'])})
     out.sort(key=lambda c: (c['pValue'], c['name']))
     last = rows[-1]['month']
-    return {'version': VERSION, 'fingerprint': fingerprint(ledger_path), 'dataFingerprint': data, 'from': rows[0]['month'], 'through': last,
-            'ideasTried': len(tried), 'bonferroniThreshold': round(threshold, 6), 'oneWayCostPct': ONE_WAY_COST_PCT,
-            'publishedAt': f'{last}-28T10:30:00+00:00', 'candidates': out,
-            'note': 'Seen history, net of costs, against the equal-weight basket; a screen for ideas, not proof. Live paper fitness decides.'}
+    wf = rc.walk_forward(rows, list(tried))
+    wf['pValue'] = round(sign_p(wf['ahead'], wf['behind']), 6)
+    report = {'version': VERSION, 'fingerprint': fingerprint(ledger_path), 'dataFingerprint': data, 'from': rows[0]['month'], 'through': last,
+              'ideasTried': len(tried), 'bonferroniThreshold': round(threshold, 6), 'oneWayCostPct': ONE_WAY_COST_PCT,
+              'publishedAt': f'{last}-28T10:30:00+00:00', 'candidates': out,
+              'basketStats': rc.stats([r['basketPct'] for r in rows], [0.0] * len(rows)),
+              'randomBaseline': {'rules': len(random_avg), 'keep': 3, 'medianExcessPct': round(statistics.median(random_avg), 3) if random_avg else None,
+                                 'p90ExcessPct': round(random_avg[int(0.9 * (len(random_avg) - 1))], 3) if random_avg else None},
+              'walkForward': wf,
+              'note': 'Seen history, net of costs, against the equal-weight basket; a screen for ideas, not proof. Live paper fitness decides.'}
+    if universe != 'desk':
+        report.update({'universe': universe, 'shares': sorted(table), 'leftOut': excluded,
+                       'warning': 'RESEARCH ONLY, never traded. Today\'s NIFTY 50 members over past years: survivorship bias flatters every rule.'})
+    return report
 
 
 def evidence_text(report, c):
@@ -282,7 +322,19 @@ def main(argv=None):
     parser.add_argument('--department', default=os.environ.get('RND_DEPARTMENT', 'desk'))
     parser.add_argument('--source', default=os.environ.get('RND_SOURCE', 'desk-research'))
     parser.add_argument('--invent', choices=['model', 'explorer'], help='first let R&D invent new ideas (RND-03): the local model, or close variants of the best')
+    parser.add_argument('--universe', choices=['desk', 'nifty50'], default='desk', help='nifty50: research-only screen, never proposes')
     args = parser.parse_args(argv)
+    if args.universe != 'desk':
+        if args.propose or args.invent:
+            raise SystemExit('The research universe only screens: no proposals or invented ideas from it')
+        report = scout(args.through, daily.RESEARCH, universe=args.universe)
+        OUT.mkdir(parents=True, exist_ok=True)
+        batch.save(OUT / f"scout-{args.universe}-{report['through']}.json", report)
+        print(json.dumps({'universe': args.universe, 'shares': len(report['shares']), 'leftOut': len(report['leftOut']), 'from': report['from'],
+                          'through': report['through'], 'passing': [c['name'] for c in report['candidates'] if c['passes']],
+                          'best': [{k: c[k] for k in ('name', 'ahead', 'behind', 'averageExcessPct', 'pValue', 'beatsRandomPct')} for c in report['candidates'][:5]],
+                          'walkForward': {k: report['walkForward'][k] for k in ('outOfSampleMonths', 'ahead', 'behind', 'averageExcessPct', 'pValue')}}, indent=2))
+        return
     invented = invent(args.invent, args.through) if args.invent else None
     report = scout(args.through)
     OUT.mkdir(parents=True, exist_ok=True)

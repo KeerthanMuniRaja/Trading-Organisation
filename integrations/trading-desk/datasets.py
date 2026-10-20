@@ -25,6 +25,26 @@ UNIVERSE = {
     'RELIANCE.NS': 'Reliance Industries', 'HDFCBANK.NS': 'HDFC Bank', 'ICICIBANK.NS': 'ICICI Bank',
     'INFY.NS': 'Infosys', 'SBIN.NS': 'State Bank of India', 'ITC.NS': 'ITC', 'AXISBANK.NS': 'Axis Bank', 'NTPC.NS': 'NTPC',
 }
+# RESEARCH ONLY (never traded): the NIFTY 50 constituents after the reconstitution effective 30 Sep 2026, as listed on
+# Wikipedia's NIFTY 50 page (read 20 Oct 2026; it cites NSE Indices' press release of 10 Aug 2026). Today's members over
+# past years carry survivorship bias: companies that fell out of the index are missing, so results flatter every rule.
+RESEARCH_UNIVERSE_AS_OF = '2026-09-30'
+NIFTY50 = {
+    'ADANIENT.NS': 'Adani Enterprises', 'ADANIPORTS.NS': 'Adani Ports & SEZ', 'APOLLOHOSP.NS': 'Apollo Hospitals',
+    'ASIANPAINT.NS': 'Asian Paints', 'AXISBANK.NS': 'Axis Bank', 'BAJAJ-AUTO.NS': 'Bajaj Auto', 'BAJFINANCE.NS': 'Bajaj Finance',
+    'BAJAJFINSV.NS': 'Bajaj Finserv', 'BEL.NS': 'Bharat Electronics', 'BHARTIARTL.NS': 'Bharti Airtel', 'BSE.NS': 'BSE',
+    'CIPLA.NS': 'Cipla', 'COALINDIA.NS': 'Coal India', 'DRREDDY.NS': "Dr. Reddy's Laboratories", 'EICHERMOT.NS': 'Eicher Motors',
+    'ETERNAL.NS': 'Eternal', 'GRASIM.NS': 'Grasim Industries', 'HCLTECH.NS': 'HCLTech', 'HDFCBANK.NS': 'HDFC Bank',
+    'HDFCLIFE.NS': 'HDFC Life', 'HINDALCO.NS': 'Hindalco Industries', 'HINDUNILVR.NS': 'Hindustan Unilever', 'ICICIBANK.NS': 'ICICI Bank',
+    'INDIGO.NS': 'IndiGo', 'INFY.NS': 'Infosys', 'ITC.NS': 'ITC', 'JIOFIN.NS': 'Jio Financial Services', 'JSWSTEEL.NS': 'JSW Steel',
+    'KOTAKBANK.NS': 'Kotak Mahindra Bank', 'LT.NS': 'Larsen & Toubro', 'M&M.NS': 'Mahindra & Mahindra', 'MARUTI.NS': 'Maruti Suzuki',
+    'MAXHEALTH.NS': 'Max Healthcare', 'NESTLEIND.NS': 'Nestle India', 'NTPC.NS': 'NTPC', 'ONGC.NS': 'Oil and Natural Gas Corporation',
+    'POWERGRID.NS': 'Power Grid', 'RELIANCE.NS': 'Reliance Industries', 'SBILIFE.NS': 'SBI Life Insurance', 'SHRIRAMFIN.NS': 'Shriram Finance',
+    'SBIN.NS': 'State Bank of India', 'SUNPHARMA.NS': 'Sun Pharma', 'TCS.NS': 'Tata Consultancy Services', 'TATACONSUM.NS': 'Tata Consumer Products',
+    'TMPV.NS': 'Tata Motors Passenger Vehicles', 'TATASTEEL.NS': 'Tata Steel', 'TECHM.NS': 'Tech Mahindra', 'TITAN.NS': 'Titan Company',
+    'TRENT.NS': 'Trent', 'ULTRACEMCO.NS': 'UltraTech Cement',
+}
+KNOWN = {**UNIVERSE, **NIFTY50}  # files the desk may read; trading still uses UNIVERSE only
 
 
 def validate(dataset):

@@ -220,7 +220,8 @@ SYSTEM = ('You are the research department of a paper-trading organisation that 
           'monthly allocation rules. You may only answer with rule specifications in the given JSON schema; you never write '
           'code. Every idea you propose is recorded forever and raises the statistical bar for all ideas, so propose only '
           f'ideas you think are genuinely different and promising, at most {MAX_NEW_PER_MONTH}. The results you see are on '
-          'history that has already been used (seen data): do not simply copy the best result.')
+          'history that has already been used (seen data): do not simply copy the best result. Read the lessons: they are '
+          'what the organisation already learned about these methods, including what failed.')
 SCHEMA = {'type': 'object', 'additionalProperties': False, 'required': ['ideas'], 'properties': {
     'ideas': {'type': 'array', 'maxItems': MAX_NEW_PER_MONTH, 'items': {'anyOf': [
         {'type': 'object', 'additionalProperties': False, 'required': ['family', *fields, 'filter', 'why'], 'properties': {
@@ -229,11 +230,24 @@ SCHEMA = {'type': 'object', 'additionalProperties': False, 'required': ['ideas']
         for family, fields in GRAMMAR.items()]}}}}
 
 
+KNOWLEDGE = Path(__file__).resolve().parent / 'knowledge' / 'methods.json'
+
+
+def lessons(path=KNOWLEDGE):
+    """What the organisation has learned about methods (knowledge/methods.json): one line per card, for the model."""
+    if not Path(path).exists():
+        return []
+    return [{'method': c['id'], 'result': c['result'], 'lesson': c['lesson']} for c in json.loads(Path(path).read_text(encoding='utf-8'))['cards']]
+
+
 def invent(llm, results):
-    """Asks the model for new ideas, given the results so far. The schema confines the answer to the grammar, and every
-    idea is checked again here; the reason is kept with the idea. Returns specs, each with its stated reason."""
-    brief = [{'name': r['name'], 'spec': r.get('spec'), 'ahead': r['ahead'], 'behind': r['behind'], 'pValue': r['pValue']} for r in results][:40]
-    value, _ = llm(SYSTEM, json.dumps({'resultsSoFar': brief, 'grammar': {k: {f: list(b) for f, b in v.items()} for k, v in GRAMMAR.items()}}), SCHEMA)
+    """Asks the model for new ideas, given the results so far and the organisation's method lessons. The schema confines
+    the answer to the grammar, and every idea is checked again here; the reason is kept with the idea. Returns specs,
+    each with its stated reason."""
+    brief = [{'name': r['name'], 'spec': r.get('spec'), 'ahead': r['ahead'], 'behind': r['behind'], 'pValue': r['pValue'],
+              **({'beatsRandomPct': r['beatsRandomPct']} if r.get('beatsRandomPct') is not None else {})} for r in results][:40]
+    value, _ = llm(SYSTEM, json.dumps({'resultsSoFar': brief, 'lessons': lessons(),
+                                       'grammar': {k: {f: list(b) for f, b in v.items()} for k, v in GRAMMAR.items()}}), SCHEMA)
     out = []
     for idea in (value or {}).get('ideas', [])[:MAX_NEW_PER_MONTH]:
         why = str(idea.get('why', ''))[:300] if isinstance(idea, dict) else ''

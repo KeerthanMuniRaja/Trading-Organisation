@@ -9,6 +9,7 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { diagnose } from './playbook.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // the research environment's Python: Scripts\python.exe on Windows, bin/python on Linux (WSL, a VM, the container);
@@ -298,11 +299,16 @@ export async function runCycle({ steps, journalPath, streaksPath = join(dirname(
       outcome = refused ? { status: 'failed', reason: 'release gate: ' + refused }
         : spent ? { status: 'skipped', reason: 'compute budget: ' + spent } : await attempt(step, { run, http, sleep });
     }
+    // OPS-02: a known problem gets its cause, safe fix and who decides, in the journal, the escalation and the console
+    if (outcome.status === 'failed' || outcome.status === 'degraded') {
+      const known = diagnose(step.id, `${outcome.reason ?? ''}\n${outcome.summary ?? ''}`);
+      if (known) outcome.playbook = known;
+    }
     if (outcome.status === 'failed') {
       const streak = (streaks[step.id]?.failures ?? 0) + 1;
       streaks[step.id] = { failures: streak, escalated: streaks[step.id]?.escalated ?? false };
       if (streak >= ESCALATE_AFTER && !streaks[step.id].escalated) {
-        outcome.escalated = await escalateStep(step, streak, outcome.summary);
+        outcome.escalated = await escalateStep(step, streak, outcome.summary + (outcome.playbook ? ` | Known problem ${outcome.playbook.id} (${outcome.playbook.decidedBy}): ${outcome.playbook.fix}` : ''));
         streaks[step.id].escalated = true;
       }
     } else if (outcome.status === 'done' || outcome.status === 'degraded') streaks[step.id] = { failures: 0, escalated: false };
@@ -324,6 +330,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const journalPath = join(ROOT, '.local', 'cycles', new Date().toISOString().slice(0, 10) + '.json');
   const results = await runCycle({ steps, journalPath, force: args.has('--force') });
   for (const r of results) console.log(`${r.status.padEnd(8)} ${r.id}${r.resumed ? ' (already done today)' : ''}${r.tries > 1 ? ` (after ${r.tries} tries)` : ''}`
-    + `${r.escalated ? ' [escalated: ' + r.escalated + ']' : ''}${r.reason ? ' — ' + r.reason : ''}${r.summary ? ' — ' + String(r.summary).slice(0, 160) : ''}`);
+    + `${r.escalated ? ' [escalated: ' + r.escalated + ']' : ''}${r.reason ? ' — ' + r.reason : ''}${r.summary ? ' — ' + String(r.summary).slice(0, 160) : ''}`
+    + `${r.playbook ? `\n         fix (${r.playbook.decidedBy}): ${r.playbook.fix}` : ''}`);
   process.exitCode = results.some(r => r.status === 'failed' || r.status === 'stopped') ? 1 : 0;
 }

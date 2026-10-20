@@ -87,7 +87,8 @@ export function assess(f, now) {
 
   const failed = f.lastCycle?.failed ?? [], degraded = f.lastCycle?.degraded ?? [];
   out.push(!f.lastCycle ? check('last-cycle', 'WARN', 'no cycle has run yet', 'npm.cmd run cycle')
-    : failed.length ? check('last-cycle', 'WARN', `${f.lastCycle.day}: failed ${failed.join(', ')}`, 'Read .local/cycles/' + f.lastCycle.day + '.json and rerun: npm.cmd run cycle')
+    : failed.length ? check('last-cycle', 'WARN', `${f.lastCycle.day}: failed ${failed.join(', ')}`, (f.lastCycle.fixes?.length ? f.lastCycle.fixes.join('; ') + '. Then rerun: npm.cmd run cycle'
+      : 'Read .local/cycles/' + f.lastCycle.day + '.json and rerun: npm.cmd run cycle'))
       : check('last-cycle', 'GO', `${f.lastCycle.day}: no failed steps`));
   // learning that silently did not happen is still not happening: say so (no model, or its setup missing)
   const unlearned = (f.lastCycle?.skipped ?? []).filter(s => LEARNING_STEPS.includes(s.id));
@@ -143,6 +144,7 @@ export async function gather(env, { fetchImpl = fetch, root = ROOT, gate = null 
     const journal = JSON.parse(await readFile(join(cycles, days.at(-1)), 'utf8'));
     const steps = Object.entries(journal.steps ?? {});
     lastCycle = { day: days.at(-1).slice(0, 10), failed: steps.filter(([, s]) => s.status === 'failed').map(([id]) => id),
+      fixes: steps.filter(([, s]) => s.status === 'failed' && s.playbook).map(([id, s]) => `${id}: ${s.playbook.fix} (${s.playbook.decidedBy})`),
       degraded: steps.filter(([, s]) => s.status === 'degraded').map(([id, s]) => ({ id, note: String(s.reason ?? 'finished with a caveat') })),
       skipped: steps.filter(([, s]) => s.status === 'skipped').map(([id, s]) => ({ id, reason: String(s.reason ?? 'skipped') })) };
   }
