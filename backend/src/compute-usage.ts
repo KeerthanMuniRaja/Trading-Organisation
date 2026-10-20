@@ -9,8 +9,9 @@ import { Allow } from './security.js';
 //     the model allocator step reports each decided month (14 Oct 2026); the desk and claims runs do not report yet;
 //   - inference_reports: the backend's own model tickets, attributed to a bot when the frozen request context names one
 //     (knowledge transfer, source lessons), otherwise counted as 'unattributed'.
-// The owner may set a daily token budget per department; the report flags departments over it. Nothing is throttled
-// here: budgets inform the owner and alerts, while model access limits stay where they are enforced today.
+// The owner may set a daily token budget per department; the report flags departments over it, and (20 Oct 2026) a
+// worker asks POST /v1/compute/allowance before a model call: once the department's tokens used today reach its budget,
+// the answer is no and the model step waits for tomorrow. A department without a budget is not limited here.
 
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(v => !Number.isNaN(Date.parse(v + 'T00:00:00Z')), 'Invalid date');
 const reportSchema = z.object({ botId: id, model: z.string().trim().min(1).max(120), runLabel: z.string().trim().min(1).max(160),
@@ -19,6 +20,22 @@ const reportSchema = z.object({ botId: id, model: z.string().trim().min(1).max(1
   .refine(v => v.periodFrom <= v.periodTo, 'Period must start before it ends');
 const budgetSchema = z.object({ departmentId: id, tokensPerDay: z.number().int().min(1000).max(100_000_000).nullable() }).strict();
 const usageSchema = z.object({ days: z.number().int().min(1).max(365).default(30) }).strict();
+const allowanceSchema = z.object({ botId: id }).strict();
+
+/** Tokens the bot's department used today (worker reports ending today and the backend's own tickets since midnight UTC)
+ *  against its daily budget. */
+export async function allowance(tx: Sql, botId: string) {
+  const bot = (await tx.query('SELECT department FROM bots WHERE id=$1', [botId])).rows[0];
+  requireThat(bot, 'Bot not found', 404);
+  const budget = (await tx.query('SELECT compute_tokens_per_day FROM departments WHERE id=$1', [bot.department])).rows[0]?.compute_tokens_per_day ?? null;
+  const used = BigInt((await tx.query(`SELECT (
+      COALESCE((SELECT SUM(u.prompt_tokens+u.completion_tokens) FROM compute_usage u JOIN bots b ON b.id=u.bot_id
+        WHERE b.department=$1 AND u.period_to >= CURRENT_DATE),0) +
+      COALESCE((SELECT SUM(COALESCE(i.prompt_tokens,0)+COALESCE(i.completion_tokens,0)) FROM inference_reports i JOIN development_requests r ON r.id=i.request_id
+        JOIN bots b ON b.id=r.context->'bot'->>'id' WHERE b.department=$1 AND i.created_at >= date_trunc('day', now())),0))::text AS t`, [bot.department])).rows[0]!.t);
+  return { botId, departmentId: bot.department as string, budgetTokensPerDay: budget === null ? null : Number(budget), usedTodayTokens: used.toString(),
+    allowed: budget === null || used < BigInt(budget) };
+}
 
 export async function usageByBot(tx: Sql, days: number) {
   const reported = (await tx.query(`SELECT bot_id,SUM(calls)::bigint::text AS calls,SUM(prompt_tokens+completion_tokens)::text AS tokens,
@@ -67,6 +84,12 @@ export class ComputeUsage {
     });
   }
 
+  allowance(actor: Actor, raw: unknown) {
+    permit(actor, 'researcher', 'evaluator', 'owner');
+    const input = parse(allowanceSchema, raw);
+    return this.db.transaction(tx => allowance(tx, input.botId), false);
+  }
+
   usage(actor: Actor, raw: unknown) {
     permit(actor, 'owner', 'evaluator');
     const input = parse(usageSchema, raw);
@@ -88,7 +111,7 @@ export class ComputeUsage {
         }),
         bots: [...byBot.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([bot, u]) => ({ botId: bot, department: bots.get(bot) ?? 'unattributed',
           calls: u.calls.toString(), tokens: u.tokens.toString(), averageLatencyMs: u.calls ? Number(u.latencyMs / u.calls) : null })),
-        note: 'Tokens from worker reports and the backend\'s own model tickets. Budgets inform; they do not throttle.' };
+        note: 'Tokens from worker reports and the backend\'s own model tickets. Workers check POST /v1/compute/allowance before model calls.' };
     }, false);
   }
 }
@@ -100,4 +123,5 @@ export class ComputeUsageController {
   @Post('compute/usage/reports') @Allow('researcher', 'evaluator', 'owner') report(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) { return this.compute.report(r.actor, k ?? '', b); }
   @Post('compute/budgets') @Allow('owner') budget(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) { return this.compute.setBudget(r.actor, k ?? '', b); }
   @Post('compute/usage') @Allow('owner', 'evaluator') usage(@Req() r: Request, @Body() b: unknown) { return this.compute.usage(r.actor, b); }
+  @Post('compute/allowance') @Allow('researcher', 'evaluator', 'owner') allowance(@Req() r: Request, @Body() b: unknown) { return this.compute.allowance(r.actor, b); }
 }

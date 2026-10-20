@@ -23,6 +23,19 @@ const decisionSchema = z.object({ proposalId: z.uuid(), outcome: z.enum(['approv
   budgetPaise: z.string().regex(/^\d{1,15}$/).optional(), note: text(600) }).strict();
 const leadSchema = z.object({ departmentId: id, leadBotId: id }).strict();
 
+/** ORG-01 enforced: the members' budgets of an active registered department may not exceed its ceiling. A label that is
+ *  not a registered active department has no ceiling. `budget` is the bot's intended budget; the bot itself is excluded
+ *  from the others. Lowering a budget is always allowed, so an over-ceiling department can only come back down. */
+export async function assertWithinCeiling(tx: Sql, department: string, botId: string, budget: bigint, current: bigint = 0n) {
+  if (budget <= current) return;
+  const dept = (await tx.query("SELECT budget_paise::text AS budget FROM departments WHERE id=$1 AND status='active'", [department])).rows[0];
+  if (!dept) return;
+  const others = BigInt((await tx.query(`SELECT COALESCE(SUM(budget_paise),0)::text AS s FROM bots WHERE department=$1 AND id<>$2 AND state<>'retired'`,
+    [department, botId])).rows[0]!.s);
+  requireThat(others + budget <= BigInt(dept.budget),
+    `Department ${department}'s budget ceiling is ${dept.budget} paise and its other members hold ${others}; raise the ceiling first or choose at most ${BigInt(dept.budget) - others > 0n ? BigInt(dept.budget) - others : 0n}`);
+}
+
 async function verified(tx: Sql, ids: string[]) {
   return (await tx.query(`SELECT e.id FROM evidence e JOIN sources s ON s.id=e.source_id WHERE e.id=ANY($1::uuid[])
     AND e.status='verified' AND s.approved=true`, [ids])).rows.length === new Set(ids).size;

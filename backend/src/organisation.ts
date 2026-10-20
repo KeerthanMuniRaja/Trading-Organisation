@@ -4,6 +4,7 @@ import { Database, Sql, audit } from './database.js';
 import { archiveResearchBot } from './lifecycle-history.js';
 import { schoolSkillReady } from './skills.js';
 import { SourceObservations } from './source-observations.js';
+import { assertWithinCeiling } from './departments.js';
 
 export async function verifiedEvidence(tx:Sql, evidenceId:string) {
   const evidence=(await tx.query("SELECT e.* FROM evidence e JOIN sources s ON s.id=e.source_id WHERE e.id=$1 AND e.status='verified' AND s.approved=true",[evidenceId])).rows[0];
@@ -94,6 +95,7 @@ export class Organisation {
       const novelty=[input.department,input.specialty,input.method].map(x=>x.toLowerCase()).join(':');
       requireThat(!(await tx.query('SELECT id FROM bots WHERE id=$1 OR novelty_key=$2',[input.id,novelty])).rows.length,'Bot identity or declared capability already exists');
       if(input.mentorId)requireThat((await tx.query('SELECT id FROM bots WHERE id=$1',[input.mentorId])).rows.length,'Mentor not found');
+      await assertWithinCeiling(tx,input.department,input.id,BigInt(input.budgetPaise));
       await tx.query("INSERT INTO bots(id,name,department,specialty,method,novelty_key,contribution,state,budget_paise,mentor_id) VALUES($1,$2,$3,$4,$5,$6,$7,'school',$8,$9)",[input.id,input.name,input.department,input.specialty,input.method,novelty,input.contribution,input.budgetPaise,input.mentorId??null]);
       await audit(tx,actor,'bot.created',input.id,input);return {id:input.id,state:'school'};
     });

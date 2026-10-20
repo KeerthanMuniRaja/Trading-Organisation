@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Actor, id, money, parse, permit, requireThat, uuid } from './core.js';
 import { Database, Sql, audit } from './database.js';
 import { Allow } from './security.js';
+import { assertWithinCeiling } from './departments.js';
 
 // Bot control (LIFE-02): before this, the only way to stop a misbehaving bot was retirement. The owner can now
 // SUSPEND a bot: it takes no new risk (no entry proposals, no buy orders), while exits stay allowed so its risk can only
@@ -30,10 +31,11 @@ export async function applySuspension(tx: Sql, actor: Actor, botId: string, susp
 
 /** Changes a bot's budget inside the caller's transaction, with its append-only record (owner decisions only). */
 export async function applyBudget(tx: Sql, actor: Actor, botId: string, budgetPaise: string, reason: string) {
-  const bot = (await tx.query('SELECT state,budget_paise::text AS budget FROM bots WHERE id=$1', [botId])).rows[0];
+  const bot = (await tx.query('SELECT state,department,budget_paise::text AS budget FROM bots WHERE id=$1', [botId])).rows[0];
   requireThat(bot, 'Bot not found', 404);
   requireThat(bot.state !== 'retired', 'A retired bot has no budget to change');
   requireThat(bot.budget !== budgetPaise, 'The budget is already that amount');
+  await assertWithinCeiling(tx, bot.department, botId, BigInt(budgetPaise), BigInt(bot.budget));
   // a lower budget than what is already invested is allowed: it blocks new buys until positions are reduced
   await tx.query('UPDATE bots SET budget_paise=$2 WHERE id=$1', [botId, budgetPaise]);
   await tx.query('INSERT INTO bot_budget_changes(id,bot_id,budget_before,budget_after,reason,decided_by) VALUES($1,$2,$3,$4,$5,$6)',
