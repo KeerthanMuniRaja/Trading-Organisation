@@ -43,7 +43,9 @@ export async function knowledgeSummary(root = join(dirname(fileURLToPath(import.
     unknown = (await readFile(join(root, '.local', 'cycles', 'unknown-problems.jsonl'), 'utf8')).split('\n').filter(l => l.trim()).map(l => JSON.parse(l))
       .filter(u => now - Date.parse(u.at) < 7 * 86_400_000);
   } catch { /* none */ }
-  return live || unknown.length ? { live, unknown } : null;
+  let drafts = 0;
+  try { drafts = JSON.parse(await readFile(join(root, '.local', 'trading-desk', 'knowledge', 'playbook-drafts.json'), 'utf8')).drafts.length; } catch { /* none */ }
+  return live || unknown.length || drafts ? { live, unknown, drafts } : null;
 }
 
 export function researchLines(k) {
@@ -70,7 +72,9 @@ export function render(d, world = null, regime = null, known = null) {
   const unknown = known?.unknown ?? [];
   const needs = [...d.needsOwner, ...(world?.coverage?.advice ?? []),
     ...(unknown.length ? [`${unknown.length} cycle failure(s) the problem playbook does not know (${[...new Set(unknown.map(u => u.step))].join(', ')}): `
-      + 'find the cause and add an entry to integrations/trading-desk/knowledge/problems.json (log: .local/cycles/unknown-problems.jsonl)'] : [])];
+      + 'find the cause and add an entry to integrations/trading-desk/knowledge/problems.json (log: .local/cycles/unknown-problems.jsonl)'] : []),
+    ...(known?.drafts ? [`${known.drafts} playbook entr${known.drafts === 1 ? 'y' : 'ies'} drafted by the agents, waiting for you: `
+      + 'playbook_drafts.py list, then accept <id> --yes'] : [])];
   const lines = [
     `# Organisation digest — ${d.generatedAt.slice(0, 10)}`, '',
     `Window: last ${d.windowHours} hours · mode: ${d.mode}${d.halted ? ' · **NEW RISK HALTED**' : ''}`, '',

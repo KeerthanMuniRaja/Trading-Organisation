@@ -13,6 +13,17 @@ test('every playbook entry says the cause, the fix and who decides; the last one
   assert.equal(list.at(-1).id, 'unknown');
 });
 
+test('an entry whose pattern does not compile is skipped, not allowed to disable the playbook', async () => {
+  const { mkdtemp, writeFile } = await import('node:fs/promises');
+  const dir = await mkdtemp(join(tmpdir(), 'book-'));
+  try {
+    const path = join(dir, 'p.json');
+    await writeFile(path, JSON.stringify({ problems: [{ id: 'bad', step: '', text: '(?P<x>', cause: 'c', fix: 'f', decidedBy: 'owner' },
+      { id: 'unknown', step: '', text: '', cause: 'c', fix: 'f', decidedBy: 'owner' }] }));
+    assert.deepEqual(loadPlaybook(path).map(p => p.id), ['unknown']);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
 test('a failure is matched to the known problem by step and text', () => {
   assert.equal(diagnose('market-data', 'large move kept back, check the news: SBIN.NS 27.7% on 2017-10-25').id, 'data-kept-back');
   assert.equal(diagnose('market-data', 'possible split or bonus, record it').id, 'corporate-action');

@@ -10,7 +10,12 @@ export const PLAYBOOK = join(ROOT, 'integrations', 'trading-desk', 'knowledge', 
 
 export function loadPlaybook(path = PLAYBOOK) {
   const { problems } = JSON.parse(readFileSync(path, 'utf8'));
-  return problems.map(p => ({ ...p, stepPattern: p.step ? new RegExp(p.step) : null, textPattern: p.text ? new RegExp(p.text, 'i') : null }));
+  const out = [];
+  for (const p of problems) {
+    // an entry whose pattern does not compile (e.g. a drafted one) is skipped, never allowed to disable the whole playbook
+    try { out.push({ ...p, stepPattern: p.step ? new RegExp(p.step) : null, textPattern: p.text ? new RegExp(p.text, 'i') : null }); } catch { /* skip */ }
+  }
+  return out;
 }
 
 let cached = null;

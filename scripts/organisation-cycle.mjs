@@ -116,6 +116,10 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     { id: 'management-review', kind: 'http', method: 'POST', path: '/v1/management/reviews', role: 'evaluator' },
     // AUTO-03: the agents carry out what the owner's standing approvals cover (nothing without a policy)
     { id: 'autonomy', kind: 'http', method: 'POST', path: '/v1/autonomy/apply', role: 'evaluator' },
+    // OPS-03: failures the playbook does not know get a drafted entry (model needed), waiting for the owner's accept
+    withModel
+      ? { id: 'playbook-drafts', cmd: PY, args: [desk('playbook_drafts.py'), 'draft'], timeoutMs: 600_000, requires: join(root, '.local', 'cycles', 'unknown-problems.jsonl') }
+      : { id: 'playbook-drafts', skip: 'model steps not enabled (--with-model)' },
     { id: 'alerts', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'deliver-alerts.mjs')], timeoutMs: 120_000 },
     { id: 'owner-digest', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'daily-digest.mjs')], timeoutMs: 120_000 },
   ];

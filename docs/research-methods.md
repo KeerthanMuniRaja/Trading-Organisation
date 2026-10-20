@@ -85,6 +85,17 @@ Two lessons stand out:
   cause is known.
 - **Unknown problems** go to `.local/cycles/unknown-problems.jsonl`. The digest lists them under **Needs you** for 7 days,
   so the playbook grows with the organisation's own failures.
+- **Drafted entries** (`playbook_drafts.py`, cycle step `playbook-drafts`, needs the model). The local model drafts one
+  entry per unknown failing step: the cause, a safe fix, who decides and a pattern for the failure text. The failure text
+  is untrusted data, and the answer is bound to a schema. Safeguards:
+  - a fix that mentions money, limits, sources, credentials, releases or data confirmations is always marked **owner**,
+    whatever the model said;
+  - a pattern that does not compile, matches everything or misses the failure is replaced by the escaped failure text;
+  - in the playbook loader, a pattern that does not compile is skipped.
+
+  The digest lists waiting drafts. The owner reviews them with `playbook_drafts.py list` and accepts one with
+  `playbook_drafts.py accept <id> --yes`, which adds it just before the catch-all. A failure the playbook covers is
+  never drafted again.
 
 ## Live knowledge (KNOW-05)
 
