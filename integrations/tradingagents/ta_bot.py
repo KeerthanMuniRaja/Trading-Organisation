@@ -91,7 +91,24 @@ def call(base, token, method, route, body=None, opener=None):
         return json.loads(response.read(2_000_000))
 
 
-def propose(source_id, env=os.environ, cache=daily.DAILY, opener=None, now=None, decisions=DECISIONS, state_path=STATE):
+HOLDINGS = daily.ROOT / '.local' / 'tradingagents' / 'holdings.json'
+
+
+def write_holdings(trader, bot_id, opener, now, path=HOLDINGS):
+    """The member's own book, from its own record (its trader credential sees only itself), for ta_decide.py to pass to
+    TradingAgents as its portfolio: so its trader, risk team and portfolio manager decide against what it really holds."""
+    report = call(*trader, 'GET', '/v1/paper/performance', None, opener)
+    me = next((b for b in report.get('bots', []) if b['botId'] == bot_id), None)
+    book = {'asOf': now.isoformat(), 'botId': bot_id, 'budgetPaise': (me or {}).get('budgetPaise', '0'), 'budgetUsedPaise': (me or {}).get('budgetUsedPaise', '0'),
+            'positions': {p['symbol']: {'quantity': p['quantity'], 'costPaise': p['costPaise']} for p in (me or {}).get('openPositions', []) if int(p['quantity']) > 0}}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix('.tmp')
+    tmp.write_text(json.dumps(book, indent=2), encoding='utf-8')
+    os.replace(tmp, path)
+    return book
+
+
+def propose(source_id, env=os.environ, cache=daily.DAILY, opener=None, now=None, decisions=DECISIONS, state_path=STATE, holdings_path=HOLDINGS):
     from urllib import request as urlrequest
     opener = opener or urlrequest.urlopen
     now = now or datetime.now(timezone.utc)
@@ -100,7 +117,8 @@ def propose(source_id, env=os.environ, cache=daily.DAILY, opener=None, now=None,
         return {'state': 'not-configured', 'reason': 'no TradingAgents member configured (TA_BOT_ID)'}
     trader = eod_trader.bot_credential(env, bot_id)
     if not trader:
-        return {'state': 'no-credential', 'next': f'owner: npm run bot-credential -- --bot {bot_id} --yes, then restart the backend'}
+        return {'state': 'no-credential', 'next': f'owner: npm run members -- apply tradingagents --yes, then restart the backend'}
+    write_holdings(trader, bot_id, opener, now, holdings_path)  # for next week's decision, whatever happens below
     record = latest(decisions, now)
     if record is None:
         return {'state': 'waiting', 'reason': 'no fresh TradingAgents decisions (run ta_decide.py with the model)'}

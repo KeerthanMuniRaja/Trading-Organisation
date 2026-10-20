@@ -49,6 +49,33 @@ def rationale_of(state):
     return ''
 
 
+HOLDINGS = ROOT / '.local' / 'tradingagents' / 'holdings.json'
+
+
+class Book:
+    """The member's own paper book, in the shape TradingAgents' propagate(portfolio=...) uses: fingerprint() and
+    render(company). Written by the governed side (ta_bot.py) from the bot's own record; this process never reads the backend."""
+
+    def __init__(self, holdings):
+        self.holdings = holdings
+
+    def fingerprint(self):
+        return hashlib.sha256(json.dumps(self.holdings, sort_keys=True).encode()).hexdigest()[:16]
+
+    def render(self, company):
+        h, symbol = self.holdings, str(company).removesuffix('.NS')
+        held = h.get('positions', {})
+        lines = [f"This member's paper book (as of {h.get('asOf', 'unknown')}): budget Rs {int(h.get('budgetPaise', 0)) / 100:,.2f}, "
+                 f"in use Rs {int(h.get('budgetUsedPaise', 0)) / 100:,.2f}."]
+        lines += [f"Holds {p['quantity']} share(s) of {s} at a cost of Rs {int(p['costPaise']) / 100:,.2f}." for s, p in sorted(held.items())] or ['Holds no shares.']
+        lines.append(f"It {'holds' if symbol in held else 'does not hold'} {symbol}. Rate whether to add, keep or exit it.")
+        return ' '.join(lines)
+
+
+def book(path=HOLDINGS):
+    return Book(json.loads(path.read_text(encoding='utf-8'))) if path.exists() else None
+
+
 def default_graph(env):
     from tradingagents.default_config import DEFAULT_CONFIG
     from tradingagents.graph.trading_graph import TradingAgentsGraph
@@ -66,10 +93,12 @@ def default_graph(env):
     return graph, {'engine': 'tradingagents', 'engineVersion': getattr(tradingagents, '__version__', 'unknown'), 'model': model}
 
 
-def decide(day, symbols=SYMBOLS, graph=None, meta=None, env=os.environ, out=OUT, now=None):
-    """One decision per share for `day` (the last settled session). Resumable: a share already decided is not rerun."""
+def decide(day, symbols=SYMBOLS, graph=None, meta=None, env=os.environ, out=OUT, now=None, portfolio=None):
+    """One decision per share for `day` (the last settled session), against the member's own book when there is one.
+    Resumable: a share already decided is not rerun."""
     if graph is None:
         graph, meta = default_graph(env)
+        portfolio = portfolio or book()
     out.mkdir(parents=True, exist_ok=True)
     path = out / f'{day}.json'
     record = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {
@@ -79,7 +108,7 @@ def decide(day, symbols=SYMBOLS, graph=None, meta=None, env=os.environ, out=OUT,
             continue
         started = (now or datetime.now(timezone.utc)).isoformat()
         try:
-            state, decision = graph.propagate(f'{symbol}.NS', day)
+            state, decision = graph.propagate(f'{symbol}.NS', day, portfolio=portfolio) if portfolio is not None else graph.propagate(f'{symbol}.NS', day)
             record['decisions'][symbol] = {'rating': rating_of(decision), 'rationale': rationale_of(state), 'startedAt': started,
                                            'finishedAt': datetime.now(timezone.utc).isoformat()}
         except Exception as error:  # noqa: BLE001 - recorded, never guessed; a rerun retries the share

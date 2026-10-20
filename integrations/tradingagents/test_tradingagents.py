@@ -44,6 +44,8 @@ class Backend:
                  if route == '/v1/releases/check' else {'signals': [{'model': model, 'action': 'enter-long', 'outcome': {'correct': True}}] * self.scored}
                  if route == '/v1/trading/signals/query' else {'id': 'fit', 'verdict': 'adds-value'} if route == '/v1/bots/fitness/live'
                  else {'id': 'rel', 'version': 1} if route == '/v1/releases' else {'activeEligible': True} if route == '/v1/releases/evaluations'
+                 else {'bots': [{'botId': 'tradingagents', 'budgetPaise': '500000', 'budgetUsedPaise': '146754',
+                                 'openPositions': [{'symbol': 'HDFCBANK', 'quantity': '2', 'costPaise': '146754'}]}]} if route == '/v1/paper/performance'
                  else {'id': 'ev', 'status': 'unverified'} if route == '/v1/evidence' else {'id': 'sig'})
 
         class Response:
@@ -103,6 +105,26 @@ class MemberTests(unittest.TestCase):
         evidence = next(c for c in backend.calls if c[0] == '/v1/evidence')
         self.assertIn('NSE:HDFCBANK 100000 paise', evidence[1]['content'])  # evidence is data, not the model's view
         self.assertEqual(ta_bot.propose('market-yahoo-daily', ENV, self.cache, Backend(), NOW, self.decisions, self.state)['state'], 'already-proposed')
+
+    def test_it_decides_against_its_own_book(self):
+        holdings = Path(self.tmp.name) / 'holdings.json'
+        ta_bot.propose('src', ENV, self.cache, Backend(), NOW, self.decisions, self.state, holdings)
+        book = ta_decide.book(holdings)
+        self.assertEqual(book.holdings['positions'], {'HDFCBANK': {'quantity': '2', 'costPaise': '146754'}})
+        text = book.render('HDFCBANK.NS')
+        self.assertIn('Holds 2 share(s) of HDFCBANK at a cost of Rs 1,467.54', text)
+        self.assertIn('It holds HDFCBANK', text)
+        self.assertIn('It does not hold ITC', book.render('ITC.NS'))
+        seen = []
+
+        class Graph(StubGraph):
+            def propagate(self, ticker, day, portfolio=None):
+                seen.append(portfolio.render(ticker))
+                return super().propagate(ticker, day)
+        ta_decide.decide('2026-10-30', ['HDFCBANK'], Graph(), {'engine': 'tradingagents', 'engineVersion': '0.9.0', 'model': 'qwen'},
+                         out=self.decisions, now=NOW, portfolio=book)
+        self.assertIn('Holds 2 share(s) of HDFCBANK', seen[0])  # TradingAgents' trader, risk team and manager see the real book
+        self.assertNotEqual(book.fingerprint(), ta_decide.Book({'positions': {}}).fingerprint())
 
     def test_under_release_control_only_the_authorised_identity_proposes(self):
         refused = Backend(releases=[{'id': 'rel'}], allowed=False)
