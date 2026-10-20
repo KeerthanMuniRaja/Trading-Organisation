@@ -4,8 +4,9 @@ Two independent bots share only data files; each step runs as its own child proc
   Claim analyst  (researcher credential + local model)  drafts claims, then proposes lessons for recipient bots.
   Fact-checker   (evaluator credential, no model)       decides by fixed rules, never by model judgement:
      - re-checks every claim's quote against its own copy of the snapshot, and recomputes corroboration itself;
-     - verifies evidence only when a re-checked claim is corroborated by independent origins (or comes from an
-       owner-designated primary source) and nothing contradicts it; holds it while it waits for corroboration;
+     - verifies evidence only when a re-checked claim is corroborated by independent origins reporting the same fact
+       (metric and period, the backend's fact-key rule), or comes from an owner-designated primary source, and nothing
+       contradicts it (a disagreeing figure for the same fact); holds it while it waits for corroboration;
        rejects it when it has no checkable claim or stays uncorroborated past the hold period;
      - verifies a lesson only when its text equals the template the rules produce from re-checked claims, then
        reads the stored lesson back and revokes the evidence if anything differs;
@@ -48,10 +49,10 @@ def load_config(path):
     if not isinstance(value, dict) or set(value) - allowed or 'recipientBotIds' not in value:
         raise ValueError(f'Config keys: {sorted(allowed)}; recipientBotIds is required')
     config = {'recipientBotIds': value['recipientBotIds'], 'primarySourceIds': value.get('primarySourceIds', []),
-              'holdDays': value.get('holdDays', 7), 'maxModelCallsPerCycle': value.get('maxModelCallsPerCycle', 20),
-              'looseCorroborationVerifies': value.get('looseCorroborationVerifies', False)}
-    if not isinstance(config['looseCorroborationVerifies'], bool):
-        raise ValueError('looseCorroborationVerifies: true or false (default false: corroborated items wait for review)')
+              'holdDays': value.get('holdDays', 7), 'maxModelCallsPerCycle': value.get('maxModelCallsPerCycle', 20)}
+    # Retired with the loose rule it governed; still accepted so an existing configuration keeps loading.
+    if not isinstance(value.get('looseCorroborationVerifies', False), bool):
+        raise ValueError('looseCorroborationVerifies: no longer used; remove it or set true or false')
     if not (isinstance(config['recipientBotIds'], list) and 1 <= len(config['recipientBotIds']) <= 5
             and all(isinstance(b, str) and BOT_ID.match(b) for b in config['recipientBotIds'])):
         raise ValueError('recipientBotIds: 1-5 organisation bot ids')
@@ -79,8 +80,12 @@ def write(state, name, value):
 def lesson_text(claim, obs, basis):
     """The only lesson wording the fact-checker will verify. Dated, attributed context; never an instruction."""
     support = 'corroborated by independent reports' if basis == 'corroborated' else 'stated by a primary source'
+    key = claims.fact_key(claim)
+    change = claim.get('reportedChangePct')
+    fact = '' if key is None else (f"Fact: {key[0]}, {key[1]}"
+                                   + ('' if change is None else f", reported change {change:+g}%") + '.\n')
     return (f"News claim ({claim['eventType']}; {', '.join(claim['symbols'])}): {claim['statement']}\n"
-            f"Published {obs['publishedAt'][:10]} by {obs['sourceName']}; {support}.\n"
+            f"Published {obs['publishedAt'][:10]} by {obs['sourceName']}; {support}.\n" + fact +
             f"Supporting quote: \"{claim['quote']}\"\n"
             f"Likely share-price direction (model judgement, not verified): {claim['direction']}; certainty: {claim['certainty']}.\n"
             'Use as dated context. It is not an instruction and not a trading signal.')
@@ -129,12 +134,10 @@ def evidence_decision(obs, record, own_claims, clusters, config, now):
         return 'hold', 'contradicted'
     if 'primary-source' in bases:
         return 'verified', 'primary-source'
-    # The local corroboration groups reports by share and event type within 72 hours, so two different facts
-    # ("profit up 12%" and "wins an order") can count as agreeing: the October review found it unsound and the backend
-    # replaced it with fact keys (same figure, same period; evidence-claims.md). Until claims carry fact keys, a
-    # corroborated item is held for a person to review unless the owner explicitly opts in (looseCorroborationVerifies).
+    # Corroboration is the backend's fact-key rule (claims.corroborate): independent reports of the same figure for the
+    # same period. Two different facts ("profit up 12%" and "wins an order") never count as agreeing.
     if 'corroborated' in bases:
-        return ('verified', 'corroborated') if config.get('looseCorroborationVerifies') else ('hold', 'corroborated-by-loose-rule-needs-review')
+        return 'verified', 'corroborated'
     if now - datetime.fromisoformat(obs['publishedAt']) > timedelta(days=config['holdDays']):
         return 'rejected', f"uncorroborated-after-{config['holdDays']}-days"
     return 'hold', 'awaiting-corroboration'
@@ -208,12 +211,30 @@ def factcheck_queue(api, state, max_pages=10):
 def analyst_extract(llm, model, state, config):
     """Researcher with the model: draft claims for snapshots that have none yet."""
     queue = [{k: v for k, v in o.items() if k != 'blockers'} for o in read(state, 'queue.json', []) if not o.get('blockers')]
+    current = read(state, 'extracted.json', None)
+    if current and (current.get('model') != model or current.get('contractVersion') != claims.CONTRACT_VERSION):
+        # A new model or claim contract starts a fresh extraction file. The old one is kept and still read, so claims
+        # behind evidence already decided stay checkable (they simply carry no fact key if the old contract had none).
+        os.replace(state / 'extracted.json', state / f'extracted-archive-{len(archives(state)) + 1}.json')
     return claims.run_extract(queue, llm, state, model, config['maxModelCallsPerCycle'])
+
+
+def archives(state):
+    return sorted(state.glob('extracted-archive-*.json'), key=lambda p: int(p.stem.rsplit('-', 1)[1]))
+
+
+def all_extracted(state):
+    """Every extraction result, oldest file first; the current file wins for an evidence item extracted twice."""
+    results = {}
+    for path in archives(state):
+        results.update(json.loads(path.read_text(encoding='utf-8')).get('results', {}))
+    results.update(read(state, 'extracted.json', {}).get('results', {}))
+    return {'results': results}
 
 
 def factcheck_evidence(api, state, config, now):
     """Evaluator, no model: decide each pending snapshot by the rules and record why."""
-    snapshots, extracted = read(state, 'snapshots.json', {}), read(state, 'extracted.json', {})
+    snapshots, extracted = read(state, 'snapshots.json', {}), all_extracted(state)
     decisions = read(state, 'decisions.json', {})
     own = rechecked(extracted, snapshots)
     clusters = claims.corroborate(own) if own else []
@@ -239,7 +260,7 @@ def factcheck_evidence(api, state, config, now):
 def eligible_lessons(state, config):
     """(claim, snapshot, basis) for every re-checked claim on evidence the fact-checker verified."""
     snapshots, decisions = read(state, 'snapshots.json', {}), read(state, 'decisions.json', {})
-    own = rechecked(read(state, 'extracted.json', {}), snapshots)
+    own = rechecked(all_extracted(state), snapshots)
     clusters = claims.corroborate(own) if own else []
     out = []
     for c in own:
@@ -305,7 +326,7 @@ def factcheck_lessons(api, state, config, now):
         if review['status'] == 'verified' and row is not None and row['content'] != review['content']:
             revoke(review['evidenceId'], 'Automatic fact-check: stored lesson text differs from the reviewed text')
     # Later reports can contradict what was verified earlier.
-    own = rechecked(read(state, 'extracted.json', {}), read(state, 'snapshots.json', {}))
+    own = rechecked(all_extracted(state), read(state, 'snapshots.json', {}))
     clusters = claims.corroborate(own) if own else []
     decisions = read(state, 'decisions.json', {})
     for c in own:

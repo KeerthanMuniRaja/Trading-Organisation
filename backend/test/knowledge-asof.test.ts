@@ -8,9 +8,11 @@ import { createApp } from '../src/app.js';
 
 const ARTICLE = 'Reliance Industries on Friday reported a 12% rise in quarterly net profit, helped by retail growth across its stores.';
 // Cutoffs come from the database clock that stamps the audit events, not the JavaScript clock: under heavy load the two
-// can drift by milliseconds, which made a cutoff taken before an event look later than it.
+// can drift by milliseconds, which made a cutoff taken before an event look later than it. Cutoffs are compared to the
+// millisecond, so the pause after reading the clock keeps the next event out of the cutoff's own millisecond.
 let clock: () => Promise<string>;
-const tick = async () => { await new Promise(r => setTimeout(r, 25)); return clock(); };
+const pause = () => new Promise(r => setTimeout(r, 25));
+const tick = async () => { await pause(); const t = await clock(); await pause(); return t; };
 const databaseClock = (db: { transaction: (fn: (tx: any) => Promise<any>, lock?: boolean) => Promise<any> }) => async () =>
   (await db.transaction(tx => tx.query(`SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS t`), false)).rows[0].t as string;
 

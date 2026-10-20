@@ -2,7 +2,14 @@
 
 Claims are small, checkable statements drawn from one evidence snapshot, such as "Reliance quarterly profit rose 12%", each with an exact supporting quote. They turn article-sized evidence into units that bots can use and that can be corroborated across sources. This is the backend half of DATA-02 in the [remaining-work assessment](remaining-work-assessment.md). The Python pipeline in [integrations/claims](../integrations/claims/README.md) drafts and pre-checks claims.
 
-**Audit, 14 October 2026.** The automated pipeline (`autolearn.py`) does **not** yet post its claims here. It keeps them in local files and uses its own looser corroboration (the same share and event type within 72 hours), which this document's own review found unsound. Until it uses the backend's fact keys, it no longer verifies loosely corroborated news automatically: such items wait for a person, unless the owner sets `looseCorroborationVerifies: true` in its configuration. The backend rules below apply to every caller of these routes.
+**Automated pipeline (updated 20 October 2026).** `autolearn.py` does not yet post its claims to these routes; it keeps them in local files. Since 20 October it applies **the same fact-key rule** as the backend, ported to Python in `integrations/claims/claims.py`:
+- the same canonical keys;
+- the figure required in the quote;
+- one cluster per fact;
+- the same disagreement threshold;
+- price opinions that never decide anything.
+
+So it verifies corroborated news automatically again. The old looser rule (the same share and event type within 72 hours), which the audit of 14 October found unsound, is gone, and so is its opt-in, `looseCorroborationVerifies`. The backend rules below apply to every caller of these routes.
 
 ## Rules the backend enforces
 

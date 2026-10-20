@@ -22,20 +22,26 @@ flowchart LR
    - a plain-language statement;
    - an **exact quote** from the article;
    - the companies it concerns, from the desk's 8 shares;
-   - an event type, a likely price direction, an event date and a certainty label.
+   - an event type, a likely price direction, an event date and a certainty label;
+   - when the claim reports a figure, a **fact key**: the `metric` (such as "net profit") and `period` (such as "Q2 FY27"), and optionally the `reportedChangePct`.
 
    Code then rejects a claim when:
    - its quote is not in the article (after normalising typographic quotes, dashes and spacing);
    - its company is never named;
    - it is a "reported fact" dated after publication;
-   - it repeats another claim's quote.
+   - it repeats another claim's quote;
+   - its fact key breaks the backend's rules: metric and period must come together, a change needs both, and **the change's number must be written in the quote** (`112` is not `12`; `1,250` is 1250).
 
-   Rejected claims are kept, with their reasons.
-2. **Corroboration.** Claims about the same company and event type whose publication times chain within 72 hours form a cluster.
+   Rejected claims are kept, with their reasons. Accepted fact keys are stored in the backend's canonical form (`net profit`, `Q2FY27`).
+2. **Corroboration** uses the backend's fact-key rule ([evidence-claims.md](../../docs/evidence-claims.md)). Only claims with a fact key are compared, and each cluster is one fact: the same company, event type, metric and period. Claims without a fact key never corroborate anything, so "profit up 12%" and "wins an order" are not the same news.
    - **Independent origins** are distinct sources. Near-identical quotes (syndicated wire copies) count as one origin, so ten copies of one story do not look like ten confirmations.
-   - Each cluster is labelled `corroborated` (2 or more independent origins), `single-source` or `contradicted` (positive and negative claims about the same event).
-   - Corroboration counts independent reports; it does not prove truth.
-3. **Headlines.** Accepted claims become `{publishedAt, source, title, symbols}` items, the input format of the trading desk's news analyst. By default only claims from corroborated clusters are included.
+   - Each cluster is labelled:
+     - `contradicted` when two reported figures for the fact disagree (signs differ, or they differ by more than 1 point or 10%, whichever is larger);
+     - `corroborated` when 2 or more independent origins report it;
+     - `single-source` otherwise.
+   - Price-direction opinions are listed as `priceOpinions` for information only; opposite opinions are not a contradiction.
+   - Corroboration measures independent agreement about the same figure; it does not prove truth.
+3. **Headlines.** Accepted claims become `{publishedAt, source, title, symbols}` items, the input format of the trading desk's news analyst. By default only claims in a corroborated cluster, and in no contradicted one, are included.
 
 ## Automatic knowledge
 
@@ -64,11 +70,14 @@ The backend independently enforces:
 
 **The fact-checker's rules.** It decides by rules, never by model judgement:
 - **Re-checks:** it re-checks every drafted claim against **its own** copy of the snapshot, so a claim the article does not support is ignored.
-- **Verifies evidence** when a re-checked claim is corroborated by 2 or more independent origins, or comes from an owner-designated primary source (such as the company's own filings), and nothing contradicts it.
+- **Verifies evidence** when a re-checked claim is corroborated by 2 or more independent origins reporting the same fact (metric and period), or comes from an owner-designated primary source (such as the company's own filings), and no disagreeing figure contradicts it. A news item with no fact key can only be verified through a primary source; otherwise it is rejected after `holdDays`.
 - **Holds evidence** while it waits for corroboration, up to `holdDays`. After that it rejects it, and it rejects at once anything with no checkable claim.
 - **Verifies a lesson** only if its text is exactly the template the rules produce. The template is dated and attributed, quotes its source, and states that it is not an instruction or a trading signal.
 - **Reads back** stored lessons, and revokes the evidence if the stored text differs.
-- **Revokes contradicted evidence:** when later independent reports contradict a verified claim, it revokes the evidence, and its lessons disappear from what bots see.
+- **Revokes contradicted evidence:** when a later report gives a disagreeing figure for a verified fact, it revokes the evidence, and its lessons disappear from what bots see.
+- **Survives a model switch:** when the model or the claim contract changes, the old `extracted.json` is kept as `extracted-archive-<n>.json` and still read, so earlier claims stay checkable and contradictable. No new run name or owner step is needed.
+
+`looseCorroborationVerifies` was retired with the old rule (same share and event type within 72 hours), which the October review found unsound. An existing configuration that still has it loads, and the setting changes nothing.
 
 **Owner configuration** (`.local/claims/autolearn.json`):
 
@@ -123,10 +132,12 @@ cd integrations\claims
 ..\..\.local\replay-venv\Scripts\python.exe -m unittest test_claims test_autolearn -v
 ```
 
-The 17 tests use a stand-in model and, for `autolearn`, a fake backend enforcing the real routes' rules. The automatic pipeline's tests cover:
+The tests use a stand-in model and, for `autolearn`, a fake backend enforcing the real routes' rules. The automatic pipeline's tests cover:
 - corroborated news becoming verified knowledge, with no repeated writes on a second cycle;
 - single-source holds, rejection after the hold period, and primary sources;
-- a later contradiction revoking verified evidence and removing its lessons;
+- a different fact (an order win beside a profit report) never corroborating;
+- a later disagreeing figure revoking verified evidence and removing its lessons;
+- a model switch keeping earlier claims checkable and contradictable;
 - the fact-checker ignoring an analyst claim the article does not support;
 - altered lesson text never being verified, and a stored mismatch causing revocation;
 - each step receiving only its own credential, with only extraction getting the model;
@@ -141,8 +152,10 @@ The claim-extraction tests cover:
 - an injected instruction staying data;
 - failures recording nothing;
 - resumable runs bound to model and contract;
+- fact keys: both parts together, the figure required in the quote, canonical storage;
 - syndicated copies not counting as corroboration;
-- contradictions and time windows;
+- only the same fact (metric and period) corroborating, and claims without a fact key never compared;
+- disagreeing figures contradicting, and opposite price opinions not;
 - headlines accepted by the desk's own validator.
 
 ## Limits and next steps

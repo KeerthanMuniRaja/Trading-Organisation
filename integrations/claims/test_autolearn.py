@@ -15,14 +15,15 @@ TEXTS = {
     'e1': ('src-a', '2026-10-03T10:00:00Z', 'Reliance Industries reported a 12% rise in quarterly net profit, the company said on Friday.'),
     'e2': ('src-b', '2026-10-03T12:00:00Z', "RIL's profit for the September quarter climbed 12% on strong retail sales, analysts noted."),
     'e3': ('src-a', '2026-10-03T09:00:00Z', 'Markets were closed for a holiday on Thursday and trading resumes next week.'),
-    'e4': ('src-c', '2026-10-04T10:00:00Z', "Reliance Industries' quarterly profit actually missed estimates, according to a revised filing."),
+    'e4': ('src-c', '2026-10-04T10:00:00Z', "Reliance Industries' quarterly net profit actually fell 3%, according to a revised filing."),
+    'e5': ('src-c', '2026-10-03T13:00:00Z', 'Reliance Industries won a large solar equipment order from a state utility this week.'),
 }
-QUOTES = {'e1': ('Reliance Industries reported a 12% rise in quarterly net profit', 'positive'),
-          'e2': ('profit for the September quarter climbed 12% on strong retail sales', 'positive'),
-          'e4': ('quarterly profit actually missed estimates, according to a revised filing', 'negative')}
-# the downstream tests exercise the opt-in loose corroboration path; the default (held for review) is tested separately
-CONFIG = {'recipientBotIds': ['news-desk', 'research-lead'], 'primarySourceIds': [], 'holdDays': 7, 'maxModelCallsPerCycle': 20,
-          'looseCorroborationVerifies': True}
+# (quote, direction, reported change); every claim is about net profit for Q2 FY27 except the order (no figure, no fact key)
+QUOTES = {'e1': ('Reliance Industries reported a 12% rise in quarterly net profit', 'positive', 12),
+          'e2': ('profit for the September quarter climbed 12% on strong retail sales', 'positive', 12),
+          'e4': ('quarterly net profit actually fell 3%, according to a revised filing', 'negative', -3),
+          'e5': ('won a large solar equipment order from a state utility', 'positive', None)}
+CONFIG = {'recipientBotIds': ['news-desk', 'research-lead'], 'primarySourceIds': [], 'holdDays': 7, 'maxModelCallsPerCycle': 20}
 
 
 def observation(evidence):
@@ -36,9 +37,11 @@ def stub_model(system, user, schema):
     text = json.loads(user)['text']
     for evidence, (_, _, body) in TEXTS.items():
         if body == text and evidence in QUOTES:
-            quote, direction = QUOTES[evidence]
+            quote, direction, change = QUOTES[evidence]
+            fact = {'metric': None, 'period': None} if change is None else {'metric': 'Net profit', 'period': 'Q2 FY27'}
             return {'claims': [{'statement': 'Reliance quarterly profit news.', 'quote': quote, 'symbols': ['RELIANCE.NS'],
-                                'eventType': 'earnings', 'direction': direction, 'eventDate': None, 'certainty': 'reported-fact'}]}, {}
+                                'eventType': 'earnings', 'direction': direction, 'eventDate': None, 'certainty': 'reported-fact',
+                                **fact, 'reportedChangePct': change}]}, {}
     return {'claims': []}, {}
 
 
@@ -154,7 +157,8 @@ class AutoLearnTests(unittest.TestCase):
         self.assertEqual((first['review']['headlines'], len(headlines)), (2, 2))
         self.assertEqual(autolearn.headline_receipt.load(self.state / 'verified-headlines.json'), headlines)
         self.assertEqual(desk_validator()(headlines), headlines)  # ready for the trading desk's news analyst
-        self.assertTrue(all('corroborated by independent reports' in k['content'] and 'not a trading signal' in k['content'] for k in knowledge))
+        self.assertTrue(all('corroborated by independent reports' in k['content'] and 'not a trading signal' in k['content']
+                            and 'Fact: net profit, Q2FY27, reported change +12%.' in k['content'] for k in knowledge))
         writes = len(backend.mutations)
         second = cycle(backend, self.state)  # nothing new: nothing is repeated
         self.assertEqual((second['queue']['pending'], second['extract']['callsThisRun'], second['lessons']['proposed']), (0, 0, 0))
@@ -245,6 +249,24 @@ class AutoLearnTests(unittest.TestCase):
         self.assertEqual(backend.lessons[proposals[stored]['lessonId']]['status'], 'unverified')
         self.assertTrue(all('BUY RELIANCE NOW' not in k['content'] for k in backend.knowledge()))
 
+    def test_a_different_fact_never_corroborates(self):
+        backend = FakeBackend(['e1', 'e5'])  # profit up 12% and an order win: both positive earnings news, not the same fact
+        out = cycle(backend, self.state)
+        self.assertEqual(out['evidence'], {'awaiting-corroboration': 2})
+        self.assertEqual([backend.evidence[e]['status'] for e in ('e1', 'e5')], ['unverified', 'unverified'])
+
+    def test_a_new_model_or_contract_keeps_earlier_claims_checkable(self):
+        backend = FakeBackend(['e1', 'e2'])
+        cycle(backend, self.state)
+        autolearn.factcheck_queue(backend.api('evaluator'), self.state)
+        autolearn.analyst_extract(stub_model, 'another-model', self.state, CONFIG)  # the owner switched models
+        self.assertTrue((self.state / 'extracted-archive-1.json').exists())
+        self.assertFalse((self.state / 'extracted.json').exists())  # nothing pending, so the new model has drafted nothing yet
+        self.assertEqual(len(autolearn.export_headlines(backend.api('evaluator'), self.state, CONFIG)), 2)
+        backend.add('e4')  # a later contradiction still reaches claims extracted by the old model
+        out = cycle(backend, self.state)
+        self.assertEqual((out['evidence'], out['review']['revoked']), ({'contradicted': 1}, 2))
+
     def test_contradiction_blocks_mixed_evidence_even_with_primary_or_corroborated_support(self):
         obs = {'publishedAt': '2026-10-03T10:00:00+00:00'}
         for support in ('corroborated', 'primary-source'):
@@ -311,16 +333,9 @@ class OrchestrationTests(unittest.TestCase):
                     autolearn.load_config(path)
             path.write_text(json.dumps({'recipientBotIds': ['news-desk']}), encoding='utf-8')
             self.assertEqual(autolearn.load_config(path)['holdDays'], 7)
-            self.assertIs(autolearn.load_config(path)['looseCorroborationVerifies'], False)  # safe by default
-
-    def test_by_default_loosely_corroborated_news_waits_for_a_person(self):
-        own = [{'id': 'c1', 'sourceId': 'src-a'}]
-        clusters = [{'claimIds': ['c1'], 'status': 'corroborated'}]
-        obs, record = {'publishedAt': NOW.isoformat()}, {'outcome': 'valid', 'accepted': [{}]}
-        safe = {**CONFIG, 'looseCorroborationVerifies': False}
-        self.assertEqual(autolearn.evidence_decision(obs, record, own, clusters, safe, NOW), ('hold', 'corroborated-by-loose-rule-needs-review'))
-        self.assertEqual(autolearn.evidence_decision(obs, record, own, clusters, CONFIG, NOW), ('verified', 'corroborated'))  # owner opted in
-        self.assertEqual(autolearn.evidence_decision(obs, record, own, [], {**safe, 'primarySourceIds': ['src-a']}, NOW), ('verified', 'primary-source'))
+            # the retired opt-in still loads (an existing configuration keeps working) and changes nothing
+            path.write_text(json.dumps({'recipientBotIds': ['news-desk'], 'looseCorroborationVerifies': True}), encoding='utf-8')
+            self.assertNotIn('looseCorroborationVerifies', autolearn.load_config(path))
 
 
 if __name__ == '__main__':
