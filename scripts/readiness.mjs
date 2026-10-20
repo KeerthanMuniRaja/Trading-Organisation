@@ -81,6 +81,8 @@ export function assess(f, now) {
   else if (!rb.credential) out.push(check('rule-bot', 'NO-GO', `RULE_BOT_ID=${rb.id} has no trader credential bound to it`, 'activate-rule-bot.mjs credential --yes, then restart'));
   else if (rb.state !== 'paper') out.push(check('rule-bot', 'NO-GO', `${rb.id} is ${rb.state ?? 'not created'}, not qualified for paper`, 'activate-rule-bot.mjs apply --yes'));
   else if (rb.activeModel !== RULE_MODEL) out.push(check('rule-bot', 'NO-GO', `${rb.id} has no active release of ${RULE_MODEL}`, 'activate-rule-bot.mjs apply --yes'));
+  // RELEASE-01: the cycle will refuse to run code that is not the authorised release; say so before the day starts
+  else if (rb.gate) out.push(check('rule-bot', 'WARN', `${rb.id}: ${rb.gate}`, 'npm.cmd run rulebot -- apply --yes (registers, evaluates and activates a release for the current code)'));
   else out.push(check('rule-bot', 'GO', `${rb.id} qualified, release active, credential bound`));
 
   const failed = f.lastCycle?.failed ?? [], degraded = f.lastCycle?.degraded ?? [];
@@ -103,7 +105,7 @@ export function assess(f, now) {
 export const verdict = checks => checks.some(c => c.status === 'NO-GO') ? 'NO-GO' : checks.some(c => c.status === 'WARN') ? 'GO WITH WARNINGS' : 'GO';
 
 /** Collects the facts: backend answers plus local files. Network failures become missing facts, never crashes. */
-export async function gather(env, { fetchImpl = fetch, root = ROOT } = {}) {
+export async function gather(env, { fetchImpl = fetch, root = ROOT, gate = null } = {}) {
   const base = (env.API_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
   if (!/^(https:\/\/[^/@?#]+|http:\/\/(127\.0\.0\.1|localhost)(:\d+)?)$/.test(base)) throw new Error('Invalid backend API origin');
   const principals = JSON.parse(env.PRINCIPALS_JSON || '[]');
@@ -120,6 +122,12 @@ export async function gather(env, { fetchImpl = fetch, root = ROOT } = {}) {
   const [audit, digest, bots, view] = health ? await Promise.all([ask('owner', 'GET', '/v1/audit/integrity'), ask('evaluator', 'POST', '/v1/owner/digest', {}),
     ask('owner', 'GET', '/v1/bots'), ruleId ? ask('owner', 'POST', '/v1/releases/view', { botId: ruleId }) : null]) : [];
   const active = view?.releases?.find(r => r.id === view.active);
+  // the same release check the cycle runs before the rule bot (its identity from its own code): null when allowed
+  const gateNote = health && ruleId && active ? await (gate ?? (async botId => {
+    const { releaseCheck } = await import('./organisation-cycle.mjs');
+    const py = env.CYCLE_PYTHON || join(root, '.local', 'replay-venv', ...(process.platform === 'win32' ? ['Scripts', 'python.exe'] : ['bin', 'python']));
+    return releaseCheck({ botId, cmd: py, args: [join(root, 'integrations', 'trading-desk', 'rule_bot.py'), '--describe'] }, { env, fetchImpl });
+  }))(ruleId) : null;
 
   const prices = {};
   for (const s of UNIVERSE) {
@@ -150,12 +158,12 @@ export async function gather(env, { fetchImpl = fetch, root = ROOT } = {}) {
     credentials: { missing: ['owner', 'researcher', 'evaluator'].filter(r => !token(r)) },
     limits: { maxOrderPaise: env.MAX_ORDER_PAISE || '100000', feeBps: Number(env.PAPER_FEE_BPS || 10), slippageBps: Number(env.PAPER_SLIPPAGE_BPS || 5) },
     ruleBot: { id: ruleId, credential: !!ruleId && principals.some(p => p.role === 'trader' && p.botId === ruleId && p.token),
-      state: Array.isArray(bots) ? bots.find(b => b.id === ruleId)?.state ?? null : null, activeModel: active?.model ?? null },
+      state: Array.isArray(bots) ? bots.find(b => b.id === ruleId)?.state ?? null : null, activeModel: active?.model ?? null, gate: gateNote },
   };
 }
 
-export async function run(env = process.env, { fetchImpl = fetch, root = ROOT, now = Date.now() } = {}) {
-  const checks = assess(await gather(env, { fetchImpl, root }), now);
+export async function run(env = process.env, { fetchImpl = fetch, root = ROOT, now = Date.now(), gate = null } = {}) {
+  const checks = assess(await gather(env, { fetchImpl, root, gate }), now);
   const report = { at: new Date(now).toISOString(), verdict: verdict(checks), checks };
   await mkdir(join(root, '.local', 'readiness'), { recursive: true });
   await writeFile(join(root, '.local', 'readiness', report.at.slice(0, 10) + '.json'), JSON.stringify(report, null, 2) + '\n');

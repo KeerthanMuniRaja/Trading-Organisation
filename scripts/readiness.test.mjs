@@ -51,6 +51,8 @@ test('each blocker is named with what to do', () => {
   assert.equal(status(assess({ ...ready, prices: prices('2026-10-12') }, WED_MORNING), 'market-data'), 'WARN'); // maybe a holiday
   const rb = s => status(assess({ ...ready, ruleBot: { ...ready.ruleBot, ...s } }, WED_MORNING), 'rule-bot');
   assert.deepEqual([rb({ id: null }), rb({ credential: false }), rb({ state: 'school' }), rb({ activeModel: null })], ['WARN', 'NO-GO', 'NO-GO', 'NO-GO']);
+  const drifted = assess({ ...ready, ruleBot: { ...ready.ruleBot, gate: 'its code or rule differs from the authorised release v1' } }, WED_MORNING).find(c => c.id === 'rule-bot');
+  assert.deepEqual([drifted.status, drifted.action], ['WARN', 'npm.cmd run rulebot -- apply --yes (registers, evaluates and activates a release for the current code)']);
   const dear = assess({ ...ready, limits: { ...ready.limits, maxOrderPaise: '100000' }, prices: { ...prices('2026-10-13'), ICICIBANK: { date: '2026-10-13', closePaise: '136020' } } }, WED_MORNING);
   assert.match(dear.find(c => c.id === 'order-limit').detail, /below one share of ICICIBANK; those proposals will be rejected/);
   assert.equal(verdict(dear), 'GO WITH WARNINGS');
@@ -78,7 +80,9 @@ test('a run reads the backend and local files, writes the report, and never send
     const fetchImpl = async (url, init) => { const path = new URL(url).pathname; calls.push([init.method, path]); return { ok: true, json: async () => answers[path] }; };
     const env = { RULE_BOT_ID: 'momentum-rules', MAX_ORDER_PAISE: '500000', PRINCIPALS_JSON: JSON.stringify([{ role: 'owner', token: 'o' }, { role: 'researcher', token: 'r' },
       { role: 'evaluator', token: 'e' }, { role: 'trader', token: 't', botId: 'momentum-rules' }]) };
-    const report = await run(env, { fetchImpl, root, now: WED_MORNING });
+    const gated = [];
+    const report = await run(env, { fetchImpl, root, now: WED_MORNING, gate: async botId => { gated.push(botId); return null; } });
+    assert.deepEqual(gated, ['momentum-rules']); // the cycle's own release check is asked before the day starts
     assert.deepEqual(report.checks.filter(c => c.status !== 'GO').map(c => c.id), ['last-cycle', 'backup']);
     assert.match(report.checks.find(c => c.id === 'last-cycle').detail, /failed news-x/);
     assert.ok(calls.every(([method, path]) => method === 'GET' || ['/v1/owner/digest', '/v1/releases/view'].includes(path))); // read-only routes
