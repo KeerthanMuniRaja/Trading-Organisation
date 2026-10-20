@@ -1,22 +1,103 @@
-# Trading Organisation — backend foundation
+# Trading Organisation
 
-Version **0.1.34** adds [method-based assessments](docs/assessment-methods.md): bots choose computations and the backend does the arithmetic. With directly relevant lessons, local Qwen3.5-4B chose correctly 96% of the time vs 77% without. In the real chain, one news-derived lesson was not enough (8/16), so learning from real sources is not yet demonstrated.
+A private organisation of cooperating AI and rule-based bots that research, propose and paper-trade eight NSE shares under the owner's control. Each bot is a member with its own identity, budget, track record and lifecycle. Independent reviewers check every proposal before it can trade, and every rupee moves through an audited double-entry ledger.
 
-Version **0.1.33** runs the organisation's learning chain on a real local model. Qwen3.5-4B, schema-constrained through the new owner-selectable `direct-structured-v1` engine, completed source lesson → review → transfer → fresh assessment end to end (`npm run verify:real-model`). The bot scored 6/16 on the assessment, and arithmetic remains its weakness. See [model selection](docs/model-selection.md).
+**Paper only.** All money, prices, orders and fills are simulated. `APP_MODE=live` is rejected, and no broker, bank or exchange is connected.
 
-Version **0.1.35** builds our owner-controlled bot organisation: NestJS/TypeScript authority, Python research, specialised bot identities, an academy, reviewed shared knowledge, finite learning workflows and paper trading. **All money, quotes, fills and bank references are simulated.** APP_MODE=live is rejected.
+**Live paper testing** started in October 2026: one rule bot trading with a ₹5,000 budget. The honest, code-checked status is the [audit of 14 October](docs/audit-2026-10-14.md), and day-by-day events are in the [project log](docs/project-log/README.md).
 
-This release hardens direct-model completion checks, retains usage on failed validation, preserves worker engine selection and prevents benchmark engine mislabelling. The earlier review fixes retain benchmark pairing, timeout caps and publisher crash recovery. [Current status](docs/current-status.md) separates implemented behaviour from remaining work; [verification](docs/verification.md) records the checks.
+## How the organisation works
 
-The preferred experimental local reasoning profile is **Qwen3.5-4B Q4_K_M**, shared across bots with distinct contexts. The saved 2B benchmark failed important tasks, so it is not qualified as the general reasoning model. Newer constrained direct 4B reports pass the tested output schemas but do not qualify production Hermes or numerical accuracy. A separate direct production engine now exists; pinned Hermes schema support and actual task qualification remain distinct. See [model evidence](docs/model-selection.md), the [model strategy and organisation graph](docs/model-strategy.md), [local runtime](docs/local-model.md) and [ten-repository reference map](docs/reference-map.md). The example policy stays disabled.
+```mermaid
+flowchart LR
+  O[Owner] -->|deposits, budgets, approvals, halt| W[Treasury: Wallet 1 and Wallet 2]
+  O -->|activates, suspends, retires| B[Bots]
+  N[News feeds and market data] --> R[Research: claim analyst, model allocator, rule bot]
+  R -->|trade proposal| C{Review room: challenges and deterministic risk review}
+  C -->|accepted| X[Execution: one order per proposal, verified prices]
+  X --> L[Ledger, P&L and scoring]
+  L -->|track record, fitness, releases| B
+  F[Fact-checker, no model] -->|verified lessons| K[Shared knowledge]
+  K --> R
+  L --> D[Owner digest, alerts and audit trail]
+  D --> O
+```
 
-The bot community grows through reviewed knowledge and measured skills, with preserved experience on retirement. Continuous autonomous growth, general self-repair, model fine-tuning and profitable live trading are not complete. [Remaining work](docs/remaining-work-assessment.md) tracks those gaps.
+### Who does what
 
-For continuity use [KT.md](KT.md) and [RESUME-PROMPT.md](RESUME-PROMPT.md).
+| Member | Role | What it may do |
+| --- | --- | --- |
+| **Owner** | The only authority over money and permissions | Deposit funds, set budgets and limits, approve releases, suspend, resume or retire bots, halt and resume the organisation, withdraw |
+| **Researcher bots** | Propose and draft | Draft trade proposals and news claims, and propose lessons. They can never review their own work |
+| **Evaluator bots** | Review independently | Review evidence, lessons and proposals by fixed rules. The fact-checker uses no model at all |
+| **Trader bots** | Act within a budget | Execute only reviewed proposals for their own bot, within its budget and the order limit |
+| **The backend** | Enforces the rules | Roles, idempotency, the hash-chained audit trail and append-only history. No bot can change its own permissions |
+
+### Members working today
+
+- **`momentum-rules`, the rule bot.** Model-free. Once a month it picks the top three shares by momentum, sells before it buys, and keeps its decision for the month. Release v1 is active with a ₹5,000 budget ([trade signals](docs/trade-signals.md#the-rule-bot-a-model-free-member)).
+- **Claim analyst and fact-checker.** The analyst drafts quote-backed news claims with the local model. The independent fact-checker verifies a claim only when two independent sources report the same figure for the same period, and withdraws it if a later report disagrees ([claims](integrations/claims/README.md), [evidence claims](docs/evidence-claims.md)).
+- **Model allocator.** Built and tested, not yet switched on. It needs the local model and its own forward test.
+
+### A bot's life
+
+The owner's idea is *birth, education, livelihood, evolution and retirement*, as software lifecycle rules (not consciousness):
+
+1. **Birth:** a new identity, admitted only for a distinct opportunity, not as a renamed copy.
+2. **School and college:** reviewed lessons, then measured exams.
+3. **Paper trading:** qualified bots trade through releases, with live fitness measured against holding cash.
+4. **Reputation:** good results earn responsibility, and poor results lead to suspension, a smaller budget or retirement.
+5. **Retirement:** what the bot learned is kept for the organisation, and its history is never deleted.
+
+Departments, hackathons, births and compute budgets have tested backend rules, but the daily cycle does not use them yet ([audit](docs/audit-2026-10-14.md)).
+
+### The money rules
+
+1. **Deposits:** every owner deposit goes into Wallet 1. Wallet 2 starts at zero.
+2. **Profit split:** only newly verified cumulative realised net profit, after losses and costs, is split: 60% stays in Wallet 1 and 40% is protected in Wallet 2. Losses must be recovered before the next split.
+3. **Bot limits:** bots can never spend Wallet 2, withdraw to the bank, change the split or raise their own limits.
+4. **Owner transfers:** the owner moves money between the wallets or withdraws with signed, expiring authorisation, all recorded in the ledger.
+
+All amounts are integer paise in balanced double-entry journals ([financial model](docs/financial-model.md), [wallet rules](docs/knowledge-base/12-wallet-and-treasury.md)).
+
+## The daily cycle
+
+`npm run cycle`, run after 16:00 IST, does the day's work in a fixed order. Steps that need the local model are skipped when it is not running, and the rest still run.
+
+| Stage | Steps |
+| --- | --- |
+| Check | Health, then market-data refresh (settled bars only; moves over 20% wait for the owner's confirmation) |
+| Learn | News feeds, then relevance triage, then claims and fact-check (needs the model), then chain links |
+| Test | Forward tests |
+| Propose | Rule bot, then the model allocator (needs the model) |
+| Trade | Review at the verified close, fill at the next verified open, then score signals and live fitness |
+| Report | Paper snapshot, then alerts, then the owner digest |
+
+The daily routine and recovery steps are in the [live testing runbook](docs/live-testing.md).
+
+## Status
+
+| Area | Status |
+| --- | --- |
+| Ledger, wallets, paper P&L, audit chain | Done and tested |
+| Proposals, review, execution, scoring, releases, fitness | Done and tested for daily trading |
+| Prices, marks, splits, bonuses and dividends | Done and tested (corporate actions are recorded by the owner) |
+| Daily cycle, readiness check, digest, alerts, backup | Done and tested. There is no built-in schedule, and alerts go to a local outbox for now |
+| Rule bot | Live in paper testing |
+| News feeds, triage and automatic fact-checking | Done. Drafting claims needs the local model |
+| Model allocator, learning loop | Built and tested, waiting for the model |
+| Departments, births, hackathons, compute budgets | Backend rules tested, not used by the cycle yet |
+| Live money, partial fills, intraday trading | Not built (paper only, by design) |
+
+**Still needs the owner:**
+- the local model for the learning loop and the allocator;
+- an alert channel;
+- a daily schedule;
+- confirmation of the market-data licence.
 
 ## Run locally
 
-Use Node.js 24 and Python 3.12 or 3.13. Run these commands from this project directory. The default database is persistent PGlite in `.data/paper`; Docker is not needed.
+Use Node.js 24 and Python 3.12 or 3.13, from this project directory, in Command Prompt. The database is persistent PGlite in `.data/paper`, so Docker is not needed.
 
 ```cmd
 npm ci --ignore-scripts
@@ -25,90 +106,60 @@ npm run build
 npm start
 ```
 
-`dev:setup` creates unique development credentials and an Ed25519 signing key in ignored local files. Run it once for a new checkout; it refuses to overwrite an existing `.env`. The workspace in which this project was built is already configured. Keep `.env`, `.local`, and `.data` private. Do not expose this development server to the internet.
+`dev:setup` creates development credentials and an Ed25519 owner signing key in ignored local files. Run it once for a new checkout; it refuses to overwrite an existing `.env`. Keep `.env`, `.local` and `.data` private, and do not expose the server to the internet.
 
-In a second terminal in the same project directory:
-
-```cmd
-REM Set this only if Python is not already on PATH:
-REM set "PYTHON_BIN=C:\absolute\path\to\python.exe"
-npm run demo
-```
-
-The demo performs a complete synthetic journey: register evidence → admit a distinct bot → review its lesson → complete school → research a momentum candidate → independently evaluate it → qualify for paper trading → record an owner contribution → buy/sell → allocate and confirm the 60/40 profit split. It writes `.local/demo-report.json`. Stable idempotency keys make reruns reuse existing business operations instead of funding or trading again. Use a fresh database to demonstrate a different research engine; the existing completed demo does not rerun its research job.
-
-For ongoing research, start workers in separate terminals:
+**Daily live routine,** in a second terminal (open a fresh one, so old environment variables cannot override `.env`):
 
 ```cmd
-npm run worker:research
-npm run worker:evaluation
-REM Add -- --once to process at most one job and exit.
+npm run readiness
+npm run cycle
 ```
 
-These local launchers read the development configuration and pass each worker only its role token. Deployments must provision scoped secrets independently; the launchers are not an OS security boundary.
+- **When:** run `readiness` before 09:15 IST for a go/no-go, and `cycle` after 16:00 IST.
+- **Backup:** `npm run backup` takes a backup before any change to the live setup.
+- **Rule bot:** the owner activates it with `npm run rulebot -- plan`, then `credential --yes`, then `apply --yes`.
+- **Local model:** `npm run model:local` serves Qwen3.5-4B on loopback for the model steps.
 
-## Earlier implementation milestones
-
-These version-specific descriptions are historical. For the current inventory and limits use [current status](docs/current-status.md).
-
-Version 0.1.7 adds [learning and R&D](docs/learning-and-development.md): immutable experience reflections, independent verification, temporally filtered shared memory, versioned reflection profiles and a finite two-role supervisor. `worker:organisation -- --minutes 30` runs the configured research/evaluation/memory workflow. An optional `worker:development` uses the existing pinned Hermes runtime and an owner-selected existing model to draft unverified research capabilities; independent review does not automatically recruit bots or deploy strategies. Both policies default off. Backend and mocked Python tests passed; actual model calls remain deferred.
-
-Version 0.1.6 adds the [owner organisation report](docs/organisation-report.md). `npm run lifecycle:admin -- report` explains each managed student's current work and blockers, remaining assignment capacity, admission limits and unread notifications. It is read-only and does not infer worker health from an outstanding lease. Its backend report tests passed; see the dated verification record.
-
-The new [portfolio academy](docs/portfolio-academy.md) uses the actual pinned skfolio library for a resumable, offline exercise: three allocation methods across 36 historical example-data windows, with costs and positive/negative feedback. Run `npm run academy:run` after installing its isolated environment. It needs no model API and stops after completing the exercise. This local lab is not yet connected to backend graduation or trading; its bundled example data is restricted to testing.
-
-Version 0.1.3 adds a separate [portfolio backend connection](docs/portfolio-backend.md): the Python researcher receives training data and submits weights; an independent evaluator requests backend-calculated holdout results. Reviews enter the audit log and owner inbox, while example results remain ineligible for graduation or trading. `npm run worker:portfolio` operates on registered dataset/trial IDs. The three-method isolated portfolio workflow passed; persistent deployment remains separate.
-
-Version 0.1.4 adds a [research bot lifecycle](docs/research-lifecycle.md): owner-approved capability blueprints, bounded admissions, reviewed curriculum, performance reputation, mentor designation, retirement draining and preserved knowledge archives. It is disabled by default and applies only to zero-budget example-research students. It does not yet discover opportunities, invent skills, spawn model processes or create departments autonomously. Use `lifecycle:admin` to inspect policy and `worker:lifecycle` for explicitly started cycles after configuration. Backend and isolated department checks passed; persistent activation remains separate.
-
-Version 0.1.5 adds a [bounded research department](docs/research-dispatch.md): owner-approved dataset pool, daily/lifetime assignment limits, independent workers, expiring leases, durable trial submission and automatic evaluation/lifecycle dispatch cycles. Managed students must use this queue; they cannot bypass it through manual portfolio submissions. `worker:department` runs one cycle or a finite session after configuration. Failed and retired work remains recorded. No automation is enabled by installing this code; isolated build and workflow checks passed.
-
-| Area | Working behaviour |
-| --- | --- |
-| Treasury | Integer-paise double-entry journals; all owner contributions enter Wallet 1; cumulative realised profit accounting; exact 60/40 allocation with carried fractional remainder; protected pending transfers and Wallet 2. |
-| Authority | Default-deny API roles; one owner; bot-bound trader identities; signed, expiring owner transaction challenges; no bot bank withdrawal or permission-editing endpoint. |
-| Research | Chronological training/holdout datasets, momentum parameter trials, separate evaluator jobs, leases, bounded retries and failure incidents. |
-| Academy | School lessons with independent review, college experiments, paper qualification, declared capability deduplication, retirement with reviewed knowledge preserved. |
-| Paper execution | Fresh approved-source quotes, fees/slippage, buy/sell accounting, shared reservations, position/budget limits, loss stop and critical-incident halt. |
-| Knowledge | Source registry, evidence provenance and hashes, review/rejection/revocation, linked lessons, datasets and experiments. Revoked support blocks dependent new risk. |
-| Operations | Incident records, evidence-backed resolution, owner resume control, durable owner notification inbox and hash-linked audit history. |
-| Hermes | Optional real `AIAgent` adapter for bounded research candidate selection; contract tested, actual model inference deferred. |
-| Ruflo | Pinned local MCP task mirror, bounded retries/sessions, durable completion recovery, startup diagnostics and owner health notifications. Actual backend-to-Ruflo lifecycle and restart verification passed on the normal Windows host. |
-
-This release learns through parameter experiments and reviewed reusable lessons. It does not train a foundation model, infer traders' private intentions, continuously scrape the internet, create autonomous departments, or demonstrate profitable live trading. The current paper execution demo is scripted; the research result is not yet an unattended market-to-order trading loop.
-
-## Read the design and contracts
-
-Start with the [complete documentation index](docs/documentation-index.md).
-
-- [Architecture and runtime knowledge graph](docs/architecture.md)
-- [Financial invariants and examples](docs/financial-model.md)
-- [API roles and request flow](docs/api.md)
-- [Security boundaries and operations](docs/security-and-operations.md)
-- [Hermes integration](docs/hermes-integration.md) and [Ruflo integration](docs/ruflo-integration.md)
-- [All ten reference repositories mapped to implementation](docs/reference-map.md)
-- [Validation record](docs/verification.md) and [remaining development stages](docs/roadmap.md)
+**Synthetic demo:** `npm run demo` runs the whole journey on a fresh database: evidence, a new bot, school, research, independent evaluation, paper trades and the 60/40 split.
 
 ## Tests
 
 ```cmd
-npm test
-python -m unittest discover -s services/research -p "test_*.py" -v
-python -m unittest discover -s integrations/hermes -p "test_*.py" -v
-npm run test:ruflo
+npm run verify
 ```
 
-The Ruflo contract suite above uses a fake MCP peer to test our enforcement. Installing the optional integration enables an additional dependency regression and a separate actual-upstream smoke test; see its guide. Contract tests do not stand in for a working upstream runtime.
+This runs every suite and writes logs to `.local/verify/`:
+- backend;
+- scripts;
+- trading desk;
+- quant advisor;
+- claims;
+- integration tests;
+- Hermes;
+- market replay;
+- skfolio.
 
-For actual backend-to-Ruflo verification after installing its optional dependencies, run `npm run test:ruflo:live`. It uses fresh test state and saves `integrations/ruflo/.state/last-live.json`. `npm run ruflo:doctor` checks runtime prerequisites without starting an agent. A passing live report is required before describing the integration as fully verified.
+In the full run on 20 October 2026, 636 of 637 tests passed. The one failure was a timing flake in a test; after the fix that suite passed on its own ([verification](docs/verification.md)).
 
-The host run passed on 4 October 2026. This restricted execution environment still cannot resolve the Windows OS profile; run the Ruflo worker in the normal host terminal or a deployment with a real OS identity. No upstream security check was disabled to obtain the pass.
+## Read more
+
+| Read | For |
+| --- | --- |
+| [KT.md](KT.md) | Knowledge transfer: state, decisions and pitfalls. Start here to continue the work |
+| [Audit of 14 October](docs/audit-2026-10-14.md) | Honest status of every planned idea |
+| [Live testing runbook](docs/live-testing.md) | Daily operation |
+| [Project log](docs/project-log/README.md) | What happened each day |
+| [Trade signals](docs/trade-signals.md), [bot control](docs/bot-control.md), [releases](docs/releases.md) | Proposals, review, owner controls and release management |
+| [Paper performance](docs/paper-performance.md), [corporate actions](docs/corporate-actions.md) | P&L, the basket benchmark, splits and dividends |
+| [Vision and principles](docs/knowledge-base/01-vision-and-principles.md), [bot lifecycle](docs/knowledge-base/11-research-development-and-bot-lifecycle.md) | The organisation we are building |
+| [Architecture](docs/architecture.md), [API](docs/api.md), [security](docs/security-and-operations.md) | Services, roles and authority boundaries |
+| [Documentation index](docs/documentation-index.md) | Every document, including the dated version history |
 
 ## Source ownership and independence
 
-Our core owns identities, capital, audit records, learning evidence, qualification and job state. Hermes and Ruflo have no authority to rewrite those rules. Both are optional, version-pinned integrations. The other repositories are architectural references or future candidate plugins, not bundled execution engines.
+The core owns:
+- identities and capital;
+- audit records and learning evidence;
+- qualification and job state.
 
-Retain reviewed source, lockfiles, notices, dependency archives, model artifacts where permitted, and reproducible deployment images. This source ZIP excludes installed dependencies, credentials and databases: it is a development handoff, not an offline deployment image. GitHub disappearance would not erase a retained deployment, but initial installs, missing packages, model services, brokers and data providers remain separate availability dependencies.
-
-<!-- documentation-navigation -->
-[Documentation index](docs/documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.
+Hermes, Ruflo and skfolio are optional, version-pinned integrations with no authority over those rules. The other reference projects are architectural references ([reference map](docs/reference-map.md)). Version pins, licences and lockfiles are kept, so a retained deployment does not stop if an upstream repository disappears. Credentials, databases and installed dependencies are never committed.
