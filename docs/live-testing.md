@@ -38,6 +38,19 @@ The day's work runs **after the close**: decisions use settled daily closes, and
 | When the digest says so | **Answer the owner agenda**: management recommendations, new bots, departments, releases and qualifications ([management](management.md)). | `npm.cmd run agenda`, then `npm.cmd run agenda -- accept <id>` or `decline <id>` |
 | Weekly | **Backup** (API stopped) | `npm.cmd run backup -- create` |
 
+## Or let the supervisor run the day
+
+`npm run supervisor` runs the day without anyone at the keyboard. It is never installed by itself: run it in a terminal that stays open, or register it with Windows Task Scheduler if you choose to.
+- **Readiness:** 09:00 IST on trading days. Weekends are skipped, and so are holidays in `.local/nse-holidays.json`.
+- **Cycle:** 16:05 IST, with the local model when one is configured and answering.
+- **Backup:** Fridays at 16:45 IST, but only when the backend isn't running. It never stops a backend it didn't start.
+- **Backend:** if it's down for a job, the supervisor starts it directly, with only the `.env` settings, and stops it afterwards. A backend you started is left alone.
+- **Log:** every step goes to `.local/supervisor/<day>.jsonl`.
+
+Useful options:
+- `npm run supervisor -- --plan` shows the next jobs and changes nothing.
+- `npm run supervisor -- --once cycle` runs one job now.
+
 ## What to expect on day one
 
 - **The rule bot proposes on its first run in a month.** On day one it proposes for the current top 3, and the cycle's `eod-trading` step immediately reviews those proposals at the verified close.
