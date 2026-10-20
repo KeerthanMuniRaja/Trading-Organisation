@@ -33,6 +33,22 @@ Months 2022-12 to 2026-09 (46 months). **No idea passes.**
 
 The best idea is the one the live rule bot `momentum-rules` already runs. Its edge is suggestive but not proven once all the ideas tried are counted, which is why live paper fitness is its real test. The scout re-tests every cycle, so a robust idea will surface as data accumulates.
 
+## R&D invents its own ideas (`rnd_ideas.py`)
+
+The fixed catalogue is only the start: the research department proposes new ideas itself.
+- **Specifications, not code.** An idea is a spec in a fixed grammar:
+  - momentum: 1–12 months, top 1–5;
+  - low volatility: a 20–120-day window, top 1–5;
+  - reversal: 5–63 days, bottom 1–5.
+
+  Each can add a trend filter (cash while the universe is below its 200-day average). A valid spec maps onto audited rule builders, so nothing unreviewed ever executes.
+- **Who invents.**
+  - **With the model:** the cycle runs the scout with `--invent model` (cycle `--with-model`). The local model answers in a schema confined to the grammar and states why it proposes each idea; the answer is validated again before anything is stored.
+  - **Without the model:** `--invent explorer` proposes close variants of the three best ideas. It never runs on its own; you choose it.
+- **Bounded and permanent.** At most 3 new ideas a calendar month, and duplicates of any earlier idea are refused. Every idea is appended to `.local/trading-desk/rnd/ideas.jsonl` with who proposed it and when, and is never removed.
+- **The bar rises with every idea.** The scout tests the catalogue and every ledger idea together, at p < 0.05 ÷ the number of ideas ever tried. Inventing more ideas makes passing harder, never easier, so luck can't be mined. The ledger is part of the scout's fingerprint.
+- **The same road to trading.** A passing invented idea becomes verified evidence and a birth proposal. With standing approvals, it can go on to a release, qualification, a starting budget and monthly trading through `rnd_bot.py`, which runs ledger ideas exactly like catalogue ones.
+
 ## When an idea passes
 
 The step only screens until the owner names an approved research source. To let it propose, set `RND_SOURCE` (for example `desk-research`), optionally with `RND_DEPARTMENT` (default `desk`), in `.env`. The source must be registered and approved once by the owner (`POST /v1/sources`). Then a passing idea that no bot serves yet goes through the organisation like any proposal:

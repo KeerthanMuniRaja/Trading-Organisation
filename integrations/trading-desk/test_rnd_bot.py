@@ -81,6 +81,8 @@ class RndBotTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory()
+        import rnd_ideas
+        cls.real_ledger, rnd_ideas.LEDGER = rnd_ideas.LEDGER, Path(cls.tmp.name) / 'no-ideas-yet.jsonl'  # never the owner's ledger
         cls.cache = Path(cls.tmp.name) / 'cache'
         cls.cache.mkdir()
         for k, symbol in enumerate(SYMBOLS):  # two persistent winners
@@ -89,6 +91,8 @@ class RndBotTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        import rnd_ideas
+        rnd_ideas.LEDGER = cls.real_ledger
         cls.tmp.cleanup()
 
     def test_a_born_bot_is_onboarded_once_with_independent_roles(self):

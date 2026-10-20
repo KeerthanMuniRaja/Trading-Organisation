@@ -44,7 +44,7 @@ def idea(bot_id):
 
 def identity(name):
     """The release identity of one R&D bot: its rule, the catalogue version, and the exact code that runs it."""
-    code = b''.join((HERE / f).read_bytes().replace(b'\r\n', b'\n') for f in ('rnd_bot.py', 'rnd_scout.py', 'portfolio_daily.py'))
+    code = b''.join((HERE / f).read_bytes().replace(b'\r\n', b'\n') for f in ('rnd_bot.py', 'rnd_scout.py', 'rnd_ideas.py', 'portfolio_daily.py'))
     return {'model': 'rules:' + name, 'promptVersion': hashlib.sha256(f'{name}|{rnd_scout.fingerprint()}'.encode()).hexdigest()[:16],
             'codeFingerprint': hashlib.sha256(code).hexdigest()}
 
@@ -57,7 +57,7 @@ def onboard(env=os.environ, opener=None, report=None, today=None):
     """Release, screening fitness and evaluation for every born R&D bot that lacks them. Idempotent."""
     base, researcher = sc.principals(env, 'researcher')
     _, evaluator = sc.principals(env, 'evaluator')
-    entries = rnd_scout.catalogue()
+    entries = rnd_scout.entries()  # the fixed catalogue and every invented idea
     out = []
     for bot in get(base, researcher, '/v1/bots', opener):
         name = idea(bot['id'])
@@ -94,7 +94,7 @@ def targets(name, cache, now):
     datasets = {s: d for s in sorted(daily.datasets.UNIVERSE) if (d := eod_trader.dataset_for(cache, s.removesuffix('.NS')))}
     settled = {s: [b for b in d['bars'] if sc.close_time(b['date']) <= now - sc.SETTLE] for s, d in datasets.items()}
     dates, table = pd.aligned(settled)
-    weights = rnd_scout.catalogue()[name][3](table, dates, len(dates) - 1) if dates else {}
+    weights = rnd_scout.entries()[name][3](table, dates, len(dates) - 1) if dates else {}
     return {s.removesuffix('.NS'): round(w, 4) for s, w in weights.items() if w > 0}, (dates[-1] if dates else None)
 
 

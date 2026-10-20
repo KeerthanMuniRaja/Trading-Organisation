@@ -84,9 +84,29 @@ def catalogue():
     return out
 
 
-def fingerprint():
+# The catalogue ideas the idea grammar can express, so an invented duplicate of one is refused (RND-03)
+CATALOGUE_SPECS = {**{f'momentum-{m}m-top{k}': {'family': 'momentum', 'months': m, 'keep': k} for m in (3, 6, 12) for k in (2, 3, 4)},
+                   'low-volatility-top3': {'family': 'low-vol', 'window': 60, 'keep': 3}, 'reversal-1m-bottom3': {'family': 'reversal', 'days': 21, 'keep': 3}}
+
+
+def entries(ledger_path=None):
+    """Every idea ever tried: the fixed catalogue, then the ledger of invented ideas (oldest first). name -> (description,
+    specialty, method, rule, served by, spec, source)."""
+    import rnd_ideas
+    out = {name: (*e, CATALOGUE_SPECS.get(name), 'catalogue') for name, e in catalogue().items()}
+    for idea in rnd_ideas.ledger(ledger_path or rnd_ideas.LEDGER):
+        spec = rnd_ideas.canonical(idea['spec'])
+        out.setdefault(idea['name'], (rnd_ideas.describe(spec), rnd_ideas.SPECIALTY[spec['family']], idea['name'][len('idea-'):],
+                                      rnd_ideas.rule_of(spec), None, spec, 'ledger:' + idea['proposer']))
+    return out
+
+
+def fingerprint(ledger_path=None):
+    import rnd_ideas
     parts = [VERSION, str(ONE_WAY_COST_PCT), str(ALPHA), str(MIN_MONTHS), str(START), inspect.getsource(catalogue)]
     parts += [inspect.getsource(f) for f in (pd.top_momentum, pd.inverse_volatility, pd.trend_filtered, low_volatility, reversal)]
+    # the invented ideas are part of what was tried: the grammar's code and every idea in the ledger
+    parts += [inspect.getsource(rnd_ideas.rule_of), *sorted(i['hash'] for i in rnd_ideas.ledger(ledger_path or rnd_ideas.LEDGER))]
     return hashlib.sha256('\n'.join(parts).encode()).hexdigest()[:16]
 
 
@@ -114,18 +134,18 @@ def monthly(table, dates, rules, through=None):
     return [r for r in rows if through is None or r['month'] <= through]
 
 
-def scout(through=None, cache=daily.DAILY):
-    """The catalogue's results, best first. `through` (YYYY-MM) limits the months, so a result can be recomputed later."""
+def scout(through=None, cache=daily.DAILY, ledger_path=None):
+    """Every idea's results, best first. `through` (YYYY-MM) limits the months, so a result can be recomputed later."""
     dates, table = pd.aligned(daily.load(sorted(daily.datasets.UNIVERSE), cache))
-    entries = catalogue()
-    rows = monthly(table, dates, {name: e[3] for name, e in entries.items()}, through)
+    tried = entries(ledger_path)
+    rows = monthly(table, dates, {name: e[3] for name, e in tried.items()}, through)
     if not rows:
         raise ValueError('Not enough daily history for the catalogue')
     data = hashlib.sha256(json.dumps([[r['month'], round(r['basketPct'], 6)] for r in rows]).encode()).hexdigest()[:16]
-    threshold = ALPHA / len(entries)
+    threshold = ALPHA / len(tried)  # every idea ever tried, invented ones included
     half = len(rows) // 2
     out = []
-    for name, (description, specialty, method, _, served) in entries.items():
+    for name, (description, specialty, method, _, served, spec, source) in tried.items():
         excess = [r['rules'][name] - r['basketPct'] for r in rows]
         ahead, behind = sum(e > 0 for e in excess), sum(e < 0 for e in excess)
         halves = [[sum(e > 0 for e in part), sum(e < 0 for e in part)] for part in (excess[:half], excess[half:])]
@@ -135,11 +155,11 @@ def scout(through=None, cache=daily.DAILY):
             + ([f'not ahead in both halves ({halves[0][0]}/{halves[0][1]}, {halves[1][0]}/{halves[1][1]})'] if any(a <= b for a, b in halves) else [])
         out.append({'name': name, 'description': description, 'specialty': specialty, 'method': method, 'alreadyServedBy': served,
                     'months': len(rows), 'ahead': ahead, 'behind': behind, 'averageExcessPct': round(sum(excess) / len(excess), 3),
-                    'pValue': round(p, 6), 'halves': halves, 'passes': not reasons, 'reasons': reasons})
+                    'pValue': round(p, 6), 'halves': halves, 'passes': not reasons, 'reasons': reasons, 'spec': spec, 'source': source})
     out.sort(key=lambda c: (c['pValue'], c['name']))
     last = rows[-1]['month']
-    return {'version': VERSION, 'fingerprint': fingerprint(), 'dataFingerprint': data, 'from': rows[0]['month'], 'through': last,
-            'ideasTried': len(entries), 'bonferroniThreshold': round(threshold, 6), 'oneWayCostPct': ONE_WAY_COST_PCT,
+    return {'version': VERSION, 'fingerprint': fingerprint(ledger_path), 'dataFingerprint': data, 'from': rows[0]['month'], 'through': last,
+            'ideasTried': len(tried), 'bonferroniThreshold': round(threshold, 6), 'oneWayCostPct': ONE_WAY_COST_PCT,
             'publishedAt': f'{last}-28T10:30:00+00:00', 'candidates': out,
             'note': 'Seen history, net of costs, against the equal-weight basket; a screen for ideas, not proof. Live paper fitness decides.'}
 
@@ -211,19 +231,51 @@ def propose(report, department, source, env=os.environ, opener=None, recompute=N
     return outcomes
 
 
+def invent(how, through=None, cache=daily.DAILY, ledger_path=None, llm=None, now=None):
+    """RND-03: R&D proposes new ideas into the ledger before the scout tests everything. 'model' asks the local model
+    (schema-constrained to the idea grammar); 'explorer' proposes close variants of the three best ideas. Either way the
+    ledger refuses duplicates and caps new ideas per month, and every idea raises the bar for all."""
+    import rnd_ideas
+    current = scout(through, cache, ledger_path)
+    known = {rnd_ideas.spec_hash(s) for s in CATALOGUE_SPECS.values()}
+    if how == 'explorer':
+        specs, proposer = rnd_ideas.explore([c for c in current['candidates'] if c.get('spec')][:3]), 'explorer'
+        reasons = {}
+    else:
+        if llm is None:
+            sys.path.insert(0, str(daily.ROOT / 'integrations' / 'claims'))
+            import claims
+            llm, endpoint = claims.model_client(claims.local_settings(os.environ), 240)
+            proposer = 'model:' + endpoint.model
+        else:
+            proposer = 'model:test'
+        ideas = rnd_ideas.invent(llm, current['candidates'])
+        specs, reasons = [i['spec'] for i in ideas], {json.dumps(i['spec'], sort_keys=True, default=str): i['why'] for i in ideas}
+    outcomes = rnd_ideas.propose(specs, proposer, known, ledger_path or rnd_ideas.LEDGER, now)
+    for o in outcomes:
+        why = reasons.get(json.dumps(o['spec'], sort_keys=True, default=str))
+        if why:
+            o['why'] = why
+    return outcomes
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--through', help='last month to use (YYYY-MM); default all cached months')
     parser.add_argument('--propose', action='store_true', help='turn passing candidates into evidence and birth proposals')
     parser.add_argument('--department', default=os.environ.get('RND_DEPARTMENT', 'desk'))
     parser.add_argument('--source', default=os.environ.get('RND_SOURCE', 'desk-research'))
+    parser.add_argument('--invent', choices=['model', 'explorer'], help='first let R&D invent new ideas (RND-03): the local model, or close variants of the best')
     args = parser.parse_args(argv)
+    invented = invent(args.invent, args.through) if args.invent else None
     report = scout(args.through)
     OUT.mkdir(parents=True, exist_ok=True)
     batch.save(OUT / f"scout-{report['through']}.json", report)
     passing = [c['name'] for c in report['candidates'] if c['passes']]
     summary = {'through': report['through'], 'ideasTried': report['ideasTried'], 'passing': passing,
                'best': [{k: c[k] for k in ('name', 'ahead', 'behind', 'pValue')} for c in report['candidates'][:3]]}
+    if invented is not None:
+        summary['invented'] = invented
     if args.propose and passing:
         summary['proposals'] = propose(report, args.department, args.source)
     summary['at'] = datetime.now(timezone.utc).isoformat()

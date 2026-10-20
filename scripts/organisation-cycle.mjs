@@ -51,7 +51,8 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
       ['memory-review', '/v1/learning/cycles', 'evaluator']].map(([id, path, role]) => ({ id, kind: 'http', method: 'POST', path, role })),
     // RND-01: R&D screens its fixed catalogue of strategy ideas every day (no model); it turns a robust one into verified
     // evidence and a birth proposal for the owner's agenda only once the owner named an approved research source
-    { id: 'rnd-scout', cmd: PY, args: [desk('rnd_scout.py'), ...(process.env.RND_SOURCE
+    // RND-03: with the model on, R&D first invents new ideas (specifications only, at most 3 a month, each raising the bar)
+    { id: 'rnd-scout', cmd: PY, args: [desk('rnd_scout.py'), ...(withModel ? ['--invent', 'model'] : []), ...(process.env.RND_SOURCE
       ? ['--propose', '--source', process.env.RND_SOURCE, '--department', process.env.RND_DEPARTMENT || 'desk'] : [])], timeoutMs: 300_000 },
     // the model-free rule bot proposes once a month, before the end-of-day trader reviews; it runs only once the owner
     // has created and qualified it and named it here (RULE_BOT_ID), with a trader credential bound to it
