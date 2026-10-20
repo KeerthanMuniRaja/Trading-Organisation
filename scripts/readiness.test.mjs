@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { UNIVERSE, assess, expectedSession, run, verdict } from './readiness.mjs';
+import { UNIVERSE, assess, expectedSession, parseHolidays, run, verdict } from './readiness.mjs';
 
 const WED_MORNING = Date.parse('2026-10-14T03:00:00Z'); // 08:30 IST Wednesday, before the open
 const prices = (date, closePaise = '50000') => Object.fromEntries(UNIVERSE.map(s => [s, { date, closePaise }]));
@@ -18,6 +18,22 @@ test('the expected session is the last weekday whose close has settled', () => {
   assert.equal(expectedSession(WED_MORNING), '2026-10-13');                        // before today's close: yesterday
   assert.equal(expectedSession(Date.parse('2026-10-14T11:00:00Z')), '2026-10-14'); // after 16:00 IST: today
   assert.equal(expectedSession(Date.parse('2026-10-19T03:00:00Z')), '2026-10-16'); // Monday morning: Friday
+});
+
+test('an owner calendar skips exchange holidays; a broken or outdated one is never trusted', () => {
+  // fixture dates for the test only, not the real exchange calendar
+  const cal = parseHolidays(JSON.stringify({ source: 'test fixture', years: [2026], days: ['2026-10-13'] }));
+  assert.equal(expectedSession(WED_MORNING, cal.days), '2026-10-12'); // the listed holiday is not a session
+  const onHoliday = assess({ ...ready, prices: prices('2026-10-12'), holidays: cal }, WED_MORNING);
+  assert.equal(status(onHoliday, 'market-data'), 'GO'); // yesterday was a holiday, so the 12th is current
+  const holidayToday = assess({ ...ready, holidays: parseHolidays(JSON.stringify({ source: 'fixture', years: [2026], days: ['2026-10-14'] })) }, WED_MORNING);
+  assert.match(holidayToday.find(c => c.id === 'calendar').detail, /today \(2026-10-14\) is an NSE trading holiday/);
+  assert.equal(verdict(holidayToday), 'GO');
+  for (const bad of ['nope', '{"years":[2026],"days":[]}', '{"source":"x","years":[2026],"days":["2026-02-30"]}', '{"source":"x","years":[2025],"days":["2026-01-26"]}'])
+    assert.ok(parseHolidays(bad).error, bad);
+  assert.equal(status(assess({ ...ready, holidays: { error: 'not valid JSON' } }, WED_MORNING), 'calendar'), 'WARN');
+  assert.equal(status(assess({ ...ready, holidays: parseHolidays('{"source":"x","years":[2025],"days":[]}') }, WED_MORNING), 'calendar'), 'WARN'); // not this year
+  assert.equal(assess(ready, WED_MORNING).find(c => c.id === 'calendar'), undefined); // no calendar: behaviour unchanged
 });
 
 test('a fully prepared organisation is GO', () => {

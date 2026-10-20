@@ -13,12 +13,30 @@ const RULE_MODEL = 'rules:top3-momentum-6m';
 const LEARNING_STEPS = ['claims-and-fact-check', 'chain-links', 'model-allocator-decide'];
 const DAY = 86_400_000;
 
-/** The latest NSE session whose daily bar should be settled by `now` (15:30 IST close + 30 min); weekends skipped, holidays not known. */
-export function expectedSession(now) {
+/** The latest NSE session whose daily bar should be settled by `now` (15:30 IST close + 30 min); weekends skipped, and
+ *  exchange holidays too when the owner's calendar lists them. */
+export function expectedSession(now, holidays = new Set()) {
   for (let d = new Date(now); ; d = new Date(d.getTime() - DAY)) {
     const day = d.toISOString().slice(0, 10), weekday = d.getUTCDay();
-    if (weekday !== 0 && weekday !== 6 && Date.parse(day + 'T10:30:00Z') <= now) return day;
+    if (weekday !== 0 && weekday !== 6 && !holidays.has(day) && Date.parse(day + 'T10:30:00Z') <= now) return day;
   }
+}
+
+/** The owner's NSE trading-holiday calendar (.local/nse-holidays.json), copied from the exchange's official circular:
+ *  {"source": "<circular or URL>", "years": [2026], "days": ["YYYY-MM-DD", ...]}. Never guessed: absent means unknown. */
+export function parseHolidays(text) {
+  let value;
+  try { value = JSON.parse(text); } catch { return { error: 'not valid JSON' }; }
+  const days = value?.days, years = value?.years;
+  if (typeof value?.source !== 'string' || !value.source.trim()) return { error: 'needs "source": the exchange circular it was copied from' };
+  if (!Array.isArray(years) || !years.length || !years.every(y => Number.isInteger(y) && y >= 2000 && y <= 2100)) return { error: 'needs "years" it covers' };
+  if (!Array.isArray(days)) return { error: 'needs "days"' };
+  for (const day of days) {
+    const at = Date.parse(String(day) + 'T00:00:00Z');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(day)) || Number.isNaN(at) || new Date(at).toISOString().slice(0, 10) !== day) return { error: `"${day}" is not a date` };
+    if (!years.includes(Number(day.slice(0, 4)))) return { error: `${day} is outside the years it says it covers` };
+  }
+  return { source: value.source, years: new Set(years), days: new Set(days) };
 }
 
 const check = (id, status, detail, action) => ({ id, status, detail, ...(action ? { action } : {}) });
@@ -39,11 +57,18 @@ export function assess(f, now) {
   out.push(alerts.critical ? check('alerts', 'NO-GO', `${alerts.critical} critical alert(s) open`, 'Resolve or acknowledge them')
     : alerts.warning ? check('alerts', 'WARN', `${alerts.warning} warning alert(s) open`, 'Read today\'s digest') : check('alerts', 'GO', 'none open'));
 
-  const expected = expectedSession(now);
+  // the calendar is optional: without it, holidays are simply unknown (as before); a broken one is never trusted
+  const cal = f.holidays ?? null, known = cal && !cal.error ? cal : null;
+  const today = new Date(now + 330 * 60_000).toISOString().slice(0, 10);
+  if (cal?.error) out.push(check('calendar', 'WARN', `.local/nse-holidays.json ignored: ${cal.error}`, 'Fix it from the NSE holiday circular'));
+  else if (known && !known.years.has(Number(today.slice(0, 4)))) out.push(check('calendar', 'WARN', `the holiday calendar does not cover ${today.slice(0, 4)}`,
+    'Add this year\'s NSE trading holidays to .local/nse-holidays.json'));
+  else if (known?.days.has(today)) out.push(check('calendar', 'GO', `today (${today}) is an NSE trading holiday: no session, no cycle needed`));
+  const expected = expectedSession(now, known?.days);
   const stale = UNIVERSE.filter(s => !f.prices[s] || f.prices[s].date < expected);
   const old = UNIVERSE.filter(s => !f.prices[s] || now - Date.parse(f.prices[s].date + 'T10:00:00Z') > 5 * DAY);
   out.push(old.length ? check('market-data', 'NO-GO', `older than 5 days or missing: ${old.join(', ')}`, 'Run the cycle (market-data step) or daily.py fetch --refresh')
-    : stale.length ? check('market-data', 'WARN', `not yet at ${expected}: ${stale.join(', ')} (fine on an exchange holiday)`, 'Run the cycle after 16:00 IST')
+    : stale.length ? check('market-data', 'WARN', `not yet at ${expected}: ${stale.join(', ')}${known ? '' : ' (fine on an exchange holiday)'}`, 'Run the cycle after 16:00 IST')
       : check('market-data', 'GO', `all ${UNIVERSE.length} shares at ${expected}`));
 
   const costBps = BigInt(f.limits.feeBps + f.limits.slippageBps);
@@ -113,13 +138,15 @@ export async function gather(env, { fetchImpl = fetch, root = ROOT } = {}) {
       degraded: steps.filter(([, s]) => s.status === 'degraded').map(([id, s]) => ({ id, note: String(s.reason ?? 'finished with a caveat') })),
       skipped: steps.filter(([, s]) => s.status === 'skipped').map(([id, s]) => ({ id, reason: String(s.reason ?? 'skipped') })) };
   }
+  const calendar = join(root, '.local', 'nse-holidays.json');
+  const holidays = existsSync(calendar) ? parseHolidays(await readFile(calendar, 'utf8')) : null;
   const backups = join(root, '.local', 'backups');
   let backupAt = null;
   if (existsSync(backups)) for (const n of await readdir(backups)) {
     if (n.startsWith('backup-') && existsSync(join(backups, n, 'manifest.json'))) backupAt = Math.max(backupAt ?? 0, (await stat(join(backups, n, 'manifest.json'))).mtimeMs);
   }
   return {
-    health, audit, digest, prices, lastCycle, backupAt,
+    health, audit, digest, prices, lastCycle, backupAt, holidays,
     credentials: { missing: ['owner', 'researcher', 'evaluator'].filter(r => !token(r)) },
     limits: { maxOrderPaise: env.MAX_ORDER_PAISE || '100000', feeBps: Number(env.PAPER_FEE_BPS || 10), slippageBps: Number(env.PAPER_SLIPPAGE_BPS || 5) },
     ruleBot: { id: ruleId, credential: !!ruleId && principals.some(p => p.role === 'trader' && p.botId === ruleId && p.token),

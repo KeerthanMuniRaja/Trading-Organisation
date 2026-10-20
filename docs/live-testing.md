@@ -21,6 +21,12 @@ The day's work runs **after the close**: decisions use settled daily closes, and
    ```
    The budget defaults to ₹5,000 (`--budget-paise=500000`). Keep the total of bot budgets within deposited paper capital, otherwise the `budgets-exceed-capital` alert fires.
 3. **Take a backup:** stop the API, run `npm.cmd run backup -- create`, then restart.
+4. **Optional: the NSE holiday calendar.** Copy this year's trading holidays from NSE's official holiday circular into `.local/nse-holidays.json`:
+   ```json
+   { "source": "NSE circular <number and date>", "years": [2026], "days": ["YYYY-MM-DD", "..."] }
+   ```
+   Readiness then skips holidays when it works out the latest session, and says so on a holiday. Without the file, holidays stay unknown and readiness only warns. A malformed file, or one that doesn't cover the current year, is reported and never trusted. Nobody types these dates from memory: they must come from the circular.
+5. **Optional: let R&D propose new bots.** Register and approve a research source once (`POST /v1/sources`, for example id `desk-research`). Then set `RND_SOURCE=desk-research` in `.env` ([R&D scout](rnd-scout.md)).
 
 ## Every trading day
 
