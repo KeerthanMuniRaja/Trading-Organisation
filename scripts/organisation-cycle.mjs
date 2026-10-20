@@ -44,8 +44,10 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
       ? ['--propose', '--source', process.env.RND_SOURCE, '--department', process.env.RND_DEPARTMENT || 'desk'] : [])], timeoutMs: 300_000 },
     // the model-free rule bot proposes once a month, before the end-of-day trader reviews; it runs only once the owner
     // has created and qualified it and named it here (RULE_BOT_ID), with a trader credential bound to it
+    // RELEASE-01: it runs only while its exact code is the authorised release (a changed file needs a new release first)
     process.env.RULE_BOT_ID
-      ? { id: 'rule-bot', cmd: PY, args: [desk('rule_bot.py'), '--bot', process.env.RULE_BOT_ID, '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 }
+      ? { id: 'rule-bot', cmd: PY, args: [desk('rule_bot.py'), '--bot', process.env.RULE_BOT_ID, '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000,
+          releaseGate: { botId: process.env.RULE_BOT_ID, cmd: PY, args: [desk('rule_bot.py'), '--describe'] } }
       : { id: 'rule-bot', skip: 'no rule bot configured (RULE_BOT_ID)' },
     // the model allocator: the model decides its month in the pre-registered forward test (model needed), then the
     // decision becomes proposals with verified facts (no model); both only once the owner names the run and its bot
@@ -132,6 +134,28 @@ export function runHttp(step, env = process.env, fetchImpl = fetch) {
     .catch(error => ({ code: 1, tail: 'unreachable: ' + (error.cause?.code || error.name) }));
 }
 
+/** RELEASE-01 worker gate: the bot's identity comes from its own code (--describe: model, prompt version, code
+ *  fingerprint) and the backend says whether exactly that is an authorised release now. Null when allowed, else why not. */
+export async function releaseCheck(gate, { run = runProcess, env = process.env, fetchImpl = fetch } = {}) {
+  const described = await run({ cmd: gate.cmd, args: gate.args, timeoutMs: 60_000 });
+  const id = described.code === 0 ? lastJson(described.output ?? '') : null;
+  if (!id?.model || !id.promptVersion || !id.codeFingerprint) return 'could not read the bot\'s release identity (--describe)';
+  const evaluator = JSON.parse(env.PRINCIPALS_JSON || '[]').filter(p => p.role === 'evaluator');
+  if (evaluator.length !== 1) return 'needs exactly one evaluator credential for the release check';
+  const base = (env.API_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
+  try {
+    const r = await fetchImpl(base + '/v1/releases/check', { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(15_000),
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + evaluator[0].token },
+      body: JSON.stringify({ botId: gate.botId, model: id.model, promptVersion: id.promptVersion, codeFingerprint: id.codeFingerprint }) });
+    const answer = JSON.parse(await r.text());
+    if (!r.ok) return `release check refused (HTTP ${r.status})`;
+    if (answer.allowed) return null;
+    return answer.reason === 'version-not-authorised'
+      ? `its code or rule differs from the authorised release v${answer.authorised?.version}: register, evaluate and activate a new release before it trades`
+      : `no authorised release (${answer.reason})`;
+  } catch (error) { return 'release check unreachable: ' + (error.cause?.code || error.name); }
+}
+
 export const ESCALATE_AFTER = 3;          // consecutive failed cycles before a step becomes an incident
 export const BACKOFF_MS = [30_000, 90_000]; // waits between retries of a transient step
 
@@ -174,7 +198,8 @@ export async function escalate(step, streak, summary, env = process.env, fetchIm
 }
 
 export async function runCycle({ steps, journalPath, streaksPath = join(dirname(journalPath), 'streaks.json'), force = false, run = runProcess,
-  http = runHttp, now = () => new Date(), sleep = ms => new Promise(r => setTimeout(r, ms)), escalateStep = escalate }) {
+  http = runHttp, now = () => new Date(), sleep = ms => new Promise(r => setTimeout(r, ms)), escalateStep = escalate,
+  gate = g => releaseCheck(g, { run }) }) {
   let journal = { startedAt: now().toISOString(), steps: {} };
   try { journal = JSON.parse(await readFile(journalPath, 'utf8')); } catch { /* first run today */ }
   let streaks = {};
@@ -186,7 +211,11 @@ export async function runCycle({ steps, journalPath, streaksPath = join(dirname(
     let outcome;
     if (step.skip) outcome = { status: 'skipped', reason: step.skip };
     else if (step.requires && !existsSync(step.requires)) outcome = { status: 'skipped', reason: 'missing ' + step.requires.split(/[\\/]/).slice(-2).join('/') };
-    else outcome = await attempt(step, { run, http, sleep });
+    else {
+      // a release-controlled bot whose code is not the authorised release does not run at all (it would be refused anyway)
+      const refused = step.releaseGate ? await gate(step.releaseGate) : null;
+      outcome = refused ? { status: 'failed', reason: 'release gate: ' + refused } : await attempt(step, { run, http, sleep });
+    }
     if (outcome.status === 'failed') {
       const streak = (streaks[step.id]?.failures ?? 0) + 1;
       streaks[step.id] = { failures: streak, escalated: streaks[step.id]?.escalated ?? false };

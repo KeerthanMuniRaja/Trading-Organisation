@@ -64,4 +64,10 @@ Release control does not depend on workers remembering to call the gate. **The b
 
 **Direct orders are closed too.** A bot under release control cannot place orders through `/v1/paper/orders`; it trades only by executing its reviewed proposals (PAPER-04).
 
-**Not enforced (audit, 14 October 2026).** The **code fingerprint** is not checked on the trading path. Proposals carry only the model and prompt version. The worker gate (`release_gate.py`) checks the fingerprint, but no worker calls it yet, so editing a bot's code without changing its rule version keeps proposing under the old release. Until proposals carry the fingerprint, change the rule version (`promptVersion`) whenever the decision code changes.
+**Code fingerprint, enforced by the cycle (20 October 2026).** Proposals still carry only the model and prompt version, but the daily cycle now runs the worker gate before every release-controlled bot:
+- **How:** the cycle reads the bot's identity from its own code (`rule_bot.py --describe`: model, rule version and the SHA-256 of the file) and asks `POST /v1/releases/check`.
+- **When the code changed:** if the file differs from the authorised release, the step does not run and fails with "its code or rule differs from the authorised release". It is escalated after three days.
+- **Fix:** register, evaluate and activate a release for the new code (for the rule bot, `npm run rulebot -- apply --yes`).
+- **Effect on open trades:** proposals already accepted still execute, because review and execution do not depend on the release.
+
+Note for the live rule bot: `rule_bot.py` was changed at 14:36 on 14 October (the monthly decision file), after its release was most likely registered. If the gate reports a mismatch, that is why. Running `npm run rulebot -- apply --yes` registers v2 for the current code, evaluates it on the same study and activates it.

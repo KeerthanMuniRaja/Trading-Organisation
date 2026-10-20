@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { planSteps, runCycle, runHttp, escalate, verifyMarketData, verifyFeed, ESCALATE_AFTER } from './organisation-cycle.mjs';
+import { planSteps, runCycle, runHttp, escalate, releaseCheck, verifyMarketData, verifyFeed, ESCALATE_AFTER } from './organisation-cycle.mjs';
 
 const steps = [
   { id: 'backend-health', critical: true, kind: 'http', path: '/v1/health' },
@@ -78,6 +78,32 @@ test('a step failing several cycles in a row is escalated once, as a warning, an
     assert.deepEqual(sent[0].severity, 'warning'); // never 'critical', which would halt new risk
     assert.equal(await escalate({ id: 'news-wire' }, 3, 'timeout', env, async () => { throw new Error('down'); }), 'outbox');
     assert.match(await readFile(join(dir, 'outbox.jsonl'), 'utf8'), /cycle-escalation/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('a release-controlled bot runs only while its exact code is the authorised release', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'cycle-'));
+  try {
+    const ran = [];
+    const bot = { id: 'rule-bot', cmd: 'x', releaseGate: { botId: 'momentum-rules', cmd: 'py', args: ['rule_bot.py', '--describe'] } };
+    const blocked = await runCycle({ steps: [bot], journalPath: join(dir, 'a.json'), run: async s => { ran.push(s.id); return { code: 0 }; },
+      gate: async () => 'its code or rule differs from the authorised release v1: register, evaluate and activate a new release before it trades' });
+    assert.deepEqual([blocked[0].status, ran], ['failed', []]); // refused before it could propose anything
+    assert.match(blocked[0].reason, /^release gate: its code or rule differs/);
+    const allowed = await runCycle({ steps: [bot], journalPath: join(dir, 'b.json'), run: async s => { ran.push(s.id); return { code: 0 }; }, gate: async () => null });
+    assert.deepEqual([allowed[0].status, ran], ['done', ['rule-bot']]);
+
+    // the check itself: identity from the bot's own --describe, answer from the backend's release check, evaluator credential only
+    const env = { PRINCIPALS_JSON: JSON.stringify([{ role: 'owner', token: 'o' }, { role: 'evaluator', token: 'e' }]) };
+    const describe = async () => ({ code: 0, output: 'noise\n{"model":"rules:top3","promptVersion":"abc","codeFingerprint":"f00d","rule":"x"}' });
+    const sent = [];
+    const answer = reply => async (url, init) => { sent.push([url, init.headers.Authorization, JSON.parse(init.body)]); return { ok: true, status: 201, text: async () => JSON.stringify(reply) }; };
+    assert.equal(await releaseCheck(bot.releaseGate, { run: describe, env, fetchImpl: answer({ allowed: true, version: 1 }) }), null);
+    assert.deepEqual(sent[0], ['http://127.0.0.1:3000/v1/releases/check', 'Bearer e', { botId: 'momentum-rules', model: 'rules:top3', promptVersion: 'abc', codeFingerprint: 'f00d' }]);
+    assert.match(await releaseCheck(bot.releaseGate, { run: describe, env, fetchImpl: answer({ allowed: false, reason: 'version-not-authorised', authorised: { version: 1 } }) }),
+      /differs from the authorised release v1/);
+    assert.match(await releaseCheck(bot.releaseGate, { run: async () => ({ code: 1, output: '' }), env, fetchImpl: answer({ allowed: true }) }), /release identity/);
+    assert.match(await releaseCheck(bot.releaseGate, { run: describe, env, fetchImpl: async () => { throw new Error('down'); } }), /unreachable/);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
