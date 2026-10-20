@@ -35,6 +35,7 @@ The day's work runs **after the close**: decisions use settled daily closes, and
 | Before 09:15 | **Readiness check.** Go/no-go on backend, audit chain, halt, alerts, data freshness, order limit, rule bot, last cycle and backup. On NO-GO, fix what it names first. | `npm.cmd run readiness` |
 | After 16:00 | **The organisation cycle.** Daily data → news → forward tests → rule bot (once a month) → end-of-day review and execution → scoring → P&L snapshot → management review → alerts → digest. It resumes where it stopped if rerun. | `npm.cmd run cycle` |
 | After the cycle | **Read the digest** in `.local/digests/<day>.md`. "Needs you" comes first. | — |
+| Any time | **Oversee the organisation on one screen**: health, standing approvals, agenda, every member (state, release, P&L, against the basket, risk, live verdict), money, the last cycle, the next jobs, R&D and TradingAgents. Read-only. | `npm.cmd run status` |
 | When the digest says so | **Answer the owner agenda**: management recommendations, new bots, departments, releases and qualifications ([management](management.md)). | `npm.cmd run agenda`, then `npm.cmd run agenda -- accept <id>` or `decline <id>` |
 | Weekly | **Backup** (API stopped) | `npm.cmd run backup -- create` |
 
