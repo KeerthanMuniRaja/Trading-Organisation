@@ -23,6 +23,27 @@ The preferred experimental model is constrained Qwen3.5-4B Q4_K_M on the direct 
 - [Trading Organisation — backend foundation](../README.md)
 - [Resume this organisation project](../RESUME-PROMPT.md)
 
+## The organisation in operation (October 2026)
+
+- [Live paper testing: the daily runbook](live-testing.md)
+- [Audit of 14 October 2026](audit-2026-10-14.md)
+- [Project log](project-log/README.md)
+- [Trade signals, review and execution](trade-signals.md)
+- [Bot control](bot-control.md)
+- [Releases and live fitness](releases.md)
+- [Paper performance and the basket benchmark](paper-performance.md)
+- [Corporate actions](corporate-actions.md)
+- [Management review and the owner agenda](management.md)
+- [Standing approvals (autonomy)](autonomy.md)
+- [R&D scout and its 10-year result](rnd-scout.md)
+- [Research methods, knowledge base and problem playbook](research-methods.md)
+- [Market regime and adopted trading-skill methods](market-regime.md)
+- [World news](world-news.md)
+- [Scenario panel](scenario-panel.md)
+- [Relevance triage](evidence-triage.md)
+- [Evidence claims and the fact-checker](evidence-claims.md)
+- [Reference review: TradingAgents and FinceptTerminal](reference-review-2026-10-20.md)
+
 ## Runtime and integration guides
 
 - [Research-basics examinations](academy-skills.md)

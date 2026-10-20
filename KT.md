@@ -44,6 +44,36 @@ The organisation now manages itself like a firm, with the owner as CEO:
 - **On the next backend start:** migration 052 applies. Take a backup first.
 - **Owner's direction:** agents decide and act, and the system develops itself; the owner approves and oversees. Build towards this.
 
+### Added in the evening of 20 October 2026
+
+- **World news:** a catalogue of 12 sources in 6 regions, all off until the owner enables them. The owner tools are `npm run world -- probe | enable --yes | coverage | stories`. Also:
+  - 8 world drivers in `impact_links.json`;
+  - triage `scope-v2`, with world terms;
+  - cycle steps `world-stories` and `link-study` (links tested on every collected headline). See [world news](docs/world-news.md).
+- **Market regime** (`market_regime.py`), with the cycle steps `market-regime` and `regime-study`. It is advice only. On 10 years it warns of falls, but as a cash filter it loses return ([market regime](docs/market-regime.md)).
+- **R&D:**
+  - **History:** 10 years of prices for the 8 shares. The owner confirmed Axis Bank on 23 Mar 2020 and SBI on 25 Oct 2017. `daily.years_to_fetch` keeps the long history on refresh.
+  - **Catalogue:** 17 ideas, with new families `trend-template` and `pullback` and the filter `distribution-days`.
+  - **Checks on every idea:** lookahead and warm-up, statistics, 100 random pickers and walk-forward (`research_checks.py`).
+  - **Result:** no idea passes. Momentum 6m top 3 has 0.00% average excess over 106 months. Walk-forward selection loses (−0.35% a month).
+- **NIFTY 50 research universe** (research only, never traded):
+  - `datasets.NIFTY50`, with files in `.local/trading-desk/daily-research`;
+  - `rnd_scout.py --universe nifty50` (37 shares);
+  - 7 shares are kept back until the owner confirms their large moves.
+- **Scenario panel** (`scenario_panel.py`, in shadow, needs the model): five personas, scored per persona ([scenario panel](docs/scenario-panel.md)).
+- **Knowledge:**
+  - `knowledge/methods.json`: 17 method cards, fed to R&D invention;
+  - `knowledge/problems.json` with `scripts/playbook.mjs`: the cause, fix and decider for failed steps, shown in the journal, the escalation and readiness. Unknown failures are logged to `.local/cycles/unknown-problems.jsonl`;
+  - `live_knowledge.py`: the cycle step `knowledge-refresh` writes `live.json`, and the briefing goes to the debate desk and the scenario panel.
+
+  See [research methods](docs/research-methods.md).
+- **Licences:** none of the reference projects' code was copied (freqtrade, backtesting.py, vectorbt, Lean, nautilus_trader, MiroFish, claude-trading-skills, a-stock-data, FinnewsHunter).
+- **Open owner decisions:**
+  - whether R&D should also judge ideas on risk, not only return (the trend filter's only route to a bot);
+  - which of the 7 NIFTY 50 moves are real;
+  - which world sources to enable.
+- **Push:** this evening's commits wait until the 5-day push plan finishes on 25 Oct (`.local/push-due.ps1`).
+
 ### State on 14 October 2026
 
 **Live setup.**

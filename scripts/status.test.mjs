@@ -29,6 +29,9 @@ test('one screen: health, autonomy, agenda, every member, money, the day and wha
   assert.match(render({ ...FACTS, backend: false }).join('\n'), /DOWN \(npm start\)[\s\S]*Nothing more can be read/);
   const down = render({ ...FACTS, backend: false, regime: { risk: 'SEVERE', date: '2026-10-19', distributionDays: 9, breadth200d: 1, shares: 8, exposureCeilingPct: 0 } }).join('\n');
   assert.match(down, /Regime    SEVERE on 2026-10-19 \(9 distribution days; 1\/8 above 200-day\); advisory ceiling 0%/); // local files need no backend
+  const known = render({ ...FACTS, knowledge: { unknown: [{ step: 'x' }], live: { research: { ideasTried: 17, from: '2017-12', through: '2026-09', passing: [],
+    best: [{ name: 'momentum-6m-top3' }], lowestRisk: { name: 'equal-weight-distribution', maxDrawdownPct: -9.05 } } } } }).join('\n');
+  assert.match(known, /Research  17 ideas on 2017-12..2026-09: none passes; best momentum-6m-top3; lowest risk equal-weight-distribution \(worst fall -9.05%\); 1 unknown cycle problem\(s\)/);
   const world = render({ ...FACTS, world: { coverage: { countriesCovered: ['IN', 'US'] }, stories: { windowHours: 48, stories: 30, crossBorder: 3, reachingShares: 9 },
     links: { drivers: 17, carrying: ['crude-oil'] } } }).join('\n');
   assert.match(world, /World     feeds working in IN, US; last 48h: 30 stories, 3 across countries, 9 reach the shares; links carrying information: crude-oil of 17/);

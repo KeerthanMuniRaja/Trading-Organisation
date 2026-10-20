@@ -7,7 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { modelHealthUrl, nextRuns } from './supervisor.mjs';
 import { worldSummary } from './world-news.mjs';
-import { marketRegime } from './daily-digest.mjs';
+import { knowledgeSummary, marketRegime } from './daily-digest.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const rupees = p => p === null || p === undefined ? 'n/a' : `Rs ${(Number(p) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -17,6 +17,10 @@ const RULES = ['suspendOnRecommendation', 'acknowledgeWatch', 'raiseBudget', 'ap
 /** What the desk's own files say, readable with the backend down: the market regime and the world news. */
 function localLines(f) {
   const out = [];
+  const research = f.knowledge?.live?.research;
+  if (research) out.push(`Research  ${research.ideasTried} ideas on ${research.from}..${research.through}: ${research.passing.length ? 'passing ' + research.passing.join(', ') : 'none passes'}`
+    + `; best ${research.best[0]?.name ?? '?'}${research.lowestRisk ? `; lowest risk ${research.lowestRisk.name} (worst fall ${research.lowestRisk.maxDrawdownPct}%)` : ''}`
+    + `${f.knowledge.unknown?.length ? `; ${f.knowledge.unknown.length} unknown cycle problem(s)` : ''}`);
   if (f.regime) out.push(`Regime    ${f.regime.risk} on ${f.regime.date} (${f.regime.distributionDays} distribution days; ${f.regime.breadth200d ?? '?'}/${f.regime.shares} above 200-day); advisory ceiling ${f.regime.exposureCeilingPct}%`);
   if (f.world && !f.world.error) {
     const w = f.world, s = w.stories;
@@ -99,6 +103,7 @@ export async function gather(env = process.env, { fetchImpl = fetch, root = ROOT
   facts.tradingagents = ta ? { day: ta.day, ratings: Object.fromEntries(Object.entries(ta.decisions).map(([s, d]) => [s, d.rating])) } : null;
   facts.world = await worldSummary({ root, now });
   facts.regime = await marketRegime(root);
+  facts.knowledge = await knowledgeSummary(root, now);
   if (facts.world?.coverage?.advice?.length && facts.digest) facts.digest.needsOwner = [...(facts.digest.needsOwner ?? []), ...facts.world.coverage.advice];
   return facts;
 }
