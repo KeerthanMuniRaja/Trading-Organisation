@@ -42,17 +42,25 @@ The step only screens until the owner names an approved research source. To let 
 3. **Propose:** the researcher proposes the new bot's birth (`rnd-<idea>`), citing that verified evidence.
 4. **Decide:** the owner decides on the [owner agenda](management.md).
 
-**Not built yet.** Once an approved R&D bot is born, two pieces are still missing:
-- the step that registers its release and fitness;
-- a runner that turns its rule into monthly proposals, like `rule_bot.py` does for momentum.
+## After the birth: onboarding and trading (`rnd_bot.py`, cycle step `rnd-bots`)
 
-They are deliberately left until the first idea passes. `rule_bot.py` is not reused for this, because changing it would change the live bot's code fingerprint and stop its release.
+1. **Onboard.** For a born `rnd-*` bot with no release of its exact identity, the researcher registers a release. It carries the model `rules:<idea>`, the rule's version and the fingerprint of the code that runs it. The evaluator then recomputes the scout and files the idea's screening record as a fitness report against the basket (seen data, net of costs), and evaluates the release on it.
+2. **Owner, on the agenda.** You activate the release, qualify the bot, and set its budget (the agenda's `budget` item for a qualified bot with zero budget). You also give it a trader credential, once: `npm run bot-credential -- --bot <id> --yes`, then restart the backend.
+3. **Trade.** Every cycle, each R&D bot in paper first checks `POST /v1/releases/check` with its exact identity. Once a month it turns its rule's target weights into evidence: reported by the researcher, verified on an exact match by the evaluator. It proposes exits first, and entries once the exits have settled, exactly like the rule bot. Its proposals then go through the same review, challenges, execution, scoring and live fitness as any bot.
+
+`rule_bot.py` is not reused for this: changing it would change the live bot's code fingerprint and stop its release. `rnd_bot.py` only imports its helpers.
 
 ## Honesty
 
 All of this history has been seen while designing the catalogue, so passing is a screen, not proof. The catalogue is fixed and fingerprinted. Adding ideas is a new catalogue version, and the extra ideas raise the bar for every idea in it.
 
 ## Verification
+
+`integrations/trading-desk/test_rnd_bot.py` covers:
+- onboarding once, with the researcher registering and the evaluator judging;
+- identity following the code and the rule;
+- trading only while the release is authorised and with its own credential;
+- exits before entries, and one decision a month.
 
 `integrations/trading-desk/test_rnd_scout.py` covers:
 - every idea being reported, with only robust skill passing on synthetic data with two persistent winners;

@@ -31,6 +31,7 @@ export function describe(item) {
   if (item.type === 'birth') return `${head} new bot ${item.botId} in ${item.department} (${item.specialty}) — ${item.opportunity}`;
   if (item.type === 'department') return `${head} ${item.kind} department ${item.departmentId} — ${item.rationale}`;
   if (item.type === 'release') return `${head} ${item.botId}: activate release v${item.version} (${item.model}; evaluated ${item.fitnessVerdict})`;
+  if (item.type === 'budget') return `${head} ${item.botId}: qualified with no budget; accept with --budget-paise=<paise>`;
   return `${head} ${item.botId}: start paper trading on its active release`;
 }
 
@@ -66,6 +67,11 @@ export async function decide(env, { id, accept, note, budgetPaise, fetchImpl = f
   if (item.type === 'release')
     // declining revokes the release: it can never be staged again (register a new one instead)
     return call('POST', '/v1/releases/stages', { releaseId: item.id, stage: accept ? 'active' : 'revoked', reason: why }, k);
+  if (item.type === 'budget') {
+    if (!accept) return { botId: item.botId, note: 'Nothing recorded: it stays at zero budget, so it cannot buy' };
+    if (!/^\d{1,15}$/.test(budgetPaise ?? '') || budgetPaise === '0') throw new Error('Give its budget: --budget-paise=<paise>');
+    return call('POST', '/v1/bots/budgets', { botId: item.botId, budgetPaise, reason: why }, [...k, budgetPaise]);
+  }
   if (!accept) return { botId: item.botId, note: 'Nothing recorded: the bot simply stays where it is until you qualify it' };
   return call('POST', '/v1/releases/qualifications', { botId: item.botId, reason: why }, k);
 }

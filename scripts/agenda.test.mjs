@@ -10,6 +10,7 @@ const ITEMS = [
   { type: 'department', id: '44444444-aaaa-4000-8000-000000000004', kind: 'open', departmentId: 'rnd', rationale: 'Research' },
   { type: 'release', id: '55555555-aaaa-4000-8000-000000000005', botId: 'cand', version: 2, model: 'rules', fitnessVerdict: 'adds-value' },
   { type: 'qualification', id: 'candidate-bot', botId: 'candidate-bot' },
+  { type: 'budget', id: 'rnd-unfunded', botId: 'rnd-unfunded' },
 ];
 
 function backend() {
@@ -54,6 +55,11 @@ test('retiring hands on the bot\'s own lessons first; a department needs its bud
   const opened = backend();
   await decide(ENV, { id: '44444444', accept: true, budgetPaise: '1000000', fetchImpl: opened.fetchImpl });
   assert.equal(opened.calls.find(c => c.method === 'POST').body.budgetPaise, '1000000');
+  await assert.rejects(() => decide(ENV, { id: 'rnd-unfunded', accept: true, fetchImpl }), /--budget-paise/);
+  const funded = backend();
+  await decide(ENV, { id: 'rnd-unfunded', accept: true, budgetPaise: '300000', fetchImpl: funded.fetchImpl });
+  assert.deepEqual(funded.calls.find(c => c.method === 'POST').body, { botId: 'rnd-unfunded', budgetPaise: '300000', reason: 'Accepted on the owner agenda' });
+  assert.equal(funded.calls.find(c => c.method === 'POST').path, '/v1/bots/budgets');
   assert.throws(() => find(ITEMS, '1111'), /at least its first 8/);
   assert.throws(() => find(ITEMS, '99999999'), /Nothing waiting/);
   assert.match(describe(ITEMS[0]), /^11111111  recommendation +bot-one: suspend — Loses to cash$/);

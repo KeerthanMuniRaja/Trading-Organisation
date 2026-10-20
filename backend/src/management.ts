@@ -183,6 +183,8 @@ export class Management {
       const active = releases.filter(r => r.stage === 'active');
       const qualify = (await tx.query(`SELECT id FROM bots WHERE state IN ('school','college') AND lifecycle_managed=false ORDER BY id`)).rows
         .filter(b => active.some(r => r.bot_id === b.id));
+      // a bot qualified for paper trading with no budget cannot buy anything: the owner sets how much it may use
+      const unfunded = (await tx.query(`SELECT id FROM bots WHERE state='paper' AND budget_paise=0 AND lifecycle_managed=false ORDER BY id`)).rows;
       const items = [
         ...recommendations.filter(r => !decided.has(String(r.id))).map(r => ({ type: 'recommendation', ...view(r),
           action: `management decision: accept to ${r.kind === 'raise-budget' ? `raise the budget to ${r.proposed_budget_paise} paise` : r.kind}` })),
@@ -193,6 +195,7 @@ export class Management {
         ...ready.map(r => ({ type: 'release', id: String(r.id), botId: r.bot_id, version: r.version, model: r.model, fitnessVerdict: r.fitness_verdict,
           action: `activate release v${r.version}` })),
         ...qualify.map(b => ({ type: 'qualification', id: b.id, botId: b.id, action: 'qualify for paper trading on its active release' })),
+        ...unfunded.map(b => ({ type: 'budget', id: b.id, botId: b.id, action: 'set its budget (--budget-paise); it needs its own trader credential too (npm run bot-credential)' })),
       ];
       return { asOf: new Date().toISOString(), rules: RULES, waiting: items.length, items,
         note: 'Bots propose and the management review recommends; nothing here changes until the owner decides.' };

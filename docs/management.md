@@ -42,6 +42,7 @@ The agenda lists every decision waiting on the owner. An `<id>` can be shortened
 | Department proposal | Opens it (needs `--budget-paise=<paise>`) or closes it | Rejected |
 | Release ready | Activates the release | **Revokes** it for good (register a new one instead) |
 | Qualification ready | The bot starts paper trading on its active release | Nothing recorded; it stays where it is |
+| Budget needed (a qualified bot with zero budget) | Sets its budget (needs `--budget-paise=<paise>`, within the department ceiling) | Nothing recorded; it cannot buy |
 
 The [owner digest](../scripts/daily-digest.mjs) also says how many recommendations, births and department proposals are waiting.
 
