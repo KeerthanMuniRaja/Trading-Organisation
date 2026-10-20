@@ -23,7 +23,9 @@ export function worldLines(world) {
       ...s.top.filter(x => x.directShares.length || x.drivers.length).slice(0, 8).map(x => `- ${describeStory(x)}`)]
       : ['- No stories grouped yet (cycle step world-stories).']),
     ...(world.links ? [`- Driver links tested on ${world.links.headlines} headlines: ${world.links.carrying.length} of ${world.links.drivers} carry information`
-      + (world.links.carrying.length ? ` (${world.links.carrying.join(', ')})` : '') + `; ${world.links.verdicts['insufficient-evidence'] ?? 0} need more events`] : []), ''];
+      + (world.links.carrying.length ? ` (${world.links.carrying.join(', ')})` : '') + `; ${world.links.verdicts['insufficient-evidence'] ?? 0} need more events`] : []),
+    ...(world.scenario ? [`- Scenario panel (shadow): ${world.scenario.panel.right} right, ${world.scenario.panel.wrong} wrong after ${world.scenario.horizonSessions} sessions`
+      + ` (${world.scenario.panel.verdict}); ${world.scenario.waiting} call(s) waiting`] : []), ''];
 }
 
 /** REGIME-01: the latest market regime and its study, from the desk's files; null when the cycle has not made them. */

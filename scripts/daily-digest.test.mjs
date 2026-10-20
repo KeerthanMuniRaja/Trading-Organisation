@@ -39,12 +39,14 @@ test('the world section: coverage, stories that reach the shares, and a broken f
   stories: { windowHours: 48, items: 40, stories: 31, crossBorder: 2, reachingShares: 1, top: [
     { title: 'Fed holds rates', countries: ['IN', 'US'], publishers: 2, directShares: [], drivers: [{ driver: 'us-fed-rates', region: 'US', shares: ['HDFCBANK', 'INFY'] }] },
     { title: 'A football final', countries: ['WORLD'], publishers: 1, directShares: [], drivers: [] }] },
-  links: { headlines: 900, drivers: 17, carrying: ['crude-oil'], verdicts: { 'link-carries-information': 1, 'insufficient-evidence': 12 } } };
+  links: { headlines: 900, drivers: 17, carrying: ['crude-oil'], verdicts: { 'link-carries-information': 1, 'insufficient-evidence': 12 } },
+  scenario: { horizonSessions: 5, waiting: 4, panel: { right: 7, wrong: 5, verdict: 'insufficient-evidence' } } };
   const text = render(digest, world);
   assert.match(text, /Feeds working: 2 of 3 enabled; countries covered: CN, IN, US/);
   assert.match(text, /40 items in 31 stories; 2 across countries, 1 reach the shares/);
   assert.match(text, /\[IN, US\] Fed holds rates — 2 publishers; inferred: us-fed-rates → HDFCBANK, INFY/);
   assert.match(text, /Driver links tested on 900 headlines: 1 of 17 carry information \(crude-oil\); 12 need more events/);
+  assert.match(text, /Scenario panel \(shadow\): 7 right, 5 wrong after 5 sessions \(insufficient-evidence\); 4 call\(s\) waiting/);
   assert.doesNotMatch(text, /football/); // stories that reach no share stay in the file, not the digest
   assert.ok(text.indexOf('enable cn-scmp-china') < text.indexOf('## Money'));
   assert.doesNotMatch(render(digest), /World news/); // no world data, no section

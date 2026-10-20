@@ -24,6 +24,19 @@ def synthetic_daily(symbol='RELIANCE.NS', years=5, drift=0.0004, seed=7):
     return {'schemaVersion': 1, 'symbol': symbol, 'interval': '1d', 'priceBasis': 'adjusted', 'source': 'synthetic-test', 'bars': bars}
 
 
+class HistoryLengthTests(unittest.TestCase):
+    def test_a_refresh_never_asks_for_less_history_than_the_file_holds(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'X.NS-1d.json'
+            self.assertEqual(daily.years_to_fetch(path, 5), 5)          # no file yet: what was asked
+            self.assertEqual(daily.years_to_fetch(path, 15), 10)        # capped
+            path.write_text(json.dumps({'bars': [{'date': '2016-10-20'}]}), encoding='utf-8')
+            self.assertEqual(daily.years_to_fetch(path, 5, today=date(2026, 10, 20)), 10)  # a 10-year file stays 10 years
+            path.write_text(json.dumps({'bars': [{'date': '2023-10-20'}]}), encoding='utf-8')
+            self.assertEqual(daily.years_to_fetch(path, 5, today=date(2026, 10, 20)), 5)
+
+
 class SettledBarTests(unittest.TestCase):
     def test_todays_bar_is_kept_only_after_the_session_has_settled(self):
         from datetime import datetime, timezone

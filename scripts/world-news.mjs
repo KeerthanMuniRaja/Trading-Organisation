@@ -227,7 +227,9 @@ export async function worldSummary({ root = ROOT, now = Date.now() } = {}) {
     const cov = await coverage({ root, now });
     const path = join(root, '.local', 'world', 'latest.json');
     const latest = existsSync(path) ? JSON.parse(await readFile(path, 'utf8')) : null;
-    return { coverage: cov, stories: latest, links: await linkStudy(root) };
+    const record = join(root, '.local', 'trading-desk', 'scenario', 'record.json');
+    const scenario = existsSync(record) ? JSON.parse(await readFile(record, 'utf8')) : null;
+    return { coverage: cov, stories: latest, links: await linkStudy(root), scenario };
   } catch (error) { return { error: error.message }; }
 }
 

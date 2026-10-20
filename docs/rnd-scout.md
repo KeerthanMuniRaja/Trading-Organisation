@@ -33,6 +33,20 @@ Months 2022-12 to 2026-09 (46 months). **No idea passes.**
 
 The best idea is the one the live rule bot `momentum-rules` already runs. Its edge is suggestive but not proven once all the ideas tried are counted, which is why live paper fitness is its real test. The scout re-tests every cycle, so a robust idea will surface as data accumulates.
 
+Later the same day, four methods adopted from claude-trading-skills were added to the catalogue ([market regime](market-regime.md)). That makes 17 ideas, and the bar is now 0.0029. None of the four passes.
+
+### More history is the strongest lever
+
+The scout judges 46 months, because the price files hold 5 years and the first year is used up by the 12-month lookback.
+With 10 years (`daily.py fetch --refresh --years 10`, owner-run, the same Yahoo source), it would judge about 100 months.
+
+Suppose momentum 6 months, top 3 kept its current hit rate (30 of 46 months, 65%) over 100 months. It would be about 65
+ahead and 35 behind, a p of about 0.002, which passes the bar. If its edge was luck, the longer record would show that
+instead. Either answer is worth having.
+
+Once fetched, a refresh keeps at least the history a file already holds (`daily.years_to_fetch`). Without that, the
+daily 5-year refresh would be rejected by the data steward as shrunk history.
+
 ## R&D invents its own ideas (`rnd_ideas.py`)
 
 The fixed catalogue is only the start: the research department proposes new ideas itself.

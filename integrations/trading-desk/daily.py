@@ -2,7 +2,8 @@
 
 The 5-minute work showed that ~30 bps per round trip swamps every intraday signal. Daily bars move far more than
 costs and give years of history, so results can mean something. This module mirrors the 5-minute tournament:
-  fetch     owner-run, one-time: up to 5 years of adjusted daily bars per universe share (the only network step)
+  fetch     owner-run: 5 years of adjusted daily bars per universe share by default, up to 10 with --years 10 (the only
+            network step); a refresh keeps at least the history a file already holds
   run       scores every entrant on chronological training and validation periods; selects one winner on
             validation only, and only if it beat BOTH holding cash and buy-and-hold there
   finalise  judges that winner once on the sealed final period, next to cash and buy-and-hold
@@ -83,9 +84,23 @@ def settled_only(bars, now):
     return bars
 
 
+MAX_YEARS = 10
+
+
+def years_to_fetch(path, years, today=None):
+    """A refresh never asks for less history than the file already holds: a shorter download would be rejected by the
+    data steward as shrunk history and leave the prices stale. Capped at MAX_YEARS."""
+    if not path.exists():
+        return min(years, MAX_YEARS)
+    first = date.fromisoformat(json.loads(path.read_text(encoding='utf-8'))['bars'][0]['date'])
+    held = math.ceil(((today or date.today()) - first).days / 365.25)
+    return min(MAX_YEARS, max(years, held))
+
+
 def fetch(symbols, years=5, cache=DAILY, refresh=False):
     """Owner-run download of adjusted daily bars. Existing files are kept unless `refresh` re-downloads them
-    (needed to score forward tests on new days; adjusted history may shift slightly after new dividends)."""
+    (needed to score forward tests on new days; adjusted history may shift slightly after new dividends). A refresh
+    keeps at least the span a file already covers, so a longer history, once fetched, stays long."""
     import yfinance as yf
     cache.mkdir(parents=True, exist_ok=True)
     yf.set_tz_cache_location(str(ROOT / '.local' / 'market-replay-cache'))
@@ -96,7 +111,7 @@ def fetch(symbols, years=5, cache=DAILY, refresh=False):
             results.append({'symbol': symbol, 'state': 'cached', 'bars': len(validate(json.loads(path.read_text(encoding='utf-8'))))})
             continue
         ticker = yf.Ticker(symbol)
-        frame = ticker.history(period=f'{years}y', interval='1d', auto_adjust=True, actions=False, timeout=20)
+        frame = ticker.history(period=f'{years_to_fetch(path, years)}y', interval='1d', auto_adjust=True, actions=False, timeout=20)
         if frame.empty:
             results.append({'symbol': symbol, 'state': 'skipped', 'reason': 'EMPTY_PROVIDER_DATA'})
             continue

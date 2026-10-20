@@ -40,6 +40,13 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     // a driver's news? (direction-free; a link that shows nothing stays labelled until the owner edits the links)
     { id: 'link-study', cmd: PY, args: [desk('chains.py'), 'study', '--headlines', join('.local', 'world', 'headline-history.json')],
       timeoutMs: 300_000, requires: join(root, '.local', 'world', 'headline-history.json') },
+    // SCENARIO-01: five personas rehearse the day's two biggest linked world stories (model needed; shadow only), and
+    // their calls are judged after five sessions against the basket (no model)
+    withModel
+      ? { id: 'scenario-panel', cmd: PY, args: [desk('scenario_panel.py'), 'run'], timeoutMs: 1_800_000, requires: join(root, '.local', 'world', 'latest.json') }
+      : { id: 'scenario-panel', skip: 'model steps not enabled (--with-model)' },
+    { id: 'scenario-score', cmd: PY, args: [desk('scenario_panel.py'), 'score'], timeoutMs: 120_000,
+      requires: join(root, '.local', 'trading-desk', 'scenario', 'calls.jsonl') },
     withModel
       ? { id: 'claims-and-fact-check', cmd: PY, args: [join(root, 'integrations', 'claims', 'autolearn.py'), 'run', '--config', join('.local', 'claims', 'autolearn.json'),
           '--cycles', '1'], timeoutMs: 3_600_000, requires: join(root, '.local', 'claims', 'autolearn.json') }
