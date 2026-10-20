@@ -38,6 +38,10 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
       timeoutMs: 120_000, requires: join(root, '.local', 'claims', 'auto', 'verified-headlines.json') },
     { id: 'forward-daily-rules', cmd: PY, args: [desk('daily.py'), 'forward', '--name', 'forward-from-2026-10-09'], timeoutMs: 300_000 },
     { id: 'forward-portfolio', cmd: PY, args: [desk('portfolio_daily.py'), 'forward', '--name', 'portfolio-forward-from-2026-10-09'], timeoutMs: 300_000 },
+    // RND-01: R&D screens its fixed catalogue of strategy ideas every day (no model); it turns a robust one into verified
+    // evidence and a birth proposal for the owner's agenda only once the owner named an approved research source
+    { id: 'rnd-scout', cmd: PY, args: [desk('rnd_scout.py'), ...(process.env.RND_SOURCE
+      ? ['--propose', '--source', process.env.RND_SOURCE, '--department', process.env.RND_DEPARTMENT || 'desk'] : [])], timeoutMs: 300_000 },
     // the model-free rule bot proposes once a month, before the end-of-day trader reviews; it runs only once the owner
     // has created and qualified it and named it here (RULE_BOT_ID), with a trader credential bound to it
     process.env.RULE_BOT_ID

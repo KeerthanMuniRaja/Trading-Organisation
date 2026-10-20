@@ -41,6 +41,8 @@ Every decision waiting on the owner (recommendations, new bots, departments, rel
 - **`momentum-rules`, the rule bot.** Model-free. Once a month it picks the top three shares by momentum, sells before it buys, and keeps its decision for the month. Release v1 is active with a ₹5,000 budget ([trade signals](docs/trade-signals.md#the-rule-bot-a-model-free-member)).
 - **Claim analyst and fact-checker.** The analyst drafts quote-backed news claims with the local model. The independent fact-checker verifies a claim only when two independent sources report the same figure for the same period, and withdraws it if a later report disagrees ([claims](integrations/claims/README.md), [evidence claims](docs/evidence-claims.md)).
 - **Model allocator.** Built and tested, not yet switched on. It needs the local model and its own forward test.
+- **R&D scout.** Every cycle it screens 13 strategy ideas against the basket, net of costs and corrected for the number of ideas tried. It proposes a new specialist only for an idea that passes; none does yet ([R&D scout](docs/rnd-scout.md)).
+- **Management review.** Every cycle it reviews each working bot and files recommendations for the owner agenda ([management](docs/management.md)).
 
 ### A bot's life
 
@@ -71,7 +73,7 @@ All amounts are integer paise in balanced double-entry journals ([financial mode
 | --- | --- |
 | Check | Health, then market-data refresh (settled bars only; moves over 20% wait for the owner's confirmation) |
 | Learn | News feeds, then relevance triage, then claims and fact-check (needs the model), then chain links |
-| Test | Forward tests |
+| Test | Forward tests, then the R&D scout's screen of strategy ideas |
 | Propose | Rule bot, then the model allocator (needs the model) |
 | Trade | Review at the verified close, fill at the next verified open, then score signals and live fitness |
 | Manage | After the paper snapshot: the management review of every working bot (recommendations for the owner agenda) |
