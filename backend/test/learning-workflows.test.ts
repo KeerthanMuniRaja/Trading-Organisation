@@ -27,7 +27,11 @@ async function sourceStage(f:Awaited<ReturnType<typeof setup>>,workflowId:string
 test('owner-defined workflow advances through independent reviews and fresh grading without new authority',async()=>{
   const f=await setup();try{
     const {workflowId}=await f.w.register(owner,key(),f.input),ref={workflowId};
+    // the cycle finds open programmes itself: only the role a stage waits on can act on it
+    assert.deepEqual((await f.w.active(researcher)).workflows,[{workflowId,state:'source',requiredRole:'researcher',actionable:true}]);
+    assert.equal((await f.w.active(evaluator)).workflows[0]!.actionable,false);
     const t=await sourceStage(f,workflowId);assert.equal((await f.w.progress(researcher,ref)).state,'awaiting-source-review');
+    assert.deepEqual((await f.w.active(owner)).workflows,[{workflowId,state:'awaiting-source-review',requiredRole:null,actionable:false}]);
     await f.s.review(evaluator,key(),{requestId:t.id,decision:'accepted',reason:'Bounded source lesson'});
     let p=await f.w.progress(researcher,ref);assert.equal(p.state,'transfer');
     const kt=await f.k.request(researcher,p.action!.requestKey,p.action!.body);
@@ -41,7 +45,7 @@ test('owner-defined workflow advances through independent reviews and fresh grad
     const answers=work.cases.map((c:{id:string;challenge:Challenge})=>{const x=c.challenge;let peak=0,dd=0;for(const n of x.equityPaise){peak=Math.max(peak,n);dd=Math.max(dd,(peak-n)/peak*10000);}return {caseId:c.id,answers:{netProfitPaise:x.grossProfitPaise-x.feesPaise-x.slippagePaise,maxDrawdownBps:dd,eligibleRecordIds:x.records.filter(r=>r.eventAt<=x.cutoff&&r.availableAt<=x.cutoff).map(r=>r.id),action:!x.control.halted&&x.control.evidenceVerified&&x.control.budget>=x.control.required?'research':'wait'}};});
     await f.a.submit(researcher,key(),{assessmentId:assessment.assessmentId,answers});p=await f.w.progress(evaluator,ref);assert.equal(p.state,'assessment-grade');
     await f.a.grade(evaluator,p.action!.requestKey,p.action!.body);
-    const final=await f.w.progress(owner,ref);assert.equal(final.state,'completed');assert.equal(final.assessment.fitnessChanged,false);assert.equal(final.assessment.passedChecks,16);
+    const final=await f.w.progress(owner,ref);assert.equal(final.state,'completed');assert.deepEqual((await f.w.active(owner)).workflows,[]);assert.equal(final.assessment.fitnessChanged,false);assert.equal(final.assessment.passedChecks,16);
     assert.equal((await f.w.progress(researcher,ref)).action,null);
     for(const table of ['learning_workflows','learning_workflow_links'])await assert.rejects(()=>f.db.transaction(tx=>tx.query('DELETE FROM '+table)));
     assert.equal((await f.ops.verifyAudit(owner)).valid,true);assert.equal((await f.treasury.snapshot(owner)).wallet1Paise,'0');

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { planSteps, runCycle, runHttp, escalate, releaseCheck, verifyMarketData, verifyFeed, ESCALATE_AFTER } from './organisation-cycle.mjs';
+import { planSteps, runCycle, runHttp, escalate, releaseCheck, computeCheck, verifyMarketData, verifyFeed, ESCALATE_AFTER } from './organisation-cycle.mjs';
 
 const steps = [
   { id: 'backend-health', critical: true, kind: 'http', path: '/v1/health' },
@@ -104,6 +104,24 @@ test('a release-controlled bot runs only while its exact code is the authorised 
       /differs from the authorised release v1/);
     assert.match(await releaseCheck(bot.releaseGate, { run: async () => ({ code: 1, output: '' }), env, fetchImpl: answer({ allowed: true }) }), /release identity/);
     assert.match(await releaseCheck(bot.releaseGate, { run: describe, env, fetchImpl: async () => { throw new Error('down'); } }), /unreachable/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('a model step waits for tomorrow once its department used its compute budget', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'cycle-'));
+  try {
+    const ran = [];
+    const step = { id: 'model-allocator-decide', cmd: 'x', computeGate: { botId: 'allocator' } };
+    const spent = await runCycle({ steps: [step], journalPath: join(dir, 'a.json'), run: async s => { ran.push(s.id); return { code: 0 }; },
+      budget: async () => 'department portfolio used 50000 of its 50000 tokens today; it runs again tomorrow' });
+    assert.deepEqual([spent[0].status, ran], ['skipped', []]);
+    assert.match(spent[0].reason, /^compute budget: department portfolio/);
+    assert.equal((await runCycle({ steps: [step], journalPath: join(dir, 'b.json'), run: async () => ({ code: 0 }), budget: async () => null }))[0].status, 'done');
+    const env = { PRINCIPALS_JSON: JSON.stringify([{ role: 'evaluator', token: 'e' }]) };
+    const answer = reply => async () => ({ ok: true, status: 200, text: async () => JSON.stringify(reply) });
+    assert.equal(await computeCheck({ botId: 'a' }, { env, fetchImpl: answer({ allowed: true }) }), null);
+    assert.match(await computeCheck({ botId: 'a' }, { env, fetchImpl: answer({ allowed: false, departmentId: 'p', usedTodayTokens: '9', budgetTokensPerDay: 5 }) }), /used 9 of its 5/);
+    assert.match(await computeCheck({ botId: 'a' }, { env, fetchImpl: async () => { throw new Error('down'); } }), /unreachable/); // never spend on missing facts
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

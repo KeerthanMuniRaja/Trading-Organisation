@@ -68,6 +68,21 @@ export class LearningWorkflows {
       return {...common,state:stage,requiredRole:role,action:actor.role===role?{stage,body,requestKey:'workflow-'+w.id+'-'+stage}:null};
     });
   }
+  /** AUTO-02: the open programmes (not cancelled, not completed) the caller may operate, with their stage, so the daily
+   *  cycle can advance every one without the owner passing workflow ids around. The owner sees all of them. */
+  async active(actor:Actor){
+    permit(actor,'owner','researcher','evaluator');
+    const ids=(await this.db.transaction(async tx=>(await tx.query(`SELECT w.id FROM learning_workflows w
+      WHERE NOT EXISTS (SELECT 1 FROM learning_workflow_cancellations c WHERE c.workflow_id=w.id)
+        AND ($1::text='owner' OR ($1='researcher' AND w.researcher=$2) OR ($1='evaluator' AND w.evaluator=$2))
+      ORDER BY w.created_at,w.id LIMIT 100`,[actor.role,actor.id])).rows.map(r=>String(r.id)),false));
+    const out=[];
+    for(const workflowId of ids){
+      const p=await this.progress(actor,{workflowId});
+      if(p.state!=='completed')out.push({workflowId,state:p.state,requiredRole:(p as Row).requiredRole??null,actionable:!!p.action});
+    }
+    return {workflows:out};
+  }
   attach(actor:Actor,key:string,raw:unknown){
     permit(actor,'researcher','evaluator');const input=parse(z.object({workflowId:z.uuid(),step:z.enum(['source','transfer','assessment']),referenceId:z.uuid()}).strict(),raw);
     return this.db.command(actor,'learning-workflow-attach',key,input,async tx=>{

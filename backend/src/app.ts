@@ -60,6 +60,7 @@ class ApiController {
   @Post('incidents/findings/query') @Allow('owner','researcher','evaluator') incidentFindings(@Req() r:Request,@Body() b:unknown){return this.ops.findings().list(r.actor,b);}
   @Post('learning/workflows') @Allow('owner') learningWorkflow(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.learning.workflows().register(r.actor,k??'',b);}
   @Post('learning/workflows/progress') @Allow('owner','researcher','evaluator') learningWorkflowProgress(@Req() r:Request,@Body() b:unknown){return this.learning.workflows().progress(r.actor,b);}
+  @Post('learning/workflows/active') @Allow('owner','researcher','evaluator') learningWorkflowsActive(@Req() r:Request){return this.learning.workflows().active(r.actor);}
   @Post('learning/workflows/links') @Allow('researcher','evaluator') learningWorkflowLink(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.learning.workflows().attach(r.actor,k??'',b);}
   @Post('learning/workflows/cancellations') @Allow('owner') learningWorkflowCancel(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.learning.workflows().cancel(r.actor,k??'',b);}
   @Get('learning/sources') @Allow('owner','evaluator') sourceLearningStatus(@Req() r:Request){return this.learning.sourceLearning().status(r.actor);}

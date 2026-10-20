@@ -34,6 +34,10 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
       ? { id: 'claims-and-fact-check', cmd: PY, args: [join(root, 'integrations', 'claims', 'autolearn.py'), 'run', '--config', join('.local', 'claims', 'autolearn.json'),
           '--cycles', '1'], timeoutMs: 3_600_000, requires: join(root, '.local', 'claims', 'autolearn.json') }
       : { id: 'claims-and-fact-check', skip: 'model steps not enabled (--with-model)' },
+    // AUTO-02: every open learning workflow advances one stage for the role it waits on (the model writes the lessons)
+    withModel
+      ? { id: 'learning-workflows', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'learning-cycle.mjs')], timeoutMs: 3_600_000 }
+      : { id: 'learning-workflows', skip: 'model steps not enabled (--with-model)' },
     { id: 'chain-links', cmd: PY, args: [desk('chains.py'), 'expand', '--headlines', join('.local', 'claims', 'auto', 'verified-headlines.json')],
       timeoutMs: 120_000, requires: join(root, '.local', 'claims', 'auto', 'verified-headlines.json') },
     { id: 'forward-daily-rules', cmd: PY, args: [desk('daily.py'), 'forward', '--name', 'forward-from-2026-10-09'], timeoutMs: 300_000 },
@@ -49,10 +53,14 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
       ? { id: 'rule-bot', cmd: PY, args: [desk('rule_bot.py'), '--bot', process.env.RULE_BOT_ID, '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000,
           releaseGate: { botId: process.env.RULE_BOT_ID, cmd: PY, args: [desk('rule_bot.py'), '--describe'] } }
       : { id: 'rule-bot', skip: 'no rule bot configured (RULE_BOT_ID)' },
+    // RND-02: bots born from R&D are onboarded (release, screening fitness, evaluation) and, once qualified, run their
+    // rule monthly; each checks its own release before proposing. With no R&D bots this only lists the bots.
+    { id: 'rnd-bots', cmd: PY, args: [desk('rnd_bot.py'), 'all', '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 },
     // the model allocator: the model decides its month in the pre-registered forward test (model needed), then the
     // decision becomes proposals with verified facts (no model); both only once the owner names the run and its bot
     ...(process.env.MODEL_ALLOCATOR_RUN && process.env.MODEL_ALLOCATOR_BOT ? [
-      withModel ? { id: 'model-allocator-decide', cmd: PY, args: [desk('ai_allocator.py'), 'forward', '--name', process.env.MODEL_ALLOCATOR_RUN, '--max-calls', '2'], timeoutMs: 1_200_000 }
+      withModel ? { id: 'model-allocator-decide', cmd: PY, args: [desk('ai_allocator.py'), 'forward', '--name', process.env.MODEL_ALLOCATOR_RUN, '--max-calls', '2'], timeoutMs: 1_200_000,
+          computeGate: { botId: process.env.MODEL_ALLOCATOR_BOT } }
         : { id: 'model-allocator-decide', skip: 'model steps not enabled (--with-model)' },
       { id: 'model-allocator-propose', cmd: PY, args: [desk('model_allocator.py'), '--bot', process.env.MODEL_ALLOCATOR_BOT, '--run', process.env.MODEL_ALLOCATOR_RUN,
         '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 },
@@ -156,6 +164,21 @@ export async function releaseCheck(gate, { run = runProcess, env = process.env, 
   } catch (error) { return 'release check unreachable: ' + (error.cause?.code || error.name); }
 }
 
+/** COST-01 enforced: may this bot's department spend model tokens today? Null when yes (or unlimited), else why not.
+ *  An unreachable or refused check is a 'no' too: model spending never proceeds on missing facts. */
+export async function computeCheck(gate, { env = process.env, fetchImpl = fetch } = {}) {
+  const evaluator = JSON.parse(env.PRINCIPALS_JSON || '[]').filter(p => p.role === 'evaluator');
+  if (evaluator.length !== 1) return 'needs exactly one evaluator credential for the compute check';
+  const base = (env.API_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
+  try {
+    const r = await fetchImpl(base + '/v1/compute/allowance', { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(15_000),
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + evaluator[0].token }, body: JSON.stringify({ botId: gate.botId }) });
+    if (!r.ok) return `compute check refused (HTTP ${r.status})`;
+    const a = JSON.parse(await r.text());
+    return a.allowed ? null : `department ${a.departmentId} used ${a.usedTodayTokens} of its ${a.budgetTokensPerDay} tokens today; it runs again tomorrow`;
+  } catch (error) { return 'compute check unreachable: ' + (error.cause?.code || error.name); }
+}
+
 export const ESCALATE_AFTER = 3;          // consecutive failed cycles before a step becomes an incident
 export const BACKOFF_MS = [30_000, 90_000]; // waits between retries of a transient step
 
@@ -199,7 +222,7 @@ export async function escalate(step, streak, summary, env = process.env, fetchIm
 
 export async function runCycle({ steps, journalPath, streaksPath = join(dirname(journalPath), 'streaks.json'), force = false, run = runProcess,
   http = runHttp, now = () => new Date(), sleep = ms => new Promise(r => setTimeout(r, ms)), escalateStep = escalate,
-  gate = g => releaseCheck(g, { run }) }) {
+  gate = g => releaseCheck(g, { run }), budget = g => computeCheck(g) }) {
   let journal = { startedAt: now().toISOString(), steps: {} };
   try { journal = JSON.parse(await readFile(journalPath, 'utf8')); } catch { /* first run today */ }
   let streaks = {};
@@ -214,7 +237,10 @@ export async function runCycle({ steps, journalPath, streaksPath = join(dirname(
     else {
       // a release-controlled bot whose code is not the authorised release does not run at all (it would be refused anyway)
       const refused = step.releaseGate ? await gate(step.releaseGate) : null;
-      outcome = refused ? { status: 'failed', reason: 'release gate: ' + refused } : await attempt(step, { run, http, sleep });
+      // a used-up compute budget is a deliberate stop for today, not a failure: the step simply waits for tomorrow
+      const spent = !refused && step.computeGate ? await budget(step.computeGate) : null;
+      outcome = refused ? { status: 'failed', reason: 'release gate: ' + refused }
+        : spent ? { status: 'skipped', reason: 'compute budget: ' + spent } : await attempt(step, { run, http, sleep });
     }
     if (outcome.status === 'failed') {
       const streak = (streaks[step.id]?.failures ?? 0) + 1;
