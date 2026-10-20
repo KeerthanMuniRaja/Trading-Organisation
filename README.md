@@ -145,6 +145,8 @@ This runs every suite and writes logs to `.local/verify/`:
 - market replay;
 - skfolio.
 
+GitHub runs the same gate on every push to `dev` or `main` and on pull requests (`.github/workflows/verify.yml`, Windows runner, no secrets needed).
+
 In the full run on 20 October 2026, 636 of 637 tests passed. The one failure was a timing flake in a test; after the fix that suite passed on its own ([verification](docs/verification.md)).
 
 ## Read more
