@@ -30,6 +30,17 @@ The organisation now manages itself like a firm, with the owner as CEO:
   - **Fills:** the three buys filled at the 19 October open.
   - **Migration:** 051 is applied.
 - **Standing approvals** (migration 052, [autonomy](docs/autonomy.md)): the owner approves classes of decisions once, with `npm run autonomy -- set <policy.json> --reason "..."`. The cycle's `autonomy` step then carries them out as `autonomy-policy`. With no policy, nothing is automatic.
+- **Self-development** (all owner opt-in through the policy):
+  - **Ideas:** R&D invents new ideas as grammar specs (`rnd_ideas.py`, `--invent model`), recorded in an append-only ledger, with a Bonferroni bar over every idea ever tried.
+  - **Live keep or revert:** `promoteCanaries` keeps a version that wins live; `rollbackFailingReleases` drops one that loses live.
+  - **Code fixes:** `trialNewReleases`, with `release-renewal.mjs`, turns a same-rule code fix into a trial release by itself.
+- **Supervisor:** `npm run supervisor` (built, not installed) runs readiness, the cycle and the Friday backup on trading days.
+- **Reference review** (TradingAgents, FinceptTerminal; `docs/reference-review-2026-10-20.md`), and what was adopted from it:
+  - post-trade reflections (cycle step `reflections`);
+  - the debate desk (`debate.py`, model plus `debate-setup.mjs`);
+  - risk metrics (volatility, Sharpe, VaR) in the benchmark and digest.
+
+  No code was copied from either project.
 - **On the next backend start:** migration 052 applies. Take a backup first.
 - **Owner's direction:** agents decide and act, and the system develops itself; the owner approves and oversees. Build towards this.
 
