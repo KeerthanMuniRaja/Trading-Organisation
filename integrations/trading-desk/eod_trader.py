@@ -30,6 +30,13 @@ import signal_scorer as sc  # noqa: E402
 
 OPEN_UTC = (3, 45)  # NSE opens 09:15 IST
 MAX_PRICE_AGE = timedelta(days=7)
+LIQUIDITY_PCT = 1   # a paper fill never assumes more than 1% of the fill session's traded volume (PAPER-05)
+
+
+def liquidity_cap(bar):
+    """The most shares a fill may assume on this session, or None when the bar carries no volume to judge by."""
+    volume = bar.get('volume')
+    return int(volume) * LIQUIDITY_PCT // 100 if isinstance(volume, (int, float)) and volume > 0 else None
 
 
 def open_time(day):
@@ -146,12 +153,19 @@ def run(source_id, env=os.environ, cache=daily.DAILY, opener=None, now=None):
         if now - open_time(bar['date']) > MAX_PRICE_AGE:
             results.append({'step': 'execute', 'signalId': s['id'], 'state': 'waiting', 'reason': 'next open is older than 7 days; re-propose'})
             continue
+        cap = liquidity_cap(bar)
+        if cap is not None and cap < 1:
+            results.append({'step': 'execute', 'signalId': s['id'], 'state': 'waiting', 'reason': 'too thinly traded on that session to assume any fill'})
+            continue
         try:
             evidence_id = evidence_for(open_text(s['symbol'], bar, data_steward.fingerprint(dataset)), published, source_id, reporter, checker, opener)
-            done = sc.post(*trader, '/v1/trading/signals/executions', {'signalId': s['id'], 'priceEvidence': {'evidenceId': evidence_id,
-                           'pricePaise': str(bar['openPaise']), 'observedAt': published}}, opener)
+            body = {'signalId': s['id'], 'priceEvidence': {'evidenceId': evidence_id, 'pricePaise': str(bar['openPaise']), 'observedAt': published}}
+            reviewed_quantity = int(s['review'].get('quantity') or 0)
+            if cap is not None and reviewed_quantity > cap:
+                body['maxQuantity'] = cap  # a partial fill: only what the session's volume could plausibly absorb
+            done = sc.post(*trader, '/v1/trading/signals/executions', body, opener)
             results.append({'step': 'execute', 'signalId': s['id'], 'state': 'executed', 'side': done['side'], 'quantity': done['quantity'],
-                            'pricePaise': done['pricePaise']})
+                            'pricePaise': done['pricePaise'], **({'partial': f'capped at {LIQUIDITY_PCT}% of volume ({cap})'} if 'maxQuantity' in body else {})})
         except RuntimeError as error:
             results.append({'step': 'execute', 'signalId': s['id'], 'state': 'failed', 'reason': str(error)[:200]})
     return results

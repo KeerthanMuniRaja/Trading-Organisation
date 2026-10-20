@@ -42,8 +42,10 @@ const reviewSchema = z.object({ signalId: z.uuid(), priceEvidence: priceEvidence
 
 // End-of-day execution: an optional verified price observed AFTER the review (e.g. the next session's open) replaces the
 // live quote; the paper engine re-checks the evidence, so the price can never be chosen with hindsight.
+// PAPER-05 liquidity: the executor may cap the fill (e.g. at a share of the session's traded volume); the order is then
+// sized to the smaller of the reviewed quantity and the cap, a partial fill of the review. It can never be enlarged.
 const executeSchema = z.object({ signalId: z.uuid(), priceEvidence: z.object({ evidenceId: z.uuid(), pricePaise: z.string().regex(/^[1-9][0-9]{0,13}$/),
-  observedAt: timestamp }).strict().optional() }).strict();
+  observedAt: timestamp }).strict().optional(), maxQuantity: z.number().int().min(1).max(1_000_000_000).optional() }).strict();
 const lapseSchema = z.object({ asOf: timestamp }).strict();
 const challengeSchema = z.object({ signalId: z.uuid(), stance: z.enum(['oppose', 'support-with-caveat']), argument: text(600), evidenceId: z.uuid().optional() }).strict();
 const outcomeSchema = z.object({ signalId: z.uuid(), exitPricePaise: z.string().regex(/^[1-9]\d{0,15}$/), observedAt: timestamp, evidenceId: z.uuid() }).strict();
@@ -99,9 +101,11 @@ export class TradeSignals {
     if (order?.status !== 'filled') requireThat(new Date(plan.expires_at).getTime() > Date.now(), 'The proposal expired before execution');
     const priced = input.priceEvidence ? { priceEvidence: input.priceEvidence } : {};
     // keys carry the price evidence, so a retry with a later verified price is a new attempt on the same linked order
-    const attempt = digest(input.priceEvidence ?? 'live-quote').slice(0, 16);
+    // (a liquidity cap is part of the attempt; without one the key is exactly as before)
+    const attempt = digest(input.maxQuantity === undefined ? input.priceEvidence ?? 'live-quote' : [input.priceEvidence ?? 'live-quote', input.maxQuantity]).slice(0, 16);
+    const quantity = Math.min(Number(plan.quantity), input.maxQuantity ?? Number.MAX_SAFE_INTEGER);
     if (!order) order = { id: (await this.paper.reserve(actor, `sigexec-reserve-${input.signalId}-${attempt}`, { botId: plan.bot_id, symbol: plan.symbol,
-      side: plan.side, quantity: Number(plan.quantity), evidenceId: String(plan.evidence_id), ...priced }, { signalId: input.signalId })).id, status: 'reserved' };
+      side: plan.side, quantity, evidenceId: String(plan.evidence_id), ...priced }, { signalId: input.signalId })).id, status: 'reserved' };
     // A failed fill keeps its reservation: the same call can be retried (fresh quote or a later verified price). If the
     // price moved beyond the reservation, the paper engine says so; the reservation lapses when the proposal expires.
     if (order.status === 'reserved') await this.paper.fill(actor, `sigexec-fill-${input.signalId}-${attempt}`, { orderId: order.id, ...priced });
