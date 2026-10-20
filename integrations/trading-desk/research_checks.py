@@ -14,6 +14,9 @@ Methods adopted from open-source trading frameworks (ideas only; their code is n
   walk-forward  vectorbt / Lean walk-forward: each year, choose the idea with the best record over the previous three
               years and hold it for the next year. The out-of-sample record tests the organisation's own way of
               choosing, which is the honest question: does picking the best backtest work?
+  risk lens   a circular block bootstrap of the paired monthly returns: how often the rule's Sharpe stays above the
+              basket's; plus the worst fall, the average cash share and the result if cash earned an ASSUMED yield.
+              Report only: whether risk may ever pass an idea is the owner's decision.
 """
 from __future__ import annotations
 
@@ -121,6 +124,39 @@ def random_rule(seed, keep):
 def percentile(value, population):
     """Share of the population strictly below `value` (0..100)."""
     return round(100 * sum(p < value for p in population) / len(population), 1) if population else None
+
+
+def _sharpe(xs):
+    """Mean over population standard deviation, in plain floats (statistics.pstdev is exact and far too slow here)."""
+    n = len(xs)
+    mean = sum(xs) / n
+    var = sum((x - mean) ** 2 for x in xs) / n
+    return mean / math.sqrt(var) if var > 0 else 0.0
+
+
+def sharpe_test(rule_pct, basket_pct, samples=1000, block=6, seed=0):
+    """Risk lens: is the rule's Sharpe really above the basket's? A circular block bootstrap of the paired monthly returns
+    (blocks keep runs of months together). Returns the observed difference (annualised) and how often it stays above 0."""
+    n = len(rule_pct)
+    if n < 2 * block:
+        return None
+    rng = random.Random(seed)
+    observed = (_sharpe(rule_pct) - _sharpe(basket_pct)) * math.sqrt(12)
+    above = 0
+    for _ in range(samples):
+        idx = []
+        while len(idx) < n:
+            start = rng.randrange(n)
+            idx += [(start + k) % n for k in range(block)]
+        idx = idx[:n]
+        if _sharpe([rule_pct[i] for i in idx]) > _sharpe([basket_pct[i] for i in idx]):
+            above += 1
+    return {'sharpeDifference': round(observed, 3), 'probabilityBetter': round(above / samples, 3), 'p': round(1 - above / samples, 4)}
+
+
+def with_cash_yield(rule_pct, cash_share, yearly_pct):
+    """Monthly returns if the uninvested share earned `yearly_pct` a year (an ASSUMPTION; backtests otherwise earn 0%)."""
+    return [r + c * yearly_pct / 12 for r, c in zip(rule_pct, cash_share)]
 
 
 def walk_forward(rows, names, train=36, test=12):

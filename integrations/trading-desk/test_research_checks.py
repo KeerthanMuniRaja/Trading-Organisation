@@ -64,6 +64,18 @@ class StatsTests(unittest.TestCase):
         self.assertEqual(len(rule(table, dates, 300)), 3)
         self.assertEqual(rc.percentile(2.0, [1.0, 2.0, 3.0, 0.5]), 50.0)
 
+    def test_the_risk_lens_finds_a_calmer_rule_with_the_same_return_and_values_cash(self):
+        import random
+        rng = random.Random(1)
+        basket = [1.0 + rng.gauss(0, 5) for _ in range(120)]
+        calmer = [1.0 + (b - 1.0) * 0.4 for b in basket]           # same average, much less swing
+        wilder = [1.0 + (b - 1.0) * 2.0 - 0.8 for b in basket]     # more swing, lower average
+        self.assertGreater(rc.sharpe_test(calmer, basket)['probabilityBetter'], 0.9)
+        self.assertLess(rc.sharpe_test(wilder, basket)['probabilityBetter'], 0.1)
+        self.assertEqual(rc.sharpe_test(calmer, basket), rc.sharpe_test(calmer, basket))  # reproducible
+        self.assertIsNone(rc.sharpe_test([1.0] * 5, [1.0] * 5))
+        self.assertEqual(rc.with_cash_yield([0.0, 1.0], [1.0, 0.5], 6.0), [0.5, 1.25])
+
     def test_walk_forward_holds_the_best_of_the_past_window_out_of_sample(self):
         rows = [{'month': f'2020-{k:02d}', 'basketPct': 0.0, 'rules': {'a': 1.0 if k <= 6 else -1.0, 'b': 0.5 if k <= 6 else 2.0}} for k in range(1, 13)]
         wf = rc.walk_forward(rows, ['a', 'b'], train=6, test=6)
@@ -106,6 +118,10 @@ class ScoutIntegrationTests(unittest.TestCase):
             best = next(c for c in r['candidates'] if c['name'] == 'momentum-6m-top2')
             self.assertEqual(best['beatsRandomPct'], 100.0)  # two persistent winners: momentum beats every random picker
             self.assertIn('sharpe', best['stats'])
+            lens = best['riskLens']
+            self.assertEqual(set(lens), {'sharpeTest', 'worstFallPct', 'basketWorstFallPct', 'averageCashPct', 'atAssumedCashYield', 'wouldPassRiskBar'})
+            trend = next(c for c in r['candidates'] if c['name'] == 'trend-filter-200d')
+            self.assertGreaterEqual(trend['riskLens']['atAssumedCashYield']['cagrPct'], trend['stats']['cagrPct'])  # cash earns when it sits out
             self.assertTrue(all(not any('lookahead' in x for x in c['reasons']) for c in r['candidates']))  # the catalogue is honest
 
     def test_the_research_universe_keeps_only_shares_with_the_full_history(self):

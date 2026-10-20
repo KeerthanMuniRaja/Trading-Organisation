@@ -27,6 +27,16 @@ is our own code, with no new dependencies.
 - **Walk-forward.** Each year, take the idea with the best record over the previous three years and hold it for the next
   year. This tests our own way of choosing ideas.
 
+- **Risk lens** (report only). A circular block bootstrap (6-month blocks, 1,000 samples) of the paired monthly returns
+  asks how often an idea's Sharpe stays above the basket's. The lens also reports the idea's worst fall against the
+  basket's, its average cash share, and its result if cash earned an **assumed** 6% a year (our backtests otherwise earn
+  0% on cash). `wouldPassRiskBar` shows whether it would pass at the same Bonferroni bar with a smaller worst fall.
+  Whether risk may ever pass an idea is the owner's decision; the lens only supplies the evidence.
+
+  On 20 October 2026, **no idea would pass on risk either.** The best was the 200-day trend filter: Sharpe +0.16 over the
+  basket, better in 63% of samples (p 0.37), worst fall −12.7% against −35%. At an assumed 6% on cash it would earn
+  14.2% a year against the basket's 13.6%. Its smaller fall comes mostly from one episode, the 2020 crash.
+
 ## The NIFTY 50 research universe
 
 `datasets.NIFTY50` holds the members after the reconstitution effective 30 Sep 2026, taken from Wikipedia's NIFTY 50 page.

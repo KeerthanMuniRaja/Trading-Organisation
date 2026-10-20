@@ -140,17 +140,19 @@ def monthly(table, dates, rules, through=None):
     rows, held = [], {name: {} for name in rules}
     for a, b in zip(starts, starts[1:]):
         ret = {s: table[s][dates[b]]['closePaise'] / table[s][dates[a]]['closePaise'] - 1 for s in table}
-        row = {'month': dates[a][:7], 'basketPct': 100 * sum(ret.values()) / len(ret), 'rules': {}}
+        row = {'month': dates[a][:7], 'basketPct': 100 * sum(ret.values()) / len(ret), 'rules': {}, 'cash': {}}
         for name, rule in rules.items():
             weights = rule(table, dates, a)
             turnover = sum(abs(weights.get(s, 0) - held[name].get(s, 0)) for s in table)
             held[name] = weights
             row['rules'][name] = 100 * sum(w * ret[s] for s, w in weights.items()) - ONE_WAY_COST_PCT * turnover
+            row['cash'][name] = max(0.0, 1 - sum(weights.values()))  # the uninvested share, which earns nothing here
         rows.append(row)
     return [r for r in rows if through is None or r['month'] <= through]
 
 
 RANDOM_RULES = 100   # random pickers of 3 shares a month: the baseline an edge has to beat (vectorbt)
+CASH_YIELD_PCT = 6.0  # ASSUMED yearly yield on uninvested cash for the risk lens only (a liquid fund or T-bill; not sourced data)
 
 
 def full_history(all_bars, slack_days=31):
@@ -197,10 +199,20 @@ def scout(through=None, cache=daily.DAILY, ledger_path=None, universe='desk', ra
             + ([f'not ahead in both halves ({halves[0][0]}/{halves[0][1]}, {halves[1][0]}/{halves[1][1]})'] if any(a <= b for a, b in halves) else []) \
             + ([f'lookahead bias: its decision on {lookahead[0]} changes when later days are removed'] if lookahead else [])
         average = sum(excess) / len(excess)
+        rule_pct, basket_pct, cash = [r['rules'][name] for r in rows], [r['basketPct'] for r in rows], [r['cash'][name] for r in rows]
+        mine, basket_stats = rc.stats(rule_pct, excess), rc.stats(basket_pct, [0.0] * len(rows))
+        sharpe = rc.sharpe_test(rule_pct, basket_pct)
+        at_yield = rc.stats(rc.with_cash_yield(rule_pct, cash, CASH_YIELD_PCT), excess)
+        # RISK LENS (report only; the owner decides whether it may ever pass an idea): a better Sharpe than the basket at
+        # the same Bonferroni bar, and a smaller worst fall
+        risk_lens = {'sharpeTest': sharpe, 'worstFallPct': mine['maxDrawdownPct'], 'basketWorstFallPct': basket_stats['maxDrawdownPct'],
+                     'averageCashPct': round(100 * statistics.fmean(cash), 1),
+                     'atAssumedCashYield': {'yieldPct': CASH_YIELD_PCT, 'cagrPct': at_yield['cagrPct'], 'sharpe': at_yield['sharpe']},
+                     'wouldPassRiskBar': bool(sharpe and sharpe['p'] < threshold and mine['maxDrawdownPct'] > basket_stats['maxDrawdownPct'])}
         out.append({'name': name, 'description': description, 'specialty': specialty, 'method': method, 'alreadyServedBy': served,
                     'months': len(rows), 'ahead': ahead, 'behind': behind, 'averageExcessPct': round(average, 3),
                     'pValue': round(p, 6), 'halves': halves, 'passes': not reasons, 'reasons': reasons, 'spec': spec, 'source': source,
-                    'stats': rc.stats([r['rules'][name] for r in rows], excess),
+                    'stats': mine, 'riskLens': risk_lens,
                     'beatsRandomPct': rc.percentile(average, random_avg), 'warmupSensitive': bool(checks[name]['warmup'])})
     out.sort(key=lambda c: (c['pValue'], c['name']))
     last = rows[-1]['month']
