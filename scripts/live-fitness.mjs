@@ -34,6 +34,19 @@ export async function run(env = process.env, { fetchImpl = fetch, now = new Date
       row.evaluation = evaluation.ok ? { activeEligible: evaluation.body.activeEligible } : { failed: `HTTP ${evaluation.status}` };
     }
     results.push(row);
+    // AUTO-04: a canary is judged on its own live calls too, so a better version can be promoted and a worse one dropped
+    const canary = view.ok ? view.body.canary : null;
+    if (canary && canary !== active) {
+      const trial = await call('POST', '/v1/bots/fitness/live', { botId: bot.id, releaseId: canary }, ['live', bot.id, canary, day]);
+      if (trial.status === 409) continue;
+      if (!trial.ok) { results.push({ botId: bot.id, releaseId: canary, stage: 'canary', state: 'failed', reason: `HTTP ${trial.status}` }); continue; }
+      const crow = { botId: bot.id, releaseId: canary, stage: 'canary', verdict: trial.body.verdict, pValue: trial.body.pValue ?? null, newReport: !trial.body.duplicate };
+      if (trial.body.verdict !== 'insufficient-evidence') {
+        const evaluation = await call('POST', '/v1/releases/evaluations', { releaseId: canary, fitnessReportId: trial.body.id }, ['evaluate', canary, trial.body.id]);
+        crow.evaluation = evaluation.ok ? { activeEligible: evaluation.body.activeEligible } : { failed: `HTTP ${evaluation.status}` };
+      }
+      results.push(crow);
+    }
   }
   return results;
 }

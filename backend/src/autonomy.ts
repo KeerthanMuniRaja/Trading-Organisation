@@ -6,8 +6,8 @@ import { Database, Sql, audit } from './database.js';
 import { Allow } from './security.js';
 import { applyRecommendation } from './management.js';
 import { applyBirthDecision } from './bot-births.js';
-import { applyQualify, applyStage, EVALUATION_VALID_DAYS } from './bot-releases.js';
-import { applyBudget } from './bot-control.js';
+import { applyQualify, applyRollback, applyStage, EVALUATION_VALID_DAYS, rollbackTarget } from './bot-releases.js';
+import { applyBudget, applySuspension, isSuspended } from './bot-control.js';
 
 // Standing approvals (AUTO-03): the organisation decides and acts by itself; the owner approves and oversees. The owner
 // approves CLASSES of decisions once, with limits (this policy). Every cycle the evaluator triggers `apply`, which
@@ -33,6 +33,11 @@ const rulesSchema = z.object({
   /** Give a qualified bot with no budget this starting budget (within the department ceiling); counts toward the
    *  monthly total of raiseBudget, so it needs raiseBudget too. */
   startingBudgetPaise: money.nullable().default(null),
+  /** AUTO-04, self-improvement: promote a canary whose own live paper calls beat holding cash significantly. */
+  promoteCanaries: z.boolean().default(false),
+  /** AUTO-04: when an active release's own live calls lose to cash significantly, return to the previous good release,
+   *  or suspend the bot when there is none. */
+  rollbackFailingReleases: z.boolean().default(false),
   maxActionsPerRun: z.number().int().min(1).max(50).default(10),
 }).strict().refine(r => r.startingBudgetPaise === null || r.raiseBudget !== null, 'A starting budget needs raiseBudget, whose monthly total also limits it');
 const policySchema = z.object({ rules: rulesSchema, reason: z.string().trim().min(1).max(600) }).strict();
@@ -148,6 +153,26 @@ export class Autonomy {
         if (amount <= 0n) left.push({ kind: 'starting-budget', target: b.id, reason: 'no room under the department ceiling or exposure limit' });
         else if (!room(amount)) left.push({ kind: 'starting-budget', target: b.id, reason: 'over the policy\'s monthly total' });
         else await attempt('starting-budget', b.id, amount, () => applyBudget(tx, AGENT, b.id, amount.toString(), note));
+      }
+      // 6 and 7. self-improvement on LIVE results only (a release's newest evaluation must come from its own live paper calls)
+      if (r.promoteCanaries || r.rollbackFailingReleases) {
+        const judged = (await tx.query(`SELECT r.id,r.bot_id,r.version,
+              (SELECT stage FROM bot_release_stages s WHERE s.release_id=r.id ORDER BY sequence DESC LIMIT 1) AS stage,
+              e.fitness_verdict,f.test_name,e.created_at >= now()-($1::int * interval '1 day') AS fresh
+            FROM bot_releases r JOIN bots b ON b.id=r.bot_id
+            JOIN LATERAL (SELECT fitness_report_id,fitness_verdict,created_at FROM bot_release_evaluations WHERE release_id=r.id ORDER BY created_at DESC,id DESC LIMIT 1) e ON true
+            JOIN bot_fitness_reports f ON f.id=e.fitness_report_id
+            WHERE b.state<>'retired' AND f.test_name LIKE 'live-paper%' ORDER BY r.bot_id,r.version`, [EVALUATION_VALID_DAYS])).rows;
+        if (r.promoteCanaries) for (const c of judged.filter(x => x.stage === 'canary' && x.fitness_verdict === 'adds-value' && x.fresh))
+          await attempt('promotion', c.bot_id, null, () => applyStage(tx, AGENT, { releaseId: String(c.id), stage: 'active',
+            reason: `${note}: canary v${c.version} beat holding cash on its own live paper calls` }));
+        if (r.rollbackFailingReleases) for (const a of judged.filter(x => x.stage === 'active' && x.fitness_verdict === 'worse-than-baseline')) {
+          const { active, previous } = await rollbackTarget(tx, a.bot_id);
+          if (active !== String(a.id)) continue; // an older active row; the bot already runs a newer release
+          const why = `${note}: release v${a.version} lost to holding cash on its own live paper calls`;
+          if (previous) await attempt('rollback', a.bot_id, null, () => applyRollback(tx, AGENT, { botId: a.bot_id, reason: why }));
+          else if (!(await isSuspended(tx, a.bot_id))) await attempt('rollback', a.bot_id, null, () => applySuspension(tx, AGENT, a.bot_id, true, why + '; no earlier release, so suspended'));
+        }
       }
       return { status: 'applied', policySequence: policy.sequence, actions, leftForOwner: left };
     });

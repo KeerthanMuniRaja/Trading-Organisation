@@ -13,7 +13,7 @@ CREATE TABLE autonomy_policies (
 CREATE TABLE autonomy_actions (
   id uuid PRIMARY KEY,
   policy_id uuid NOT NULL REFERENCES autonomy_policies(id),
-  kind text NOT NULL CHECK (kind IN ('suspend', 'watch', 'raise-budget', 'birth', 'release', 'qualification', 'starting-budget')),
+  kind text NOT NULL CHECK (kind IN ('suspend', 'watch', 'raise-budget', 'birth', 'release', 'qualification', 'starting-budget', 'promotion', 'rollback')),
   target text NOT NULL,
   amount_paise bigint CHECK (amount_paise IS NULL OR amount_paise >= 0),
   detail jsonb NOT NULL,

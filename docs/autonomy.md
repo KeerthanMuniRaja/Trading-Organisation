@@ -21,6 +21,8 @@ The organisation's agents make and carry out decisions themselves; the owner app
   "activateReleases": true,
   "qualifyBots": true,
   "startingBudgetPaise": "200000",
+  "promoteCanaries": true,
+  "rollbackFailingReleases": true,
   "maxActionsPerRun": 10
 }
 ```
@@ -34,7 +36,14 @@ The organisation's agents make and carry out decisions themselves; the owner app
 | `activateReleases` | Activate a release whose newest evaluation, under 180 days old, allows it |
 | `qualifyBots` | Qualify a bot for paper trading on its active, freshly evaluated release |
 | `startingBudgetPaise` | Give a qualified bot with no budget this amount, capped by the department ceiling. It counts toward the monthly total, so it needs `raiseBudget` |
+| `promoteCanaries` | **Self-improvement:** promote a trial (canary) release whose own live paper calls beat holding cash significantly. The trial's live results decide; backtest evidence alone never does |
+| `rollbackFailingReleases` | **Self-correction:** when an active release's own live calls lose to cash significantly, return to the previous good release, or suspend the bot if there is none |
 | `maxActionsPerRun` | At most this many automatic decisions per cycle |
+
+**How the organisation improves itself.**
+1. **Trial:** a new version of a bot (a new R&D idea, model or prompt, always as a release) runs as a canary next to the active one.
+2. **Judge:** live fitness judges each release on its own paper calls every day (`scripts/live-fitness.mjs`).
+3. **Keep or revert:** with these two rules on, the better version is promoted and a version that turns bad is rolled back, with no owner step. The release gate guarantees only authorised code ever trades.
 
 Every rule is off unless set. With all of them on, an idea that R&D proves goes, without the owner, from birth to release, qualification, a starting budget and trading. The owner reads about it in the digest and can always step in.
 

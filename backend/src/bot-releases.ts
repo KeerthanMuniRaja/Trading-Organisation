@@ -84,6 +84,27 @@ export async function applyQualify(tx: Sql, actor: Actor, input: { botId: string
   return { botId: input.botId, state: 'paper', releaseId: active };
 }
 
+/** The release a bot runs now and the earlier active one it could return to (null when there is none). */
+export async function rollbackTarget(tx: Sql, botId: string) {
+  const { active, map } = await current(tx, botId);
+  if (!active) return { active: null, previous: null };
+  const history = (await tx.query(`SELECT release_id FROM bot_release_stages WHERE bot_id=$1 AND stage='active' ORDER BY sequence DESC`, [botId])).rows
+    .map(r => String(r.release_id));
+  return { active, previous: history.find(r => r !== active && map.get(r)?.stage !== 'revoked') ?? null };
+}
+
+/** Revokes the active release and reactivates the previous one, inside the caller's transaction. */
+export async function applyRollback(tx: Sql, actor: Actor, input: { botId: string; reason: string }) {
+  const { active, previous } = await rollbackTarget(tx, input.botId);
+  requireThat(active, 'No active release to roll back');
+  requireThat(previous, 'There is no earlier active release to return to');
+  for (const [releaseId, stage] of [[active, 'revoked'], [previous, 'active']] as const)
+    await tx.query('INSERT INTO bot_release_stages(id,bot_id,release_id,stage,reason,decided_by) VALUES($1,$2,$3,$4,$5,$6)',
+      [uuid(), input.botId, releaseId, stage, 'Rollback: ' + input.reason, actor.id]);
+  await audit(tx, actor, 'bot.release.rolled-back', input.botId, { from: active, to: previous });
+  return { botId: input.botId, revoked: active as string, active: previous as string };
+}
+
 export class BotReleases {
   constructor(private readonly db: Database) {}
 
@@ -147,19 +168,7 @@ export class BotReleases {
   rollback(actor: Actor, key: string, raw: unknown) {
     permit(actor, 'owner');
     const input = parse(rollbackSchema, raw);
-    return this.db.command(actor, 'bot-release-rollback', key, input, async tx => {
-      const { active, map } = await current(tx, input.botId);
-      requireThat(active, 'No active release to roll back');
-      const history = (await tx.query(`SELECT release_id FROM bot_release_stages WHERE bot_id=$1 AND stage='active' ORDER BY sequence DESC`, [input.botId])).rows
-        .map(r => String(r.release_id));
-      const previous = history.find(r => r !== active && map.get(r)?.stage !== 'revoked');
-      requireThat(previous, 'There is no earlier active release to return to');
-      for (const [releaseId, stage] of [[active, 'revoked'], [previous, 'active']] as const)
-        await tx.query('INSERT INTO bot_release_stages(id,bot_id,release_id,stage,reason,decided_by) VALUES($1,$2,$3,$4,$5,$6)',
-          [uuid(), input.botId, releaseId, stage, 'Rollback: ' + input.reason, actor.id]);
-      await audit(tx, actor, 'bot.release.rolled-back', input.botId, { from: active, to: previous });
-      return { botId: input.botId, revoked: active, active: previous };
-    });
+    return this.db.command(actor, 'bot-release-rollback', key, input, tx => applyRollback(tx, actor, input));
   }
 
   /** A worker's gate: may this exact model/prompt/code run for this bot right now? */

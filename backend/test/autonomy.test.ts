@@ -103,6 +103,37 @@ test('a new bot can go from birth to funded paper trading under standing approva
   } finally { await f.db.close(); }
 });
 
+test('self-improvement: a better canary is promoted on live results, and a release that fails live is rolled back', async () => {
+  const f = await setup(); try {
+    const live = (version: number, wins: number, losses: number) => ({ botId: 'bot-one', role: 'trader', baseline: 'cash' as const,
+      testName: `live-paper release v${version}`, periodFrom: '2026-01-01', periodTo: today, judged: wins + losses, wins, losses, model: 'rules:x' });
+    const study = await f.fitness.report(evaluator, key(), { botId: 'bot-one', role: 'allocator', baseline: 'equal-weight-basket', testName: 'study',
+      periodFrom: '2026-01-01', periodTo: today, judged: 30, wins: 22, losses: 8, model: 'rules:x' });
+    const v1 = await f.releases.create(researcher, key(), { botId: 'bot-one', model: 'rules:x', promptVersion: 'v1', codeFingerprint: 'c'.repeat(16), notes: 'First' });
+    const v2 = await f.releases.create(researcher, key(), { botId: 'bot-one', model: 'rules:x', promptVersion: 'v2', codeFingerprint: 'd'.repeat(16), notes: 'Improved' });
+    for (const r of [v1, v2]) await f.releases.evaluate(evaluator, key(), { releaseId: r.id, fitnessReportId: study.id });
+    await f.releases.stage(owner, key(), { releaseId: v1.id, stage: 'active', reason: 'First release' });
+    await f.releases.stage(owner, key(), { releaseId: v2.id, stage: 'canary', reason: 'Trial of the improvement' });
+    await f.autonomy.setPolicy(owner, key(), { rules: { ...OFF, promoteCanaries: true, rollbackFailingReleases: true }, reason: 'Keep what works live, drop what fails' });
+    assert.deepEqual((await f.autonomy.apply(evaluator, key())).actions, []); // backtest evidence alone never promotes
+    // the canary beats cash on its own live calls: promoted
+    await f.releases.evaluate(evaluator, key(), { releaseId: v2.id, fitnessReportId: (await f.fitness.report(evaluator, key(), live(2, 25, 5))).id });
+    assert.deepEqual((await f.autonomy.apply(evaluator, key())).actions, [{ kind: 'promotion', target: 'bot-one' }]);
+    assert.equal((await f.releases.view(owner, { botId: 'bot-one' })).active, v2.id);
+    // later it loses to cash live: back to v1, the earlier good release
+    await f.releases.evaluate(evaluator, key(), { releaseId: v2.id, fitnessReportId: (await f.fitness.report(evaluator, key(), live(2, 4, 26))).id });
+    assert.deepEqual((await f.autonomy.apply(evaluator, key())).actions, [{ kind: 'rollback', target: 'bot-one' }]);
+    const view = await f.releases.view(owner, { botId: 'bot-one' });
+    assert.equal(view.active, v1.id);
+    assert.equal(view.releases.find(r => r.id === v2.id)!.stage, 'revoked');
+    // and if v1 fails live too, there is nothing earlier: the bot is suspended instead
+    await f.releases.evaluate(evaluator, key(), { releaseId: v1.id, fitnessReportId: (await f.fitness.report(evaluator, key(), live(1, 3, 27))).id });
+    assert.deepEqual((await f.autonomy.apply(evaluator, key())).actions, [{ kind: 'rollback', target: 'bot-one' }]);
+    assert.equal(await f.db.transaction(tx => isSuspended(tx, 'bot-one')), true);
+    assert.deepEqual((await f.autonomy.apply(evaluator, key())).actions, []); // nothing more to do
+  } finally { await f.db.close(); }
+});
+
 test('autonomy routes are guarded by role', async () => {
   const { cfg } = config(), db = await Database.open(), app = await createApp(cfg, db, true);
   try {
