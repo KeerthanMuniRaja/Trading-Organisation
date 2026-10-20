@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { Actor, digest, id, parse, permit, requireThat, text, uuid } from './core.js';
 import { audit, Database, Row, Sql } from './database.js';
 import { sharedResearchMemory } from './learning-contract.js';
+import { assertTokenCapacity } from './inference-usage.js';
+import { incidentAssignmentActive } from './incident-learning.js';
 
 const short=z.string().trim().min(1).max(500);
 const proposalSchema=z.object({summary:short,application:short,lessonIds:z.array(z.uuid()).min(1).max(5),
@@ -16,6 +18,7 @@ async function lessonRows(tx:Sql,ids:string[]){
   requireThat(rows.length===ids.length&&rows.every(r=>r.usable),'Currently verified lessons and sources required');return rows;
 }
 async function active(tx:Sql,request:Row){
+  await incidentAssignmentActive(tx,request.id);
   const policy=(await tx.query('SELECT * FROM development_policy WHERE id=1')).rows[0]!;
   requireThat(policy.enabled&&policy.revision===request.policy_revision,'Knowledge development policy changed or disabled');
   requireThat(!(await tx.query('SELECT halted FROM system_lock WHERE id=1')).rows[0]!.halted,'System halted');
@@ -25,6 +28,32 @@ async function active(tx:Sql,request:Row){
 }
 export class BotKnowledge {
   constructor(private readonly db:Database){}
+  discover(actor:Actor,raw:unknown){
+    permit(actor,'owner','researcher','evaluator');
+    const input=parse(z.object({botId:id,query:z.string().trim().min(3).max(200),
+      limit:z.number().int().min(1).max(20).default(5)}).strict(),raw);
+    const terms=[...new Set(input.query.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu)??[])];
+    requireThat(terms.length>0&&terms.length<=12,'Use 1–12 distinct search terms of at least three characters',400);
+    return this.db.transaction(async tx=>{
+      const bot=(await tx.query("SELECT id FROM bots WHERE id=$1 AND state<>'retired'",[input.botId])).rows[0];
+      requireThat(bot,'Active recipient bot required');
+      const rows=(await tx.query(`SELECT l.id,l.bot_id AS author_bot_id,l.content,l.evidence_id,l.reviewer,
+        b.state AS author_state,e.source_id,e.published_at,e.received_at,o.url,o.observed_at,
+        matched.terms AS matched_terms,cardinality(matched.terms) AS relevance
+        FROM lessons l JOIN bots b ON b.id=l.bot_id JOIN evidence e ON e.id=l.evidence_id
+        JOIN sources s ON s.id=e.source_id LEFT JOIN source_observations o ON o.evidence_id=e.id
+        CROSS JOIN LATERAL (SELECT ARRAY(SELECT term FROM unnest($2::text[]) AS term
+          WHERE strpos(lower(l.content),term)>0 ORDER BY term) AS terms) matched
+        WHERE l.bot_id<>$1 AND l.status='verified' AND e.status='verified' AND s.approved
+        AND e.published_at<=now() AND cardinality(matched.terms)>0
+        ORDER BY cardinality(matched.terms) DESC,l.created_at DESC,l.id LIMIT $3`,[bot.id,terms,input.limit+1])).rows;
+      const lessons=rows.slice(0,input.limit);
+      return {botId:bot.id,terms,lessons,suggestedLessonIds:lessons.slice(0,5).map(l=>l.id),truncated:rows.length>input.limit,
+        ranking:'distinct-substring-matches-v1',scope:'current-reviewed-cross-bot-lessons',
+        warning:'Relevance is not confidence or demonstrated learning. Recheck support when requesting a transfer.',
+        modelInvoked:false,fitnessChanged:false};
+    });
+  }
   request(actor:Actor,key:string,raw:unknown){
     permit(actor,'researcher');const input=parse(z.object({botId:id,task:short,lessonIds:z.array(z.uuid()).min(1).max(5).refine(a=>new Set(a).size===a.length)}).strict(),raw);
     return this.db.command(actor,'bot-knowledge-request',key,input,async tx=>{
@@ -43,6 +72,7 @@ export class BotKnowledge {
         JOIN development_requests d ON d.id=k.request_id
         LEFT JOIN knowledge_assessments a ON a.request_id=k.request_id LEFT JOIN knowledge_assessment_results result ON result.assessment_id=a.id
         WHERE k.bot_id=$1 AND r.decision='accepted' AND d.policy_revision=$2
+        AND NOT EXISTS(SELECT 1 FROM incident_learning_attempts t JOIN incident_learning_cancellations c ON c.assignment_id=t.assignment_id WHERE t.request_id=k.request_id)
         AND NOT EXISTS(SELECT 1 FROM bot_knowledge_lessons x JOIN lessons l ON l.id=x.lesson_id
           JOIN evidence e ON e.id=l.evidence_id JOIN sources s ON s.id=e.source_id WHERE x.request_id=k.request_id
           AND (l.status<>'verified' OR e.status<>'verified' OR NOT s.approved OR e.published_at>now()))
@@ -52,6 +82,7 @@ export class BotKnowledge {
           provenance:{sourceId:l.source_id,publishedAt:new Date(l.published_at).toISOString(),receivedAt:new Date(l.received_at).toISOString(),
             articleUrl:l.article_url??null,title:l.article_title??null,observedAt:l.observed_at?new Date(l.observed_at).toISOString():null}}))};
       const requestId=uuid(),contextHash=digest(context);
+      await assertTokenCapacity(tx,context);
       const saved=(await tx.query(`INSERT INTO development_requests(id,author,policy_revision,model,context,context_hash,expires_at)
         VALUES($1,$2,$3,$4::jsonb,$5::jsonb,$6,now()+interval '10 minutes') RETURNING expires_at`,
         [requestId,actor.id,policy.revision,JSON.stringify(policy.model),JSON.stringify(context),contextHash])).rows[0]!;
@@ -104,6 +135,7 @@ export class BotKnowledge {
         FROM lessons l JOIN evidence e ON e.id=l.evidence_id JOIN sources s ON s.id=e.source_id
         WHERE l.bot_id=$1 OR EXISTS(SELECT 1 FROM bot_curriculum c WHERE c.bot_id=$1 AND c.lesson_id=l.id)
         OR EXISTS(SELECT 1 FROM bot_knowledge_lessons x JOIN bot_knowledge_requests k ON k.request_id=x.request_id WHERE k.bot_id=$1 AND x.lesson_id=l.id)
+        OR EXISTS(SELECT 1 FROM incident_learning_assignments a WHERE a.bot_id=$1 AND a.lesson_id=l.id)
         ORDER BY l.id LIMIT 101`,[bot.id])).rows;
       const transfers=(await tx.query(`SELECT k.request_id,p.proposal,r.decision,r.reason,r.reviewer,d.context_hash,a.id AS assessment_id,result.report AS assessment FROM bot_knowledge_requests k
         JOIN development_requests d ON d.id=k.request_id LEFT JOIN bot_knowledge_proposals p ON p.request_id=k.request_id
@@ -120,6 +152,24 @@ export class BotKnowledge {
           {from:'evidence:'+l.evidence_id,to:'source:'+l.source_id,type:'published-by'});
       }
       const observations=(await tx.query(`SELECT * FROM source_observations WHERE evidence_id=ANY($1::uuid[])`,[lessons.slice(0,100).map(l=>l.evidence_id)])).rows;
+      const incidentLessons=(await tx.query(`SELECT il.lesson_id,f.id AS finding_id,f.incident_id,i.status,
+        f.root_cause,f.corrective_action,f.prevention,f.verification_plan,r.decision
+        FROM incident_lessons il JOIN incident_findings f ON f.id=il.finding_id
+        JOIN incidents i ON i.id=f.incident_id JOIN incident_finding_reviews r ON r.finding_id=f.id
+        WHERE il.lesson_id=ANY($1::uuid[])`,[lessons.slice(0,100).map(l=>l.id)])).rows;
+      for(const finding of incidentLessons){
+        nodes.set('incident:'+finding.incident_id,{id:'incident:'+finding.incident_id,type:'incident',status:finding.status});
+        nodes.set('finding:'+finding.finding_id,{...finding,id:'finding:'+finding.finding_id,type:'incident-finding',remediationExecutionEstablished:false});
+        edges.push({from:'incident:'+finding.incident_id,to:'finding:'+finding.finding_id,type:'investigated-through'},
+          {from:'finding:'+finding.finding_id,to:'lesson:'+finding.lesson_id,type:'lesson-proposed-from'});
+      }
+      const assignments=(await tx.query(`SELECT a.id,a.lesson_id,a.task,c.reason AS cancellation_reason,c.created_at AS cancelled_at FROM incident_learning_assignments a
+        LEFT JOIN incident_learning_cancellations c ON c.assignment_id=a.id WHERE a.bot_id=$1 ORDER BY a.created_at DESC,a.id LIMIT 101`,[bot.id])).rows;
+      for(const a of assignments.slice(0,100)){
+        nodes.set('assignment:'+a.id,{id:'assignment:'+a.id,type:'incident-learning-assignment',task:a.task,cancelledAt:a.cancelled_at,cancellationReason:a.cancellation_reason,incidentMasteryEstablished:false});
+        edges.push({from:'assignment:'+a.id,to:'bot:'+bot.id,type:'assigned-to'});
+        if(nodes.has('lesson:'+a.lesson_id))edges.push({from:'lesson:'+a.lesson_id,to:'assignment:'+a.id,type:'assigned-through'});
+      }
       for(const o of observations){
         nodes.set('observation:'+o.evidence_id,{...o,id:'observation:'+o.evidence_id,type:'source-observation'});
         edges.push({from:'evidence:'+o.evidence_id,to:'observation:'+o.evidence_id,type:'observed-as'});
@@ -141,7 +191,9 @@ export class BotKnowledge {
         edges.push({from:'bot:'+bot.id,to:'memory:'+memory.id,type:'experienced'},
           {from:'memory:'+memory.id,to:'trial:'+memory.trialId,type:'reflects'});
       }
-      return {nodes:[...nodes.values()],edges,truncated:lessons.length>100,scope:'current-knowledge-not-historical-backtest',demonstratedLearning:false};
+      const attempts=(await tx.query('SELECT assignment_id,request_id FROM incident_learning_attempts WHERE assignment_id=ANY($1::uuid[])',[assignments.slice(0,100).map(a=>a.id)])).rows;
+      for(const a of attempts)if(nodes.has('transfer:'+a.request_id))edges.push({from:'assignment:'+a.assignment_id,to:'transfer:'+a.request_id,type:'attempted-through'});
+      return {nodes:[...nodes.values()],edges,truncated:lessons.length>100||assignments.length>100||transfers.length===100,scope:'current-knowledge-not-historical-backtest',demonstratedLearning:false};
     });
   }
 }

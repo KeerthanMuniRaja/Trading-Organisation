@@ -1,7 +1,8 @@
 {
   "expectedRevision": 0,
   "enabled": false,
-  "model": {"name": "Qwen/Qwen3.5-9B", "baseUrl": "http://127.0.0.1:8000/v1"},
+  "model": {"name": "Qwen3.5-4B-Q4_K_M", "baseUrl": "http://127.0.0.1:8080/v1", "engine": "direct-structured-v1"},
   "maxPerDay": 2,
-  "maxLifetime": 20
+  "maxLifetime": 20,
+  "maxTokensPerDay": 50000
 }

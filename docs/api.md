@@ -1,5 +1,48 @@
 # API contract and roles
 
+## Incident learning cancellation — migration 027
+
+Owner `POST /v1/incidents/learning/cancellations` takes `{assignmentId,reason}` and an idempotency key. Append-only cancellation blocks further linked learning progression while preserving results. Progress and graph expose cancellation; ungraded submitted assessments become invalidated when graded. See [scope and external-process limits](incident-review.md#assignment-cancellation-migration-027).
+
+## Exact evidence eligibility lookup
+
+`POST /v1/evidence/status` (owner/researcher/evaluator) accepts `{evidenceIds}` with 1–50 distinct UUIDs. It is read-only and needs no idempotency key. Returns matching records with content, source, kind, publication time, optional observation title/URL, status, `source_approved` and `usable`. Unknown IDs are omitted. Unlike the recent knowledge view, lookup is not restricted to the latest 200 records. Eligibility is point-in-time and grants no execution authority.
+
+The claims headline exporter queries this route in batches, checks stored content/provenance against reviewed snapshots, and recalculates corroboration using only currently eligible reports. It clears its previous output before reconciliation; failures leave an empty file. Export is capped at 500 evidence IDs and refuses larger sets rather than silently omitting them. Existing desktop consumers still read a snapshot: revocation after lookup, or while the exporter is idle, requires another reconciliation. This is not a continuous revocation subscription.
+
+The live paper desk additionally requires a content-bound receipt expiring five minutes after reconciliation starts and discards invalid or stale news instead of keeping the last copy. See [live news freshness](live-news-freshness.md) for compatibility and scheduling consequences.
+
+## Bound automatic evidence review
+
+`POST /v1/evidence/reviews` accepts optional `expected: {content,sourceId,kind,publishedAt,observation?}` alongside `evidenceId` and `status`. An observation expectation contains `{title,url}` and is required when binding a collected news/article/filing snapshot; it must be absent for evidence without an observation record. Content and provenance must match inside the review transaction. Publication timestamps are compared as instants. Verification also rechecks source approval and rejects future publication times, including for legacy callers without expectations. Rejection remains available after source withdrawal. Automatic news and desk workers send bound review requests; no database migration is needed.
+
+Start the updated backend before the updated workers. Older backends reject the new strict request body; workers must not retry without the binding. Idempotent command replay remains a historical receipt, not proof of current eligibility.
+
+## Bound automatic lesson review
+
+`POST /v1/lessons/reviews` accepts optional `expected: {content,evidenceId,botId}` alongside `lessonId`. All three fields must match the stored lesson inside the approval transaction, before it becomes verified. Existing independence and current evidence checks still apply. Automatic news and trading-desk learning workers use this guard; manual callers remain compatible. See [updated-code review](review-2026-10-09.md) for remaining evidence-binding and claim-verification limits.
+
+## Incident learning assignments — migration 026
+
+`POST /v1/incidents/learning/assignments` (owner) assigns a reviewed lesson to recipient bots; `/links` (researcher) associates a fresh matching knowledge request; `/progress` (owner/researcher/evaluator) reads all linked review and assessment outcomes alongside current support indicators. Mutations require idempotency keys. See [contracts and assessment limits](incident-review.md#assigned-learning-and-assessment-history-migration-026).
+
+## Incident learning — migration 025
+
+`POST /v1/incidents/findings/lessons` (owner/researcher, idempotency key) takes `{findingId,botId,content}` and creates one unverified lesson from the final accepted finding of a resolved incident. The existing lesson-review route requires independence from the lesson author, finding author and reporter. Findings query includes lesson provenance. See [workflow and limits](incident-review.md#incident-to-lesson-bridge-migration-025).
+
+## Incident findings — migration 024
+
+`POST /v1/incidents/findings` proposes an evidence-supported investigation; `/reviews` records an independent acceptance or rejection; `/query` retrieves preserved history. Once findings exist, owner resolution requires the latest accepted finding and its currently valid supporting evidence. Resolution never resumes a halted system. See [incident review contracts and limits](incident-review.md).
+
+## Inference usage — migration 022
+
+- `POST /v1/development/inference-reports` (assigned researcher, idempotency key) records one immutable outcome for a model ticket: `{requestId,outcome,failureCode?,engine,promptVersion,latencyMs?,promptTokens?,completionTokens?,reportedModel?}`.
+- `GET /v1/development/inference-usage` (owner/evaluator) returns the rolling 24-hour charge against `maxTokensPerDay`, per-kind and per-model statistics, and recent reports.
+- The development policy accepts an optional `maxTokensPerDay`; when omitted, the current ceiling is kept.
+- Assessment work responses now include `inferenceRequestId`.
+
+See [model readiness](model-readiness.md).
+
 ## Learning workflow API — migration 021
 
 POST `/v1/learning/workflows` (owner) freezes a programme. `/progress` is read-only for owner/assigned participants; `/links` binds exact stage records for the assigned worker; `/cancellations` records owner cancellation of progression. Mutation routes require idempotency keys. See [workflow contracts and cancellation limits](learning-workflows.md).
@@ -21,7 +64,7 @@ The `/v1/learning/knowledge/` request, preflight, proposal, review and graph rou
 
 GET `/v1/skills/experiments/research-approvals` is owner/evaluator read-only. Owner POSTs to that route and its `/revocations` subroute require idempotency keys. They bind a passing independent paired review to exact hashes, expiry and immutable withdrawal. See [contract](research-approvals.md). No execution, deployment or financial authority is created.
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 ## Execution observations — migration 015
 
@@ -147,5 +190,10 @@ Endpoints have bounded lists rather than pagination. External reporting, long-hi
 
 - `POST /v1/sources/observations`: researcher/market; idempotency key required. Immutable collector-submitted snapshot, unverified evidence, approved HTTPS origin, first backend observation time.
 - `POST /v1/sources/observations/query`: owner/researcher/evaluator; source ID and optional evidence status; newest 50 with truncation flag.
+- `POST /v1/sources/observations/review-queue`: owner/evaluator; optional source ID, `after` observation UUID, `limit` 1–50 and `includeBlocked`. Oldest pending source observations across publishers with a stable cursor and review blockers. Read-only; no idempotency key required.
+- `POST /v1/learning/knowledge/discover`: owner/researcher/evaluator; active `botId`, `query` (3–200 characters), optional `limit` (1–20). Returns ranked currently reviewed cross-bot lessons and up to five suggested IDs. Read-only, no inference or idempotency key; [details](knowledge-discovery.md).
 
 Existing evidence review/revocation and lesson review routes govern downstream use. No external URL is fetched by these routes. See [contracts and batch commands](source-observations.md). Migration 019 required.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

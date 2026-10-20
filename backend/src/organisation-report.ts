@@ -131,8 +131,13 @@ export class OrganisationReport {
           counts:(await tx.query(`SELECT count(*)::int AS proposals,count(*) FILTER(WHERE r.proposal_id IS NULL)::int AS pending,
             count(*) FILTER(WHERE r.decision='verified')::int AS historically_verified
             FROM learning_proposals p LEFT JOIN learning_reviews r ON r.proposal_id=p.id`)).rows[0]},
-        development:{policy:(await tx.query('SELECT revision,enabled,model,max_per_day,max_lifetime FROM development_policy WHERE id=1')).rows[0],
+        development:{policy:(await tx.query('SELECT revision,enabled,model,max_per_day,max_lifetime,max_tokens_per_day FROM development_policy WHERE id=1')).rows[0],
           requests:(await tx.query('SELECT count(*)::int AS count FROM development_requests')).rows[0]!.count,
+          // Shared model tickets by kind, so portfolio R&D, transfers, assessments and source lessons are not conflated.
+          inference:(await tx.query(`SELECT inference_request_kind(d.context) AS kind,count(*)::int AS requests,
+            count(r.request_id)::int AS reported,count(*) FILTER(WHERE r.outcome IN ('failed','uncertain'))::int AS failed_or_uncertain,
+            count(*) FILTER(WHERE d.created_at>now()-interval '24 hours')::int AS last_24_hours
+            FROM development_requests d LEFT JOIN inference_reports r ON r.request_id=d.id GROUP BY 1 ORDER BY 1`)).rows,
           experiments:(await tx.query(`SELECT count(*)::int AS registered,
             count(*) FILTER(WHERE r.experiment_id IS NULL AND c.experiment_id IS NULL)::int AS pending,
             count(*) FILTER(WHERE r.outcome='supported-for-further-research')::int AS historically_supported,

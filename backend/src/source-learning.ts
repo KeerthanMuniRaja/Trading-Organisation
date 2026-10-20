@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { Actor,digest,id,parse,permit,requireThat,text,uuid } from './core.js';
 import { audit,Database,Row,Sql } from './database.js';
+import { assertTokenCapacity } from './inference-usage.js';
 
 const proposalSchema=z.object({lesson:z.string().trim().min(1).max(500),quote:z.string().min(10).max(500),
   limitation:z.string().trim().min(1).max(300)}).strict();
@@ -37,6 +38,7 @@ export class SourceLearning {
       const context={kind:'source-lesson-v1',bot,article:{evidenceId:e.id,sourceId:e.source_id,title:e.title,url:e.url,
         content:e.content,snapshotHash:e.content_hash,publishedAt:new Date(e.published_at).toISOString(),observedAt:new Date(e.observed_at).toISOString()}};
       const requestId=uuid(),contextHash=digest(context);
+      await assertTokenCapacity(tx,context);
       const saved=(await tx.query(`INSERT INTO development_requests(id,author,policy_revision,model,context,context_hash,expires_at)
         VALUES($1,$2,$3,$4::jsonb,$5::jsonb,$6,now()+interval '10 minutes') RETURNING expires_at`,
         [requestId,actor.id,p.revision,JSON.stringify(p.model),JSON.stringify(context),contextHash])).rows[0]!;

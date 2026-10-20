@@ -56,6 +56,22 @@ class AssessmentTests(unittest.TestCase):
             run_once(*args,proposer=proposer)
             self.assertEqual(client.post.call_args,original);proposer.assert_called_once()
 
+    def test_inference_outcome_is_reported_once_for_the_assessment_ticket(self):
+        work={**self.work,'inferenceRequestId':'inference-ticket'}
+        client=Mock(base='http://127.0.0.1:3000',token='fixture');client.post.side_effect=[work,work,{'recorded':True},TimeoutError()]
+        proposer=Mock(return_value=answers())
+        with tempfile.TemporaryDirectory() as directory:
+            args=(client,self.settings,'a',Path(directory))
+            with self.assertRaises(TimeoutError):run_once(*args,proposer=proposer)
+            report=client.post.call_args_list[2]
+            self.assertEqual(report.args[0],'/v1/development/inference-reports')
+            self.assertEqual(report.args[1]['requestId'],'inference-ticket')
+            self.assertEqual(report.args[1]['promptVersion'],'36548d679ac444e2')
+            client.post.side_effect=[{'state':'awaiting-grade'}]
+            run_once(*args,proposer=proposer)
+            self.assertEqual(client.post.call_args.args[0],'/v1/learning/knowledge/assessments/answers')
+            self.assertEqual(client.post.call_count,5);proposer.assert_called_once()
+
     def test_uncertain_inference_cannot_reset_attempt(self):
         client=Mock(base='http://127.0.0.1:3000',token='fixture');client.post.side_effect=[self.work,self.work]
         proposer=Mock(side_effect=TimeoutError())

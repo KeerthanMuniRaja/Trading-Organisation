@@ -7,6 +7,12 @@ import { OwnerAuthorization, ownerRequest } from './security.js';
 export async function balance(tx: Sql, account: string) {
   return BigInt((await tx.query('SELECT COALESCE(SUM(amount),0)::text AS value FROM entries WHERE account=$1', [account])).rows[0]!.value);
 }
+/** Net realised trading loss (positive = loss): the PNL account over paper trading journals only. Owner operating
+ *  expenses also debit PNL but are a separate control, so they never trip the trading loss limit. */
+export async function tradingLoss(tx: Sql) {
+  return BigInt((await tx.query(`SELECT COALESCE(SUM(e.amount),0)::text AS value FROM entries e JOIN journals j ON j.id=e.journal_id
+    WHERE e.account='PNL' AND j.kind IN ('paper-buy','paper-sell','paper-dividend')`)).rows[0]!.value);
+}
 export async function available(tx: Sql) {
   const reserved = BigInt((await tx.query("SELECT COALESCE(SUM(reserved_paise),0)::text AS value FROM orders WHERE status='reserved'")).rows[0]!.value);
   const distributions = BigInt((await tx.query("SELECT COALESCE(SUM(protected_amount),0)::text AS value FROM allocations WHERE status='pending'")).rows[0]!.value);

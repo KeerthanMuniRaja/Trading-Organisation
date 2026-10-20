@@ -1,0 +1,9 @@
+{
+  "enabled": false,
+  "feedUrl": "https://publisher.example/markets/rss.xml",
+  "kind": "news",
+  "sources": [{ "origin": "https://publisher.example", "sourceId": "REPLACE_WITH_APPROVED_SOURCE_ID" }],
+  "maxItemsPerCycle": 20,
+  "pollIntervalMinutes": 60,
+  "timeoutMs": 15000
+}

@@ -27,7 +27,11 @@ async function sourceStage(f:Awaited<ReturnType<typeof setup>>,workflowId:string
 test('owner-defined workflow advances through independent reviews and fresh grading without new authority',async()=>{
   const f=await setup();try{
     const {workflowId}=await f.w.register(owner,key(),f.input),ref={workflowId};
+    // the cycle finds open programmes itself: only the role a stage waits on can act on it
+    assert.deepEqual((await f.w.active(researcher)).workflows,[{workflowId,state:'source',requiredRole:'researcher',actionable:true}]);
+    assert.equal((await f.w.active(evaluator)).workflows[0]!.actionable,false);
     const t=await sourceStage(f,workflowId);assert.equal((await f.w.progress(researcher,ref)).state,'awaiting-source-review');
+    assert.deepEqual((await f.w.active(owner)).workflows,[{workflowId,state:'awaiting-source-review',requiredRole:null,actionable:false}]);
     await f.s.review(evaluator,key(),{requestId:t.id,decision:'accepted',reason:'Bounded source lesson'});
     let p=await f.w.progress(researcher,ref);assert.equal(p.state,'transfer');
     const kt=await f.k.request(researcher,p.action!.requestKey,p.action!.body);
@@ -41,7 +45,7 @@ test('owner-defined workflow advances through independent reviews and fresh grad
     const answers=work.cases.map((c:{id:string;challenge:Challenge})=>{const x=c.challenge;let peak=0,dd=0;for(const n of x.equityPaise){peak=Math.max(peak,n);dd=Math.max(dd,(peak-n)/peak*10000);}return {caseId:c.id,answers:{netProfitPaise:x.grossProfitPaise-x.feesPaise-x.slippagePaise,maxDrawdownBps:dd,eligibleRecordIds:x.records.filter(r=>r.eventAt<=x.cutoff&&r.availableAt<=x.cutoff).map(r=>r.id),action:!x.control.halted&&x.control.evidenceVerified&&x.control.budget>=x.control.required?'research':'wait'}};});
     await f.a.submit(researcher,key(),{assessmentId:assessment.assessmentId,answers});p=await f.w.progress(evaluator,ref);assert.equal(p.state,'assessment-grade');
     await f.a.grade(evaluator,p.action!.requestKey,p.action!.body);
-    const final=await f.w.progress(owner,ref);assert.equal(final.state,'completed');assert.equal(final.assessment.fitnessChanged,false);assert.equal(final.assessment.passedChecks,16);
+    const final=await f.w.progress(owner,ref);assert.equal(final.state,'completed');assert.deepEqual((await f.w.active(owner)).workflows,[]);assert.equal(final.assessment.fitnessChanged,false);assert.equal(final.assessment.passedChecks,16);
     assert.equal((await f.w.progress(researcher,ref)).action,null);
     for(const table of ['learning_workflows','learning_workflow_links'])await assert.rejects(()=>f.db.transaction(tx=>tx.query('DELETE FROM '+table)));
     assert.equal((await f.ops.verifyAudit(owner)).valid,true);assert.equal((await f.treasury.snapshot(owner)).wallet1Paise,'0');
@@ -84,4 +88,22 @@ test('workflow HTTP routes restrict creation and return no action to the wrong r
     const p=await post('evaluator','/progress',{workflowId});assert.equal(p.status,201);assert.equal((await p.json()).action,null);
     assert.equal((await post('researcher','/cancellations',{workflowId,reason:'Stop'})).status,403);
   }finally{if(app)await app.close();await f.db.close();}
+});
+
+test('a methods workflow issues method assessments and rejects a basics assessment link',async()=>{
+  const f=await setup();try{
+    const {workflowId}=await f.w.register(owner,key(),{...f.input,assessmentRubric:'research-methods-v1'}),ref={workflowId};
+    const t=await sourceStage(f,workflowId);await f.s.review(evaluator,key(),{requestId:t.id,decision:'accepted',reason:'Bounded source lesson'});
+    let p=await f.w.progress(researcher,ref);
+    const kt=await f.k.request(researcher,p.action!.requestKey,p.action!.body);
+    await f.k.submit(researcher,key(),{requestId:kt.id,contextHash:kt.contextHash,proposal:{summary:'Apply cost lesson',application:'Subtract stated costs',lessonIds:p.action!.body.lessonIds,checks:['Verify net results'],risks:['Source may not generalise']}});
+    await f.w.attach(researcher,key(),{workflowId,step:'transfer',referenceId:kt.id});
+    await f.k.review(evaluator,key(),{requestId:kt.id,decision:'accepted',reason:'Test the cited plan'});
+    p=await f.w.progress(evaluator,ref);assert.equal(p.state,'assessment-create');
+    assert.deepEqual(p.action!.body,{requestId:kt.id,rubric:'research-methods-v1'});
+    // A basics assessment for the same transfer cannot be attached to a methods workflow.
+    const basics=await f.a.create(evaluator,key(),{requestId:kt.id});
+    await assert.rejects(async()=>f.w.attach(evaluator,key(),{workflowId,step:'assessment',referenceId:basics.assessmentId}),/does not match/);
+    await assert.rejects(async()=>f.w.register(owner,key(),{...f.input,assessmentRubric:'research-guessing-v1'}),/Invalid request/);
+  }finally{await f.db.close();}
 });

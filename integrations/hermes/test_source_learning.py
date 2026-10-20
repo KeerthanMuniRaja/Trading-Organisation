@@ -40,13 +40,14 @@ class SourceLearningTests(unittest.TestCase):
         return settings,client,ticket
 
     def test_response_loss_reuses_saved_lesson_without_model_repeat(self):
-        settings,client,ticket=self.fixture();client.post.side_effect=[ticket,{'authorised':True},TimeoutError()];proposer=Mock(return_value=PLAN)
+        settings,client,ticket=self.fixture();client.post.side_effect=[ticket,{'authorised':True},{'recorded': True},TimeoutError()];proposer=Mock(return_value=PLAN)
         with tempfile.TemporaryDirectory() as directory:
             args=(client,settings,{'botId':'mentor','evidenceId':'evidence'},'source-key',Path(directory))
             with self.assertRaises(TimeoutError):run_once(*args,proposer=proposer,workflow='sources')
             original=client.post.call_args;self.assertEqual(original.args[0],'/v1/learning/sources/proposals')
             client.post.side_effect=[{'lessonId':'lesson','state':'awaiting-review'}]
             run_once(*args,proposer=proposer,workflow='sources');self.assertEqual(client.post.call_args,original);proposer.assert_called_once()
+            self.assertEqual(client.post.call_args_list[2].args[1]['promptVersion'],'937eae52aa513e7f')
 
     def test_uncertain_inference_is_not_regenerated(self):
         settings,client,ticket=self.fixture();client.post.side_effect=[ticket,{'authorised':True}];proposer=Mock(side_effect=TimeoutError())

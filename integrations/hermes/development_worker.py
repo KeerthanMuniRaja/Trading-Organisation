@@ -12,11 +12,12 @@ from pathlib import Path
 import re
 import sys
 
-from adapter import Settings, HermesError, PINNED_REVISION, propose_capability, validate_capability, verify_checkout
+from adapter import Settings, HermesError, engine_label, profile_matches, propose_capability, validate_capability, verify_checkout
 _spec = importlib.util.spec_from_file_location('development_http_client', Path(__file__).resolve().parents[2] / 'services' / 'research' / 'worker.py')
 _http = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_http)
 Client = _http.Client
+from inference_reporting import flush_report, mark_uncertain, timed_inference  # noqa: E402
 
 
 @contextmanager
@@ -62,19 +63,26 @@ def run_once(client, settings, dataset_id, method, request_key, directory, propo
             save(path, record)
         ticket = record['ticket']
         profile = ticket['model']
-        if (profile['name'] != settings.model or profile['baseUrl'].rstrip('/') != settings.base_url.rstrip('/')
-                or profile['sourceRevision'] != PINNED_REVISION or profile['engine'] != 'hermes-rd-v1'):
+        if not profile_matches(profile, settings):
             raise HermesError('Local Hermes settings differ from owner-approved model profile')
+        report_key = 'inference-report-' + stable
         if 'proposal' not in record:
             if record['inferenceStarted']:
+                mark_uncertain(record, path, save, 'capability', engine_label(settings))
+                flush_report(client, record, path, save, ticket['id'], report_key)
                 raise HermesError('Previous inference outcome uncertain; do not regenerate it automatically')
             if datetime.fromisoformat(ticket['expiresAt'].replace('Z', '+00:00')) <= datetime.now(timezone.utc):
                 raise HermesError('R&D request expired before inference')
             client.post('/v1/development/preflight', {'requestId': ticket['id']})
             record['inferenceStarted'] = True
             save(path, record)
-            record['proposal'] = proposer(settings, ticket['context'])
+            try:
+                record['proposal'] = timed_inference(record, path, save, 'capability', lambda: proposer(settings, ticket['context']), engine_label(settings))
+            except Exception:
+                flush_report(client, record, path, save, ticket['id'], report_key)
+                raise
             save(path, record)
+        flush_report(client, record, path, save, ticket['id'], report_key)
         proposal = validate_capability(record['proposal'], ticket['context'])
         return client.post('/v1/development/proposals', {'requestId': ticket['id'], 'contextHash': ticket['contextHash'],
             'proposal': proposal}, 'development-submit-' + stable)

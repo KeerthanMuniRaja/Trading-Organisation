@@ -25,7 +25,8 @@ function block(w:Row){return w.cancelled_reason?'cancelled':w.halted?'halted':!w
 export class LearningWorkflows {
   constructor(private readonly db:Database){}
   register(actor:Actor,key:string,raw:unknown){
-    permit(actor,'owner');const input=parse(z.object({mentorId:id,recipientId:id,evidenceId:z.uuid(),researcherId:id,evaluatorId:id,task:z.string().trim().min(1).max(500)}).strict(),raw);
+    permit(actor,'owner');const input=parse(z.object({mentorId:id,recipientId:id,evidenceId:z.uuid(),researcherId:id,evaluatorId:id,task:z.string().trim().min(1).max(500),
+      assessmentRubric:z.enum(['research-basics-v1','research-methods-v1']).optional()}).strict(),raw);
     requireThat(input.mentorId!==input.recipientId&&input.researcherId!==input.evaluatorId&&![input.researcherId,input.evaluatorId].includes(actor.id),'Distinct bots and independent service identities required',400);
     return this.db.command(actor,'learning-workflow-register',key,input,async tx=>{
       const p=(await tx.query('SELECT * FROM development_policy WHERE id=1')).rows[0]!;
@@ -36,8 +37,9 @@ export class LearningWorkflows {
         WHERE e.id=$1 AND e.status='verified' AND s.approved AND e.published_at<=now()`,[input.evidenceId])).rows.length,'Reviewed source observation required');
       const counts=(await tx.query("SELECT count(*)::int AS total,count(*) FILTER(WHERE created_at>now()-interval '24 hours')::int AS daily FROM learning_workflows")).rows[0]!;
       requireThat(counts.total<100&&counts.daily<10,'Learning workflow capacity reached');
-      const workflowId=uuid();await tx.query(`INSERT INTO learning_workflows(id,owner_id,researcher,evaluator,mentor_id,recipient_id,evidence_id,task,policy_revision)
-        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[workflowId,actor.id,input.researcherId,input.evaluatorId,input.mentorId,input.recipientId,input.evidenceId,input.task,p.revision]);
+      const workflowId=uuid();await tx.query(`INSERT INTO learning_workflows(id,owner_id,researcher,evaluator,mentor_id,recipient_id,evidence_id,task,policy_revision,assessment_rubric)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,[workflowId,actor.id,input.researcherId,input.evaluatorId,input.mentorId,input.recipientId,input.evidenceId,input.task,p.revision,
+        input.assessmentRubric??'research-basics-v1']);
       await audit(tx,actor,'learning.workflow.registered',workflowId,input);return {workflowId,scope:'bounded-research-learning',automaticReview:false};
     });
   }
@@ -56,7 +58,8 @@ export class LearningWorkflows {
       }
       if(transfer){
         if(!transfer.decision)return {...common,state:'awaiting-transfer-review',action:null};
-        stage='assessment-create';role='evaluator';body={requestId:ids.transfer};
+        // Basics workflows keep their original body so in-flight idempotent retries still match.
+        stage='assessment-create';role='evaluator';body={requestId:ids.transfer,...(w.assessment_rubric!=='research-basics-v1'?{rubric:w.assessment_rubric}:{})};
       }
       if(assessment){
         stage=assessment.submitted?'assessment-grade':'assessment-answer';role=assessment.submitted?'evaluator':'researcher';body={assessmentId:ids.assessment};
@@ -64,6 +67,21 @@ export class LearningWorkflows {
       }
       return {...common,state:stage,requiredRole:role,action:actor.role===role?{stage,body,requestKey:'workflow-'+w.id+'-'+stage}:null};
     });
+  }
+  /** AUTO-02: the open programmes (not cancelled, not completed) the caller may operate, with their stage, so the daily
+   *  cycle can advance every one without the owner passing workflow ids around. The owner sees all of them. */
+  async active(actor:Actor){
+    permit(actor,'owner','researcher','evaluator');
+    const ids=(await this.db.transaction(async tx=>(await tx.query(`SELECT w.id FROM learning_workflows w
+      WHERE NOT EXISTS (SELECT 1 FROM learning_workflow_cancellations c WHERE c.workflow_id=w.id)
+        AND ($1::text='owner' OR ($1='researcher' AND w.researcher=$2) OR ($1='evaluator' AND w.evaluator=$2))
+      ORDER BY w.created_at,w.id LIMIT 100`,[actor.role,actor.id])).rows.map(r=>String(r.id)),false));
+    const out=[];
+    for(const workflowId of ids){
+      const p=await this.progress(actor,{workflowId});
+      if(p.state!=='completed')out.push({workflowId,state:p.state,requiredRole:(p as Row).requiredRole??null,actionable:!!p.action});
+    }
+    return {workflows:out};
   }
   attach(actor:Actor,key:string,raw:unknown){
     permit(actor,'researcher','evaluator');const input=parse(z.object({workflowId:z.uuid(),step:z.enum(['source','transfer','assessment']),referenceId:z.uuid()}).strict(),raw);
@@ -84,7 +102,7 @@ export class LearningWorkflows {
       }else{
         requireThat(transfer?.decision==='accepted','Accepted transfer required');
         const a=(await tx.query('SELECT * FROM knowledge_assessments WHERE id=$1',[input.referenceId])).rows[0];
-        requireThat(a&&a.request_id===ids.transfer&&a.evaluator===w.evaluator,'Assessment stage does not match workflow');
+        requireThat(a&&a.request_id===ids.transfer&&a.evaluator===w.evaluator&&a.rubric===w.assessment_rubric,'Assessment stage does not match workflow');
       }
       await tx.query('INSERT INTO learning_workflow_links(workflow_id,step,reference_id) VALUES($1,$2,$3)',[w.id,input.step,input.referenceId]);
       await audit(tx,actor,'learning.workflow.linked',w.id,input);return {linked:true};

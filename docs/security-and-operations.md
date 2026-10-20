@@ -1,6 +1,10 @@
 # Security boundaries and operations
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+## Model and recovery controls — v0.1.32
+
+Benchmark results cannot grant authority. Inspect pair coverage and failures; a shared model across several bots does not create independent evidence. Publisher retries retain their recorded deadline after interruption. Model timeout overrides retain task caps. Keep source claims untrusted until reviewed; retirement preserves knowledge and accountability, not the retired identity's access. Model fit and quality still require measurement: [strategy](model-strategy.md).
+
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 ## Artifact operations through v0.1.21
 
@@ -10,7 +14,7 @@ Migration 015 stores immutable scoped worker observations separately from backen
 
 ## Enforced by this build
 
-The API denies routes unless a role is explicitly allowed. Configured tokens must be long, unique and assigned to unique identities; exactly one owner is required. A trader identity is bound to one bot. HTTP bodies, identifiers, quantities and monetary values are validated. Helmet headers, non-cacheable responses, request IDs and a per-process rate limit are enabled.
+The API denies routes unless a role is explicitly allowed. Configured tokens must be long, unique and assigned to unique identities; exactly one owner is required. A trader identity is bound to one bot. HTTP bodies, identifiers, quantities and monetary values are validated. Helmet headers, non-cacheable responses, request IDs and a per-process rate limit are enabled. The rate limit (120 requests a minute per address) applies to anonymous requests and wrong tokens, to slow token guessing. Requests carrying a configured credential are the organisation's own workers, which share one local address, so they are not throttled. Authentication and roles are still checked on every request.
 
 Financial authorisation is outside the learning loop. Owner monetary commands require a separate Ed25519 proof for the exact transaction and a one-time, two-minute challenge. Bots cannot request owner challenges, change ratios, edit budgets or withdraw to the bank. The protected wallet is a separate account in the ledger, not an actual independently custodied wallet yet.
 
@@ -34,7 +38,7 @@ Failed and revoked knowledge remains in records; retrieval excludes it from usab
 
 ## Incidents, halts and notifications
 
-Every audited business event also creates a durable owner inbox entry in the same transaction. Fetch `/v1/operations` with the owner role and acknowledge relevant entries. There is no email, Slack, mobile push or autonomous external message sender configured.
+Every audited business event also creates a durable owner inbox entry in the same transaction. Fetch `/v1/operations` with the owner role and acknowledge relevant entries. Owner alerts are delivered by `scripts/deliver-alerts.mjs` to a local outbox, and to an HTTPS webhook if `ALERT_WEBHOOK_URL` is set; none is set yet (the owner's choice). Nothing else sends messages out.
 
 A critical incident halts new paper risk. Cancelling reservations and closing existing positions remain possible subject to valid quotes and evidence. Resolution requires verified evidence; resuming is a separate owner action and is refused while critical incidents remain open. Job lease recovery and bounded HTTP retries run automatically. Arbitrary source patching, self-redeployment, incident-court verdicts and permission changes do not.
 
@@ -42,7 +46,15 @@ For a stalled research job, inspect its experiment and incident records; a later
 
 ## Local data and backups
 
-Stop the API cleanly before copying a PGlite database directory. Back up the entire directory together with the matching source/migration version, never just balance rows. Store credentials and signing material separately using access controls appropriate to their authority. A local durable restart test has passed; backup restore drills and live PostgreSQL disaster recovery remain untested.
+Use the backup tool ([`scripts/backup.mjs`](../scripts/backup.mjs), tests in `scripts/backup.test.mjs`) rather than copying folders by hand.
+
+| Command | What it does |
+| --- | --- |
+| `npm.cmd run backup -- create` | Refuses while the API is running. Writes `.local/backups/backup-<time>/` with `database.tar.gz` (PGlite `dumpDataDir`) and `manifest.json`: schema versions and checksums, row counts, ledger balances, and the audit-chain head. It refuses to back up a database whose audit chain is broken or whose journals are unbalanced. It never includes `.env`, credentials or signing keys, which must be stored separately under access controls appropriate to their authority. |
+| `npm.cmd run backup -- verify <dir>` | Restores the archive **in memory** and re-checks the archive hash, the audit hash chain, every journal balance, the counts, the balances, and migration compatibility with the current code |
+| `npm.cmd run backup -- restore <dir> <new-dir>` | Verifies first, then writes only into a new or empty directory. The live database is never overwritten. Point `DATABASE_PATH` at the new directory to use it. |
+
+**Restore drill, 13 October 2026.** The live paper database was backed up (6.7 MB, 107 audit events, schema 1–36) and verified: valid, audit chain intact, balances identical. Live PostgreSQL disaster recovery is still untested; use `pg_dump` for `DATABASE_URL` deployments.
 
 For PostgreSQL, provision a least-privilege application identity and a separate migration role before deployment. The current application runs migrations at startup; multi-instance startup and migration coordination need validation. Retain migration checksums and append a new migration instead of modifying an applied one.
 
@@ -51,3 +63,6 @@ For PostgreSQL, provision a least-privilege application identity and a separate 
 Root dependencies and optional integrations are pinned with lockfiles. Ruflo is in a separate package tree; its TOML parser has an explicit reviewed security override. Install with lifecycle scripts disabled for this foundation. No running bot performs `npm install`, downloads a strategy, changes an upstream pin or updates itself.
 
 The production dependency audits recorded in the validation report passed at the time of the build. That is a point-in-time package-advisory check, not a complete code/security audit. Recheck before releasing new images and retain required upstream notices. Optional/native packages omitted from Ruflo's installation were not exercised.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

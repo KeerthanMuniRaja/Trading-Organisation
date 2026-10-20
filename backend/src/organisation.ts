@@ -4,6 +4,7 @@ import { Database, Sql, audit } from './database.js';
 import { archiveResearchBot } from './lifecycle-history.js';
 import { schoolSkillReady } from './skills.js';
 import { SourceObservations } from './source-observations.js';
+import { assertWithinCeiling } from './departments.js';
 
 export async function verifiedEvidence(tx:Sql, evidenceId:string) {
   const evidence=(await tx.query("SELECT e.* FROM evidence e JOIN sources s ON s.id=e.source_id WHERE e.id=$1 AND e.status='verified' AND s.approved=true",[evidenceId])).rows[0];
@@ -12,6 +13,16 @@ export async function verifiedEvidence(tx:Sql, evidenceId:string) {
 export class Organisation {
   constructor(private readonly db:Database) {}
   observations(){return new SourceObservations(this.db);}
+  evidenceStatus(actor:Actor,raw:unknown){
+    permit(actor,'owner','researcher','evaluator');
+    const input=parse(z.object({evidenceIds:z.array(z.uuid()).min(1).max(50).refine(ids=>new Set(ids).size===ids.length)}).strict(),raw);
+    return this.db.transaction(async tx=>({evidence:(await tx.query(`SELECT e.id,e.source_id,e.kind,e.content,e.published_at,e.status,
+      s.approved AS source_approved,o.url,o.title,
+      (e.status='verified' AND s.approved AND e.published_at<=now()) AS usable
+      FROM evidence e JOIN sources s ON s.id=e.source_id LEFT JOIN source_observations o ON o.evidence_id=e.id
+      WHERE e.id=ANY($1::uuid[]) ORDER BY e.id`,[input.evidenceIds])).rows,
+      scope:'current-evidence-status',warning:'Point-in-time eligibility, not an execution authorisation.'}));
+  }
   sources(actor:Actor,key:string,raw:unknown) {
     permit(actor,'owner');const input=parse(z.object({id,name:text,url:z.url().max(2048).refine(v=>new URL(v).protocol==='https:'),approved:z.boolean()}).strict(),raw);
     return this.db.command(actor,'source',key,input,async tx=>{
@@ -33,13 +44,28 @@ export class Organisation {
     });
   }
   reviewEvidence(actor:Actor,key:string,raw:unknown) {
-    permit(actor,'owner','evaluator');const input=parse(z.object({evidenceId:z.uuid(),status:z.enum(['verified','rejected'])}).strict(),raw);
+    permit(actor,'owner','evaluator');const input=parse(z.object({evidenceId:z.uuid(),status:z.enum(['verified','rejected']),
+      expected:z.object({content:text,sourceId:id,kind:z.enum(['news','article','filing','dataset','incident','lesson']),publishedAt:timestamp,
+        observation:z.object({url:z.url().max(2048),title:z.string().min(1).max(300)}).strict().optional()}).strict().optional()}).strict(),raw);
     return this.db.command(actor,'evidence-review',key,input,async tx=>{
       const e=(await tx.query('SELECT * FROM evidence WHERE id=$1',[input.evidenceId])).rows[0];
       requireThat(e,'Evidence not found',404);requireThat(e.author!==actor.id,'Authors cannot verify their own evidence',403);
       requireThat(e.status==='unverified','Evidence already reviewed; append a correction instead');
+      if(input.expected){
+        const expected=input.expected;
+        requireThat(e.content===expected.content&&e.source_id===expected.sourceId&&e.kind===expected.kind&&
+          new Date(e.published_at).getTime()===new Date(expected.publishedAt).getTime(),'Stored evidence does not match reviewed content and provenance');
+        const observation=(await tx.query('SELECT url,title FROM source_observations WHERE evidence_id=$1',[e.id])).rows[0];
+        requireThat(observation?expected.observation&&observation.url===expected.observation.url&&observation.title===expected.observation.title:!expected.observation,
+          'Stored observation does not match reviewed title and URL');
+      }
+      if(input.status==='verified'){
+        requireThat((await tx.query('SELECT id FROM sources WHERE id=$1 AND approved=true',[e.source_id])).rows.length,'Approved source required at review');
+        requireThat(new Date(e.published_at).getTime()<=Date.now(),'Future evidence cannot be verified');
+      }
       await tx.query('UPDATE evidence SET status=$1,reviewer=$2,reviewed_at=now() WHERE id=$3',[input.status,actor.id,input.evidenceId]);
-      await audit(tx,actor,'evidence.reviewed',input.evidenceId,input);return input;
+      await audit(tx,actor,'evidence.reviewed',input.evidenceId,{evidenceId:input.evidenceId,status:input.status,contentBound:!!input.expected});
+      return {evidenceId:input.evidenceId,status:input.status};
     });
   }
   revoke(actor:Actor,key:string,raw:unknown) {
@@ -69,6 +95,7 @@ export class Organisation {
       const novelty=[input.department,input.specialty,input.method].map(x=>x.toLowerCase()).join(':');
       requireThat(!(await tx.query('SELECT id FROM bots WHERE id=$1 OR novelty_key=$2',[input.id,novelty])).rows.length,'Bot identity or declared capability already exists');
       if(input.mentorId)requireThat((await tx.query('SELECT id FROM bots WHERE id=$1',[input.mentorId])).rows.length,'Mentor not found');
+      await assertWithinCeiling(tx,input.department,input.id,BigInt(input.budgetPaise));
       await tx.query("INSERT INTO bots(id,name,department,specialty,method,novelty_key,contribution,state,budget_paise,mentor_id) VALUES($1,$2,$3,$4,$5,$6,$7,'school',$8,$9)",[input.id,input.name,input.department,input.specialty,input.method,novelty,input.contribution,input.budgetPaise,input.mentorId??null]);
       await audit(tx,actor,'bot.created',input.id,input);return {id:input.id,state:'school'};
     });
@@ -83,12 +110,16 @@ export class Organisation {
     });
   }
   verifyLesson(actor:Actor,key:string,raw:unknown) {
-    permit(actor,'owner','evaluator');const input=parse(z.object({lessonId:z.uuid()}).strict(),raw);
+    permit(actor,'owner','evaluator');const input=parse(z.object({lessonId:z.uuid(),expected:z.object({content:text,evidenceId:z.uuid(),botId:id}).strict().optional()}).strict(),raw);
     return this.db.command(actor,'lesson-review',key,input,async tx=>{
       const lesson=(await tx.query('SELECT * FROM lessons WHERE id=$1',[input.lessonId])).rows[0];
       requireThat(lesson,'Lesson not found',404);requireThat(lesson.author!==actor.id,'Independent lesson review required',403);
+      if(input.expected)requireThat(lesson.content===input.expected.content&&lesson.evidence_id===input.expected.evidenceId&&lesson.bot_id===input.expected.botId,'Stored lesson does not match reviewed content, evidence and recipient');
       const extraction=(await tx.query(`SELECT r.decision FROM source_learning_proposals p LEFT JOIN source_learning_reviews r ON r.request_id=p.request_id WHERE p.lesson_id=$1`,[lesson.id])).rows[0];
       requireThat(!extraction||extraction.decision==='accepted','Source-derived lesson requires its dedicated independent review');
+      const incident=(await tx.query(`SELECT f.author,i.reporter FROM incident_lessons il
+        JOIN incident_findings f ON f.id=il.finding_id JOIN incidents i ON i.id=f.incident_id WHERE il.lesson_id=$1`,[lesson.id])).rows[0];
+      requireThat(!incident||(incident.author!==actor.id&&incident.reporter!==actor.id),'Incident lesson review must be independent of finding author and reporter',403);
       await verifiedEvidence(tx,lesson.evidence_id);
       await tx.query("UPDATE lessons SET status='verified',reviewer=$1 WHERE id=$2",[actor.id,lesson.id]);
       await audit(tx,actor,'lesson.verified',lesson.id,{botId:lesson.bot_id});return {id:lesson.id,status:'verified'};
@@ -109,10 +140,18 @@ export class Organisation {
     });
   }
   retire(actor:Actor,key:string,raw:unknown) {
-    permit(actor,'owner');const input=parse(z.object({botId:id,reason:text,transferLessonIds:z.array(z.uuid()).min(1).max(50)}).strict(),raw);
+    permit(actor,'owner');const input=parse(z.object({botId:id,reason:text,transferLessonIds:z.array(z.uuid()).max(50).default([])}).strict(),raw);
     return this.db.command(actor,'retire',key,input,async tx=>{
       requireThat((await tx.query("SELECT id FROM bots WHERE id=$1 AND state<>'retired'",[input.botId])).rows.length,'Active bot not found');
       requireThat(!(await tx.query("SELECT id FROM orders WHERE bot_id=$1 AND status='reserved'",[input.botId])).rows.length && !(await tx.query('SELECT bot_id FROM positions WHERE bot_id=$1 AND quantity>0',[input.botId])).rows.length,'Resolve orders and positions before retirement');
+      // a live proposal (not yet reviewed, or accepted and not executed or lapsed) would be orphaned by retirement
+      requireThat(!(await tx.query(`SELECT 1 FROM trade_signals s LEFT JOIN trade_signal_reviews r ON r.signal_id=s.id WHERE s.bot_id=$1 AND s.expires_at>now()
+        AND (r.signal_id IS NULL OR r.outcome='accepted') AND NOT EXISTS (SELECT 1 FROM trade_signal_executions x WHERE x.signal_id=s.id)
+        AND NOT EXISTS (SELECT 1 FROM trade_signal_lapses l WHERE l.signal_id=s.id)`,[input.botId])).rows.length,'Resolve open trade proposals before retirement (let them execute or expire)');
+      // knowledge transfer: a bot that learned something must hand it on; a bot with no verified lessons (e.g. a
+      // model-free rule bot) has nothing to transfer and may retire without
+      const learned=Number((await tx.query("SELECT count(*)::int AS n FROM lessons WHERE bot_id=$1 AND status='verified'",[input.botId])).rows[0]!.n);
+      if(learned)requireThat(input.transferLessonIds.length>0,'Retirement must transfer at least one of this bot\'s verified lessons');
       requireThat(!(await tx.query("SELECT j.id FROM jobs j JOIN experiments e ON e.id=j.experiment_id WHERE e.bot_id=$1 AND j.state IN ('queued','running')",[input.botId])).rows.length,'Resolve research jobs before retirement');
       requireThat(!(await tx.query("SELECT id FROM portfolio_trials WHERE bot_id=$1 AND state='submitted'",[input.botId])).rows.length,'Resolve portfolio trials before retirement');
       for(const lessonId of input.transferLessonIds){
@@ -121,7 +160,10 @@ export class Organisation {
       const bot=(await tx.query('SELECT lifecycle_managed FROM bots WHERE id=$1',[input.botId])).rows[0]!;
       if(bot.lifecycle_managed)await archiveResearchBot(tx,actor,input.botId,input.reason);
       else await tx.query("UPDATE bots SET state='retired' WHERE id=$1",[input.botId]);
-      await audit(tx,actor,'bot.retired',input.botId,input);return {id:input.botId,state:'retired',knowledgePreserved:true};
+      // a retired bot leads no department any more (the owner appoints a new lead)
+      for(const d of (await tx.query('UPDATE departments SET lead_bot_id=NULL WHERE lead_bot_id=$1 RETURNING id',[input.botId])).rows)
+        await audit(tx,actor,'department.lead.vacated',d.id,{botId:input.botId,reason:'lead retired'});
+      await audit(tx,actor,'bot.retired',input.botId,input);return {id:input.botId,state:'retired',knowledgePreserved:input.transferLessonIds.length>0};
     });
   }
   list(actor:Actor) { permit(actor,'owner','researcher','evaluator');return this.db.transaction(async tx=>(await tx.query('SELECT id,name,department,specialty,method,contribution,state,mentor_id,lifecycle_managed FROM bots ORDER BY created_at')).rows); }

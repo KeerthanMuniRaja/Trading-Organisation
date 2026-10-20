@@ -1,23 +1,12 @@
 import { createHash } from 'node:crypto';
-import { validateBatch } from '../../scripts/import-observations.mjs';
+import { parseSourceMappings, validateBatch } from '../../scripts/import-observations.mjs';
 
 // Offline boundary: accepts the decoded get_stock_news result, never executes tools.
 export function convertNews(result, policy, now = Date.now()) {
   if (!Number.isFinite(now)) throw new Error('Invalid reference time');
   if (!result || result.ok !== true || !Array.isArray(result.data?.articles) ||
       result.data.articles.length > 50) throw new Error('Expected a successful bounded news result');
-  if (!policy || !Array.isArray(policy.sources) || policy.sources.length > 100)
-    throw new Error('Explicit source mappings required');
-  const sources = new Map();
-  for (const entry of policy.sources) {
-    if (!entry || typeof entry.origin !== 'string' || typeof entry.sourceId !== 'string' ||
-        !/^[a-zA-Z0-9_-]{1,80}$/.test(entry.sourceId)) throw new Error('Invalid source mapping');
-    const origin = new URL(entry.origin);
-    if (origin.protocol !== 'https:' || origin.username || origin.password || origin.search ||
-        origin.hash || origin.pathname !== '/' || sources.has(origin.origin))
-      throw new Error('Source mappings require unique HTTPS origins');
-    sources.set(origin.origin, entry.sourceId);
-  }
+  const sources = parseSourceMappings(policy);
   const yahoo = result.source === 'yahoo' && ['us', 'hk'].includes(result.market);
   const eastmoney = result.source === 'eastmoney' && ['a_share', 'global'].includes(result.market);
   if (!yahoo && !eastmoney) throw new Error('Unsupported news provider/market combination');

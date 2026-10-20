@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "note": "Reviewed starting links from economic drivers to the eight shares. Every link is INFERRED: it says a driver may affect a share, never the direction or size. Edit with care; chains.py study tests whether each link carries information.",
+  "links": [
+    {"driver": "crude-oil", "keywords": ["crude", "brent", "oil price", "opec"], "symbols": ["RELIANCE.NS"],
+     "basis": "Refining and petrochemicals are a large part of the business; crude prices move margins and inventory values."},
+    {"driver": "telecom-retail", "keywords": ["jio", "telecom tariff", "tariff hike", "spectrum"], "symbols": ["RELIANCE.NS"],
+     "basis": "Telecom and retail subsidiaries are large earnings contributors."},
+    {"driver": "interest-rates", "keywords": ["repo rate", "rbi policy", "monetary policy", "rate cut", "rate hike", "crr"],
+     "symbols": ["HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "AXISBANK.NS"],
+     "basis": "Policy rates change lending margins, deposit costs and credit growth."},
+    {"driver": "bank-asset-quality", "keywords": ["npa", "bad loans", "credit growth", "deposit growth", "slippages"],
+     "symbols": ["HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "AXISBANK.NS"],
+     "basis": "System-wide loan quality and growth data move all large lenders."},
+    {"driver": "rupee-dollar", "keywords": ["rupee", "usd/inr", "dollar index"], "symbols": ["INFY.NS"],
+     "basis": "Most revenue is earned in foreign currency and reported in rupees."},
+    {"driver": "it-services-demand", "keywords": ["it services", "tech spending", "h-1b", "deal wins", "accenture"], "symbols": ["INFY.NS"],
+     "basis": "Client technology budgets and peer results signal demand."},
+    {"driver": "tobacco-tax", "keywords": ["cigarette", "tobacco", "excise duty", "compensation cess"], "symbols": ["ITC.NS"],
+     "basis": "Cigarettes are the largest profit pool and taxes set their volumes and pricing."},
+    {"driver": "power-demand", "keywords": ["power demand", "electricity demand", "peak demand", "heatwave", "coal supply"], "symbols": ["NTPC.NS"],
+     "basis": "Generation volumes, plant load and fuel availability drive earnings."},
+    {"driver": "market-flows", "keywords": ["fii", "fpi", "foreign investors", "sensex", "nifty"],
+     "symbols": ["RELIANCE.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS", "SBIN.NS", "ITC.NS", "AXISBANK.NS", "NTPC.NS"],
+     "basis": "Market-wide flows and index moves affect every large constituent."}
+  ]
+}

@@ -4,28 +4,41 @@ import { Database, audit } from './database.js';
 import { sharedResearchMemory } from './learning-contract.js';
 import { verifiedEvidence } from './organisation.js';
 import { portfolioMethod } from './portfolio.js';
+import { InferenceUsage, assertTokenCapacity } from './inference-usage.js';
 
 const modelSchema=z.object({name:z.string().trim().min(1).max(200),baseUrl:z.url().max(2048).refine(value=>{
   const url=new URL(value);return !url.username&&!url.password&&!url.search&&!url.hash&&
     (url.protocol==='https:'||(url.protocol==='http:'&&['127.0.0.1','localhost','[::1]'].includes(url.hostname)));
-})}).strict();
+}),
+  // Owner-selected inference engine. Workers refuse tickets whose engine differs from their local configuration.
+  engine:z.enum(['hermes-rd-v1','direct-structured-v1']).default('hermes-rd-v1')}).strict();
 const shortText=z.string().trim().min(1).max(500);
 const proposalSchema=z.object({specialty:id,method:portfolioMethod,hypothesis:shortText,expectedContribution:shortText,
   risks:z.array(z.string().trim().min(1).max(200)).min(1).max(5),
   memoryIds:z.array(z.uuid()).min(1).max(10).refine(v=>new Set(v).size===v.length,'Duplicate memory reference')}).strict();
-const runtime={engine:'hermes-rd-v1',sourceRevision:'f97608f178d1ffeca59860195ab7da295f7c8e5f',tools:[],contractVersion:1};
+const runtimes={
+  'hermes-rd-v1':{engine:'hermes-rd-v1',sourceRevision:'f97608f178d1ffeca59860195ab7da295f7c8e5f',tools:[],contractVersion:1},
+  // Plain chat completion with a per-task JSON Schema; no agent loop, tools or upstream agent code.
+  'direct-structured-v1':{engine:'direct-structured-v1',sourceRevision:null,tools:[],contractVersion:1,decoding:'json-schema'},
+} as const;
 
 export class ResearchDevelopment {
+  private usage?:InferenceUsage;
   constructor(private readonly db:Database) {}
+  inference(){return this.usage??=new InferenceUsage(this.db);}
   configure(actor:Actor,key:string,raw:unknown) {
     permit(actor,'owner');const input=parse(z.object({expectedRevision:z.number().int().nonnegative(),enabled:z.boolean(),model:modelSchema.nullable(),
-      maxPerDay:z.number().int().min(1).max(10),maxLifetime:z.number().int().min(1).max(100)}).strict(),raw);
+      maxPerDay:z.number().int().min(1).max(10),maxLifetime:z.number().int().min(1).max(100),
+      // Omitted keeps the current ceiling, so resubmitting an older policy file cannot silently remove it; null removes it.
+      maxTokensPerDay:z.number().int().min(1000).max(10_000_000).nullable().optional()}).strict(),raw);
     requireThat(!input.enabled||input.model,'Select an existing model endpoint before enabling R&D',400);
     return this.db.command(actor,'development-policy',key,input,async tx=>{
       const old=(await tx.query('SELECT revision FROM development_policy WHERE id=1')).rows[0]!;
       requireThat(old.revision===input.expectedRevision,'Development policy revision changed');
-      await tx.query('UPDATE development_policy SET revision=revision+1,enabled=$1,model=$2::jsonb,max_per_day=$3,max_lifetime=$4 WHERE id=1',
-        [input.enabled,input.model?JSON.stringify({...input.model,...runtime}):null,input.maxPerDay,input.maxLifetime]);
+      await tx.query(`UPDATE development_policy SET revision=revision+1,enabled=$1,model=$2::jsonb,max_per_day=$3,max_lifetime=$4,
+        max_tokens_per_day=CASE WHEN $5::boolean THEN $6::integer ELSE max_tokens_per_day END WHERE id=1`,
+        [input.enabled,input.model?JSON.stringify({name:input.model.name,baseUrl:input.model.baseUrl,...runtimes[input.model.engine]}):null,input.maxPerDay,input.maxLifetime,
+          input.maxTokensPerDay!==undefined,input.maxTokensPerDay??null]);
       await audit(tx,actor,'development.policy.changed','research-development',{...input,revision:old.revision+1});
       return {revision:old.revision+1};
     });
@@ -47,6 +60,7 @@ export class ResearchDevelopment {
       const context={datasetId:input.datasetId,method:input.method,beforeTrainingEnd:before,
         memories:memories.map(m=>({id:m.id,content:m.content})),existingCapabilities:capabilities};
       const requestId=uuid(),hash=digest(context);
+      await assertTokenCapacity(tx,context);
       const row=(await tx.query(`INSERT INTO development_requests(id,author,policy_revision,model,context,context_hash,expires_at)
         VALUES($1,$2,$3,$4::jsonb,$5::jsonb,$6,now()+interval '180 seconds') RETURNING expires_at`,
         [requestId,actor.id,policy.revision,JSON.stringify(policy.model),JSON.stringify(context),hash])).rows[0]!;

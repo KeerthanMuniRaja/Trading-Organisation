@@ -69,5 +69,44 @@ test('observation HTTP endpoints enforce roles and strict request contracts',asy
     assert.equal((await post('researcher','',f.input)).status,201);
     const response=await post('evaluator','/query',{sourceId:'publisher',status:'unverified'});assert.equal(response.status,201);
     assert.equal((await response.json()).observations.length,1);
+    assert.equal((await post('researcher','/review-queue',{})).status,403);
+    assert.equal((await post('evaluator','/review-queue',{status:'verified'})).status,400);
+    const queue=await post('evaluator','/review-queue',{});assert.equal(queue.status,201);
+    assert.equal((await queue.json()).observations.length,1);
   }finally{if(app)await app.close();await f.db.close();}
+});
+
+test('review queue pages oldest first and retains a reviewed cursor without skipping pending evidence',async()=>{
+  const f=await setup();try{
+    const ids=[];
+    for(let i=0;i<4;i++)ids.push((await f.observations.ingest(researcher,key(),{...f.input,content:'Observation '+i})).id);
+    const first=await f.observations.reviewQueue(evaluator,{limit:2});
+    assert.deepEqual(first.observations.map(r=>r.evidence_id),ids.slice(0,2));
+    assert.equal(first.nextCursor,ids[1]);
+    await f.org.reviewEvidence(evaluator,key(),{evidenceId:ids[1],status:'verified'});
+    const second=await f.observations.reviewQueue(evaluator,{limit:2,after:first.nextCursor});
+    assert.deepEqual(second.observations.map(r=>r.evidence_id),ids.slice(2));
+    assert.equal(second.nextCursor,null);
+    assert.equal(first.observations[0]!.ready_for_review,true);
+    assert.deepEqual(first.observations[0]!.blockers,[]);
+    await assert.rejects(()=>f.observations.reviewQueue(evaluator,{after:'00000000-0000-4000-8000-000000000000'}),/cursor/);
+    assert.throws(()=>f.observations.reviewQueue(researcher,{}));
+    assert.throws(()=>f.observations.reviewQueue(evaluator,{limit:51}));
+  }finally{await f.db.close();}
+});
+
+test('review queue exposes blocked provenance without allowing authors to review themselves',async()=>{
+  const f=await setup();try{
+    const one=await f.observations.ingest(researcher,key(),f.input);
+    const sameIdentity={...evaluator,id:researcher.id};
+    assert.equal((await f.observations.reviewQueue(sameIdentity,{})).observations.length,0);
+    const self=(await f.observations.reviewQueue(sameIdentity,{includeBlocked:true})).observations[0]!;
+    assert.deepEqual(self.blockers,['self-review']);assert.equal(self.ready_for_review,false);
+    await f.org.revoke(owner,key(),{kind:'source',targetId:'publisher',reason:'Withdraw this source'});
+    assert.equal((await f.observations.reviewQueue(evaluator,{})).observations.length,0);
+    const blocked=(await f.observations.reviewQueue(evaluator,{includeBlocked:true,sourceId:'publisher'})).observations[0]!;
+    assert.equal(blocked.evidence_id,one.id);assert.deepEqual(blocked.blockers,['source-withdrawn']);
+    assert.equal(blocked.status,'unverified');assert.equal(blocked.provenance,'collector-submitted');
+    assert.equal((await f.observations.reviewQueue(owner,{includeBlocked:true,sourceId:'unknown'})).observations.length,0);
+  }finally{await f.db.close();}
 });

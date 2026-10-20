@@ -1,0 +1,51 @@
+# CI (DEP-02): the same single gate as `npm run verify`, on every push to dev or main and on pull requests.
+# Windows, like the owner's machine: the portfolio lock pins Windows wheel hashes, and they stay hash-checked here.
+# No secrets are used or needed: every test runs offline against in-memory databases and fixtures.
+name: verify
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Node dependencies (lockfile, no install scripts)
+        run: npm ci --ignore-scripts
+      # Ruflo's offline tests load one package: its pinned TOML parser. The full Ruflo install is optional (its lockfile
+      # predates this npm's platform packages), so only that exact version is installed, without install scripts.
+      - name: Ruflo's pinned TOML parser
+        run: |
+          npm install --prefix "$env:RUNNER_TEMP/toml" --no-save --ignore-scripts --no-audit --no-fund toml@4.2.0
+          New-Item -ItemType Directory -Force integrations/ruflo/node_modules | Out-Null
+          Copy-Item -Recurse "$env:RUNNER_TEMP/toml/node_modules/toml" integrations/ruflo/node_modules/toml
+      - name: Research environment (pinned lock)
+        run: |
+          python -m venv .local/replay-venv
+          .local/replay-venv/Scripts/python.exe -m pip install --no-deps -r integrations/market-replay/requirements.lock.txt
+      - name: Portfolio environment (pinned, hash-checked)
+        run: |
+          python -m venv integrations/skfolio/.venv
+          integrations/skfolio/.venv/Scripts/python.exe -m pip install --require-hashes --no-deps -r integrations/skfolio/requirements.lock
+      - name: Verification gate
+        run: node scripts/verify-all.mjs
+      - name: Keep the suite logs when something failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verify-logs
+          path: .local/verify/
+          retention-days: 14

@@ -1,10 +1,10 @@
 import 'reflect-metadata';
-import { ArgumentsHost, Body, Catch, Controller, ExceptionFilter, Get, Headers, HttpException, Module, Post, Req } from '@nestjs/common';
+import { ArgumentsHost, Body, Catch, Controller, ExceptionFilter, ExecutionContext, Get, Headers, HttpException, Module, Post, Req } from '@nestjs/common';
 import { APP_GUARD, NestFactory, Reflector } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import helmet from 'helmet';
 import { json } from 'express';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { Actor } from './core.js';
 import { Config } from './config.js';
 import { Database } from './database.js';
@@ -26,12 +26,41 @@ import { AcademySkills } from './skills.js';
 import { SkillRecovery } from './skill-recovery.js';
 import { SkillDiagnostics } from './skill-diagnostics.js';
 import { SkillExperiments } from './skill-experiments.js';
+import { EvidenceClaims, EvidenceClaimsController } from './evidence-claims.js';
+import { BotFitness, BotFitnessController } from './bot-fitness.js';
+import { TradeSignals, TradeSignalsController } from './trade-signals.js';
+import { PaperPerformance, PaperPerformanceController } from './paper-performance.js';
+import { CorporateActions, CorporateActionsController } from './corporate-actions.js';
+import { EvidenceTriage, EvidenceTriageController } from './evidence-triage.js';
+import { BotControl, BotControlController } from './bot-control.js';
+import { Departments, DepartmentsController } from './departments.js';
+import { Hackathons, HackathonsController } from './hackathons.js';
+import { OwnerAlerts, OwnerAlertsController } from './alerts.js';
+import { KnowledgeAsOf, KnowledgeAsOfController } from './knowledge-asof.js';
+import { ComputeUsage, ComputeUsageController } from './compute-usage.js';
+import { BotReleases, BotReleasesController } from './bot-releases.js';
+import { BotBirths, BotBirthsController } from './bot-births.js';
+import { BotScorecards, BotScorecardsController } from './bot-scorecards.js';
+import { SourceReliability, SourceReliabilityController } from './source-reliability.js';
+import { OwnerDigest, OwnerDigestController } from './owner-digest.js';
+import { Management, ManagementController } from './management.js';
 
 type Request = { actor:Actor; requestId:string };
 @Controller('v1')
 class ApiController {
+  @Post('incidents/learning/claims') @Allow('researcher') incidentLearningClaim(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.ops.incidentLearning().claim(r.actor,k??'',b);}
+  @Post('incidents/learning/cancellations') @Allow('owner') incidentLearningCancel(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.ops.incidentLearning().cancel(r.actor,k??'',b);}
+  @Post('evidence/status') @Allow('owner','researcher','evaluator') evidenceStatus(@Req() r:Request,@Body() b:unknown){return this.org.evidenceStatus(r.actor,b);}
+  @Post('incidents/learning/assignments') @Allow('owner') incidentAssignments(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.ops.incidentLearning().assign(r.actor,k??'',b);}
+  @Post('incidents/learning/links') @Allow('researcher') incidentLearningLink(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.ops.incidentLearning().link(r.actor,k??'',b);}
+  @Post('incidents/learning/progress') @Allow('owner','researcher','evaluator') incidentLearningProgress(@Req() r:Request,@Body() b:unknown){return this.ops.incidentLearning().progress(r.actor,b);}
+  @Post('incidents/findings/lessons') @Allow('owner','researcher') incidentLesson(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.ops.findings().lesson(r.actor,k??'',b);}
+  @Post('incidents/findings') @Allow('owner','researcher','evaluator') incidentFinding(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.ops.findings().propose(r.actor,k??'',b);}
+  @Post('incidents/findings/reviews') @Allow('owner','evaluator') incidentFindingReview(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.ops.findings().review(r.actor,k??'',b);}
+  @Post('incidents/findings/query') @Allow('owner','researcher','evaluator') incidentFindings(@Req() r:Request,@Body() b:unknown){return this.ops.findings().list(r.actor,b);}
   @Post('learning/workflows') @Allow('owner') learningWorkflow(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.learning.workflows().register(r.actor,k??'',b);}
   @Post('learning/workflows/progress') @Allow('owner','researcher','evaluator') learningWorkflowProgress(@Req() r:Request,@Body() b:unknown){return this.learning.workflows().progress(r.actor,b);}
+  @Post('learning/workflows/active') @Allow('owner','researcher','evaluator') learningWorkflowsActive(@Req() r:Request){return this.learning.workflows().active(r.actor);}
   @Post('learning/workflows/links') @Allow('researcher','evaluator') learningWorkflowLink(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.learning.workflows().attach(r.actor,k??'',b);}
   @Post('learning/workflows/cancellations') @Allow('owner') learningWorkflowCancel(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.learning.workflows().cancel(r.actor,k??'',b);}
   @Get('learning/sources') @Allow('owner','evaluator') sourceLearningStatus(@Req() r:Request){return this.learning.sourceLearning().status(r.actor);}
@@ -41,6 +70,7 @@ class ApiController {
   @Post('learning/sources/reviews') @Allow('evaluator') sourceLearningReview(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.learning.sourceLearning().review(r.actor,k??'',b);}
   @Post('sources/observations') @Allow('researcher','market') sourceObservation(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.org.observations().ingest(r.actor,k??'',b);}
   @Post('sources/observations/query') @Allow('owner','researcher','evaluator') sourceObservations(@Req() r:Request,@Body() b:unknown){return this.org.observations().list(r.actor,b);}
+  @Post('sources/observations/review-queue') @Allow('owner','evaluator') sourceReviewQueue(@Req() r:Request,@Body() b:unknown){return this.org.observations().reviewQueue(r.actor,b);}
   constructor(private readonly auth:OwnerAuthorization,private readonly treasury:Treasury,private readonly org:Organisation,private readonly research:Research,private readonly paper:PaperTrading,private readonly ops:Operations,private readonly portfolio:PortfolioResearch,private readonly lifecycle:ResearchLifecycle,private readonly dispatch:ResearchDispatch,private readonly report:OrganisationReport,private readonly learning:OrganisationalLearning,private readonly development:ResearchDevelopment,private readonly developmentExperiments:DevelopmentExperiments,private readonly sessions:DepartmentSessions,private readonly skills:AcademySkills,private readonly recovery:SkillRecovery,private readonly diagnostics:SkillDiagnostics,private readonly skillExperiments:SkillExperiments) {}
   @Get('skills/experiments') @Allow('owner','evaluator') skillExperimentStatus(@Req() r:Request){return this.skillExperiments.status(r.actor);}
   @Get('skills/experiments/research-approvals') @Allow('owner','evaluator') researchApprovals(@Req() r:Request){return this.skillExperiments.researchApprovals(r.actor);}
@@ -73,6 +103,8 @@ class ApiController {
   @Post('development/experiments') @Allow('owner') developmentExperiment(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.developmentExperiments.register(r.actor,k??'',b);}
   @Post('development/experiments/cycles') @Allow('evaluator') developmentExperimentCycle(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.developmentExperiments.cycle(r.actor,k??'',b);}
   @Post('development/experiments/cancellations') @Allow('owner') developmentExperimentCancel(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.developmentExperiments.cancel(r.actor,k??'',b);}
+  @Get('development/inference-usage') @Allow('owner','evaluator') inferenceUsage(@Req() r:Request){return this.development.inference().status(r.actor);}
+  @Post('development/inference-reports') @Allow('researcher') inferenceReport(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.development.inference().report(r.actor,k??'',b);}
   @Get('development') @Allow('owner','evaluator') developmentStatus(@Req() r:Request){return this.development.status(r.actor);}
   @Post('development/policy') @Allow('owner') developmentPolicy(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.development.configure(r.actor,k??'',b);}
   @Post('development/requests') @Allow('researcher') developmentRequest(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.development.request(r.actor,k??'',b);}
@@ -85,6 +117,7 @@ class ApiController {
   @Post('learning/knowledge/assessments/answers') @Allow('researcher') knowledgeAssessmentAnswers(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.learning.knowledgeAssessments().submit(r.actor,k??'',b);}
   @Post('learning/knowledge/assessments/grades') @Allow('evaluator') knowledgeAssessmentGrade(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.learning.knowledgeAssessments().grade(r.actor,k??'',b);}
   @Post('learning/knowledge/graph') @Allow('owner','evaluator') knowledgeGraph(@Req() r:Request,@Body() b:unknown){return this.learning.knowledge().graph(r.actor,b);}
+  @Post('learning/knowledge/discover') @Allow('owner','researcher','evaluator') knowledgeDiscover(@Req() r:Request,@Body() b:unknown){return this.learning.knowledge().discover(r.actor,b);}
   @Post('learning/knowledge/requests') @Allow('researcher') knowledgeRequest(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.learning.knowledge().request(r.actor,k??'',b);}
   @Post('learning/knowledge/preflight') @Allow('researcher') knowledgePreflight(@Req() r:Request,@Body() b:unknown){return this.learning.knowledge().preflight(r.actor,b);}
   @Post('learning/knowledge/proposals') @Allow('researcher') knowledgeProposal(@Req() r:Request,@Headers('idempotency-key') k:string,@Body() b:unknown){return this.learning.knowledge().submit(r.actor,k??'',b);}
@@ -163,8 +196,15 @@ class ErrorFilter implements ExceptionFilter {
 }
 export async function createApp(config:Config,db:Database,quiet=false) {
   const auth=new OwnerAuthorization(db,config);
+  // The rate limit slows down token guessing, so anonymous and badly authenticated requests stay limited. A request that
+  // carries a configured credential is the organisation's own worker (all local workers share one address) and is not
+  // throttled: a long automated run must not be cut off part-way. Authentication itself is still enforced by ApiGuard.
+  const tokenHashes=config.principals.map(p=>createHash('sha256').update(p.token).digest());
+  const authenticated=(context:ExecutionContext)=>{const h:unknown=context.switchToHttp().getRequest().headers?.authorization;
+    if(typeof h!=='string'||!/^Bearer [A-Za-z0-9_-]{43,200}$/.test(h))return false;const hash=createHash('sha256').update(h.slice(7)).digest();
+    return tokenHashes.some(k=>timingSafeEqual(k,hash));};
   const services=[{provide:OwnerAuthorization,useValue:auth},{provide:Treasury,useValue:new Treasury(db,config,auth)},{provide:Organisation,useValue:new Organisation(db)},{provide:Research,useValue:new Research(db)},{provide:PaperTrading,useValue:new PaperTrading(db,config)},{provide:Operations,useValue:new Operations(db)},{provide:PortfolioResearch,useValue:new PortfolioResearch(db)},{provide:ResearchLifecycle,useValue:new ResearchLifecycle(db)},{provide:ResearchDispatch,useValue:new ResearchDispatch(db)},{provide:OrganisationReport,useValue:new OrganisationReport(db)},{provide:OrganisationalLearning,useValue:new OrganisationalLearning(db)},{provide:ResearchDevelopment,useValue:new ResearchDevelopment(db)},{provide:DevelopmentExperiments,useValue:new DevelopmentExperiments(db)},{provide:DepartmentSessions,useValue:new DepartmentSessions(db)}];
-  @Module({imports:[ThrottlerModule.forRoot([{ttl:60000,limit:120}])],controllers:[ApiController],providers:[...services,{provide:AcademySkills,useValue:new AcademySkills(db)},{provide:SkillRecovery,useValue:new SkillRecovery(db)},{provide:SkillDiagnostics,useValue:new SkillDiagnostics(db)},{provide:SkillExperiments,useValue:new SkillExperiments(db)},{provide:APP_GUARD,useClass:ThrottlerGuard}]})
+  @Module({imports:[ThrottlerModule.forRoot({throttlers:[{ttl:60000,limit:120}],skipIf:authenticated})],controllers:[ApiController,EvidenceClaimsController,BotFitnessController,TradeSignalsController,PaperPerformanceController,DepartmentsController,HackathonsController,OwnerAlertsController,KnowledgeAsOfController,ComputeUsageController,BotReleasesController,BotBirthsController,BotScorecardsController,SourceReliabilityController,OwnerDigestController,CorporateActionsController,EvidenceTriageController,BotControlController,ManagementController],providers:[...services,{provide:BotControl,useValue:new BotControl(db)},{provide:Management,useValue:new Management(db,config)},{provide:EvidenceTriage,useValue:new EvidenceTriage(db)},{provide:CorporateActions,useValue:new CorporateActions(db)},{provide:OwnerDigest,useValue:new OwnerDigest(db)},{provide:SourceReliability,useValue:new SourceReliability(db)},{provide:BotScorecards,useValue:new BotScorecards(db)},{provide:BotBirths,useValue:new BotBirths(db)},{provide:BotReleases,useValue:new BotReleases(db)},{provide:ComputeUsage,useValue:new ComputeUsage(db)},{provide:KnowledgeAsOf,useValue:new KnowledgeAsOf(db)},{provide:Hackathons,useValue:new Hackathons(db)},{provide:OwnerAlerts,useValue:new OwnerAlerts(db,config)},{provide:EvidenceClaims,useValue:new EvidenceClaims(db)},{provide:BotFitness,useValue:new BotFitness(db)},{provide:TradeSignals,useValue:new TradeSignals(db,config)},{provide:PaperPerformance,useValue:new PaperPerformance(db)},{provide:Departments,useValue:new Departments(db)},{provide:AcademySkills,useValue:new AcademySkills(db)},{provide:SkillRecovery,useValue:new SkillRecovery(db)},{provide:SkillDiagnostics,useValue:new SkillDiagnostics(db)},{provide:SkillExperiments,useValue:new SkillExperiments(db)},{provide:APP_GUARD,useClass:ThrottlerGuard}]})
   class RootModule {}
   const app=await NestFactory.create(RootModule,{logger:quiet?false:['error','warn','log'],bodyParser:false});
   app.use(helmet());app.use(json({limit:'512kb',strict:true}));

@@ -53,8 +53,13 @@ try{
   assert.ok(graph.edges.some(e=>e.type==='tested-by'));
   assert.ok(graph.edges.some(e=>e.type==='extracted-through'));assert.ok(graph.edges.some(e=>e.type==='observed-as'));
   assert.equal(result.modelStandInCalls,1);assert.equal(result.realModelInference,false);
+  const usage=await (await fetch(base+'/v1/development/inference-usage',{headers:{Authorization:'Bearer '+token('owner')}})).json();
+  // Every model stage reports once despite injected response loss; stand-in usage is unreported and so reserved.
+  assert.equal(usage.last24Hours.requests,3);assert.equal(usage.last24Hours.reported,3);
+  assert.deepEqual(usage.recent.map(r=>r.kind).sort(),['knowledge-assessment-v1','knowledge-transfer-v1','source-lesson-v1']);
+  assert.ok(usage.recent.every(r=>r.outcome==='completed'&&/^hermes-/.test(r.engine)&&r.prompt_tokens===null));
   assert.equal((await f.treasury.snapshot(owner)).wallet1Paise,'0');assert.equal((await f.ops.verifyAudit(owner)).valid,true);
-  report={status:'passed',startedAt,finishedAt:new Date().toISOString(),...result,workflowId,workflowCompleted:true,sourceLearning,assessment,grade,nodes:graph.nodes.length,edges:graph.edges.length,
+  report={status:'passed',startedAt,finishedAt:new Date().toISOString(),...result,workflowId,inferenceReports:usage.last24Hours.reported,workflowCompleted:true,sourceLearning,assessment,grade,nodes:graph.nodes.length,edges:graph.edges.length,
     demonstratedLearning:false,scope:'Two-bot knowledge-transfer protocol with deterministic model stand-in; real inference and learning benefit remain unverified'};
 }catch(error){report={status:'failed',startedAt,message:error.message};process.exitCode=1;}
 finally{if(app)await app.close();if(f)await f.db.close();}

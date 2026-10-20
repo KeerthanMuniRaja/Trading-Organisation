@@ -51,7 +51,7 @@ class KnowledgeTests(unittest.TestCase):
     def test_lost_response_replays_without_regenerating_and_rejects_changed_task(self):
         settings=Settings(Path('/source'),Path('/python'),'fixture','http://127.0.0.1:8000/v1','fixture-key')
         client=Mock(base='http://127.0.0.1:3000',token='fixture-token')
-        client.post.side_effect=[self.ticket(settings),{'authorised':True},TimeoutError()]
+        client.post.side_effect=[self.ticket(settings),{'authorised':True},{'recorded': True},TimeoutError()]
         proposer=Mock(return_value=plan())
         with tempfile.TemporaryDirectory() as directory:
             args=(client,settings,{'botId':'student','task':'one'},'stable-key',Path(directory))
@@ -60,6 +60,7 @@ class KnowledgeTests(unittest.TestCase):
             client.post.side_effect=[{'state':'awaiting-review'}]
             run_once(*args,proposer=proposer)
             self.assertEqual(client.post.call_args,original);proposer.assert_called_once()
+            self.assertEqual([c.args[0] for c in client.post.call_args_list].count('/v1/development/inference-reports'),1)
             with self.assertRaises(HermesError):run_once(client,settings,{'botId':'student','task':'changed'},'stable-key',Path(directory),proposer=proposer)
 
     def test_uncertain_inference_requires_reconciliation(self):
@@ -71,6 +72,20 @@ class KnowledgeTests(unittest.TestCase):
             args=(client,settings,{},'stable-key',Path(directory))
             with self.assertRaises(TimeoutError):run_once(*args,proposer=proposer)
             with self.assertRaisesRegex(HermesError,'Uncertain'):run_once(*args,proposer=proposer)
+            proposer.assert_called_once()
+
+    def test_a_model_server_that_is_down_starts_nothing_so_the_same_request_runs_later(self):
+        settings=Settings(Path('/source'),Path('/python'),'fixture','http://127.0.0.1:8000/v1','fixture-key')
+        client=Mock(base='http://127.0.0.1:3000',token='fixture-token')
+        client.post.side_effect=[self.ticket(settings),{'authorised':True}]
+        proposer=Mock(return_value=plan())
+        down=Mock(side_effect=HermesError('Model endpoint not reachable (ENDPOINT_UNREACHABLE); nothing was started, retry when it is up'))
+        with tempfile.TemporaryDirectory() as directory:
+            args=(client,settings,{'botId':'student','task':'one'},'stable-key',Path(directory))
+            with self.assertRaisesRegex(HermesError,'not reachable'):run_once(*args,proposer=proposer,probe=down)
+            proposer.assert_not_called()  # no inference began, so nothing is uncertain
+            client.post.side_effect=[{'authorised':True},{'recorded':True},{'state':'awaiting-review'}]
+            self.assertEqual(run_once(*args,proposer=proposer,probe=Mock()),{'state':'awaiting-review'})  # same request, once up
             proposer.assert_called_once()
 
 

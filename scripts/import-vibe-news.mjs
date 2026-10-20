@@ -1,23 +1,9 @@
-import { open } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { convertNews } from '../integrations/vibe-trading/news-adapter.mjs';
 import { importBatch } from './import-observations.mjs';
+import { readBoundedJson } from './cycle-state.mjs';
 
-export async function readBoundedJson(path, limit) {
-  const handle = await open(path, 'r');
-  try {
-    const buffer = Buffer.alloc(limit + 1);
-    let length = 0;
-    while (length < buffer.length) {
-      const { bytesRead } = await handle.read(buffer, length, buffer.length - length, null);
-      if (bytesRead === 0) break;
-      length += bytesRead;
-    }
-    if (length > limit) throw new Error('Input file exceeds size limit');
-    try { return JSON.parse(buffer.subarray(0, length).toString('utf8')); }
-    catch { throw new Error('Input file must contain valid JSON'); }
-  } finally { await handle.close(); }
-}
+export { readBoundedJson };
 
 export async function handleNews(mode, result, policy, env = process.env, transport = fetch, now = Date.now()) {
   if (!['prepare', 'submit'].includes(mode)) throw new Error('Mode must be prepare or submit');

@@ -18,8 +18,10 @@ export class Database {
         await db.transaction(async tx => {
           await tx.query('CREATE TABLE IF NOT EXISTS schema_versions (version integer PRIMARY KEY, checksum text NOT NULL)');
           const existing = (await tx.query('SELECT checksum FROM schema_versions WHERE version=$1',[version])).rows[0];
-          const checksum = digest(migration);
-          if (existing) requireThat(existing.checksum === checksum, 'Migration checksum mismatch');
+          // line endings are not content: a checkout that turned LF into CRLF (or back) must not block startup,
+          // while any real edit to an applied migration still does
+          const lf = migration.replace(/\r\n/g, '\n'), checksum = digest(lf);
+          if (existing) requireThat([checksum, digest(migration), digest(lf.replace(/\n/g, '\r\n'))].includes(existing.checksum), 'Migration checksum mismatch');
           else {
             const embedded = tx as Sql & {exec?:(sql:string)=>Promise<unknown>};
             if(embedded.exec) await embedded.exec(migration); else await tx.query(migration);

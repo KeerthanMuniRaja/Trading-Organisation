@@ -1,0 +1,8 @@
+# Allow-list: only what the backend image needs. Secrets (.env, .local, signing keys), data and integrations stay out.
+*
+!package.json
+!package-lock.json
+!backend/src/**
+!backend/test/**
+!backend/tsconfig.json
+!db/migrations/**

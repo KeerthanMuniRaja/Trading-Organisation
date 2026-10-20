@@ -1,12 +1,135 @@
 # Knowledge transfer: continue the trading organisation
 
-## Latest continuation — v0.1.22
+## Live paper testing — from 15 October 2026
+
+Daily operation is in the [live testing runbook](docs/live-testing.md).
+- **Before the open:** `npm run readiness` gives a go/no-go.
+- **After 16:00 IST:** `npm run cycle` runs the day's work.
+
+The model-free [rule bot](docs/trade-signals.md#the-rule-bot-a-model-free-member) keeps proposals flowing without the local model. Owner activation: `npm run rulebot -- plan | credential --yes | apply --yes`.
+
+### Added on 20 October 2026 (read this first)
+
+The organisation now manages itself like a firm, with the owner as CEO:
+- **Management review** (migration 051, [management](docs/management.md)). Every cycle, fixed rules (`management-v1`) review each bot in paper trading and recommend watch, suspend, a 25% budget raise or retirement. Nothing changes until the owner accepts.
+- **Owner agenda.** `npm run agenda` lists every decision waiting on the owner: recommendations, births, departments, releases ready to activate, and qualifications. `npm run agenda -- accept <id>` or `decline <id>` answers through the existing owner routes.
+- **R&D scout** ([R&D scout](docs/rnd-scout.md)). Every cycle it screens 13 strategy ideas, net of costs and Bonferroni-corrected. None passes on data through 2026-09; the best is the live momentum rule (p = 0.027). With `RND_SOURCE` set, a passing idea becomes verified evidence and a birth proposal. Not built yet: onboarding and a runner for R&D-born bots (deliberately left until an idea passes).
+- **Release gate.** The cycle runs the rule bot only while its code fingerprint matches its authorised release. `rule_bot.py` changed at 14:36 on 14 October, probably after its release was registered. If the gate refuses it, run `npm run rulebot -- apply --yes` (v2 for the current code). Accepted proposals still execute.
+- **Fact-checking.** Verified claims are recorded in the backend claim registry, with fact keys.
+- **Holidays.** Readiness reads an owner-supplied `.local/nse-holidays.json`.
+- **CI.** `.github/workflows/verify.yml` runs the full gate on GitHub. It runs for the first time on the next push.
+- **Later the same day:**
+  - **R&D bots:** `rnd_bot.py` onboards R&D-born bots (release, fitness, evaluation) and runs them monthly, gated by their release. `npm run bot-credential -- --bot <id> --yes` gives a bot its trader credential, and the agenda has a `budget` item.
+  - **Partial fills:** at most 1% of the session's volume (`maxQuantity` on execution).
+  - **Budgets:** department ceilings are enforced, and `POST /v1/compute/allowance` gates the model allocator's model step.
+  - **Learning:** the cycle advances open learning workflows (with the model).
+  - **Academy:** exams, lifecycle, dispatch, experiments and memory cycles run daily, and stay disabled until their policies are on.
+  - **Credential backups:** `npm run env:prune` prunes old `.env` backups (owner, `--yes`).
+- **On the next backend start:** migration 051 applies. Take a backup first.
+
+### State on 14 October 2026
+
+**Live setup.**
+- **Order limit:** ₹5,000 per order (`MAX_ORDER_PAISE=500000`).
+- **Rule bot:** `momentum-rules` is active and qualified for paper trading. Its release v1 is evaluated on the regime study (seen data, p ≈ 0.03).
+- **Backup:** the live database was backed up before the changes. Migrations 049 and 050 apply on the next backend start.
+
+**Audit.**
+- **What was done.** Four independent reviews checked every planned idea against the code. The trading bugs they found are fixed and tested.
+- **Where to read.** [docs/audit-2026-10-14.md](docs/audit-2026-10-14.md) is the honest status page. It supersedes the older status claims in `current-status.md` and `remaining-work-assessment.md`.
+
+**Verification.** `npm run verify` runs every test suite (644 tests), and all pass.
+
+**Owner controls.** Suspend or resume a bot, change a bot's budget, and retire a bot with nothing learned ([bot control](docs/bot-control.md)).
+
+**Still needs the owner.**
+- The local model, for the learning loop and the model allocator.
+- An alert channel (`ALERT_WEBHOOK_URL`).
+- A daily schedule.
+- Confirming the market-data licence.
+
+**Pitfalls.**
+- **Environment variables win over `.env`.** A terminal that already has `MAX_ORDER_PAISE`, `PRINCIPALS_JSON` or `DATABASE_PATH` set ignores `.env`. If the readiness check shows the old limit, open a fresh terminal.
+- **Large price moves.** The data steward keeps back a refresh with a move over 20% until the owner confirms it: `daily.py accept-move --symbol X --date D`.
+
+## Current development update — v0.1.35, 7 October 2026
+
+The checkout now includes v0.1.34's explicit direct-structured-v1 production engine and migration 023, which adds the optional research-methods-v1 assessment rubric. Existing research-basics-v1 records/defaults remain unchanged. The direct worker requests task schemas and binds tickets to the owner-selected engine; it is separate from Hermes, not a fallback or an upgrade of the pinned Hermes path.
+
+This increment rejects direct responses unless the provider reports a normal stop with no tool calls or refusal, even when their JSON is valid. Reported tokens survive validation/completion failures in the durable failed outcome. No automatic regeneration or engine switch is added. Learning/R&D launchers now propagate HERMES_ENGINE to inference workers, while reviewer/discovery commands retain credential separation. Explicit Hermes benchmarks cannot be relabelled direct runs by ambient settings.
+
+Validation: all 59 Python tests passed; the launcher regression passed six command/role scenarios using intercepted child launches and fixture credentials. No model, backend policy, persistent service, Docker runtime or financial connection was activated. No backend code/migration changed in this increment. Full backend tests were not rerun for these Python/launcher changes.
+
+## Latest continuation — v0.1.34
+
+v0.1.34 (migration 023) adds the `research-methods-v1` assessment rubric:
+- The bot chooses methods, and `deriveAnswers` computes the numbers.
+- The evaluator can select it per assessment (`rubric`), and a workflow can select it with `assessmentRubric`.
+- The model task is `knowledge-assessment-methods`, with a deliberately neutral prompt.
+
+Results are in [assessment methods](docs/assessment-methods.md): relevant lessons help (96% vs 77%), but one real article lesson did not make a bot competent (8/16). Next: many reviewed relevant lessons, evaluated on the knowledge actually transferred, plus a real market/data choice from the owner.
+
+## Continuation — v0.1.33
+
+v0.1.33 adds an owner-selectable `direct-structured-v1` inference engine:
+- Selected by `"engine"` in the development policy's model profile, with `HERMES_ENGINE=direct` in the worker.
+- A schema-constrained chat completion with no tools, reporting real token usage.
+- Workers refuse tickets whose engine differs from their own.
+
+`npm run verify:real-model` passed the full learning chain on the local Qwen3.5-4B (llama.cpp, `npm run model:local`); the assessment scored 6/16. See [model selection](docs/model-selection.md). Next: assessments should test the method, with the backend doing the arithmetic.
+
+Two agents worked on this checkout on 6 October. v0.1.32 came from a parallel review session, and its fixes are preserved. Coordinate so only one agent edits at a time.
+
+## Previous continuation — v0.1.32
+
+The review fixes are complete: benchmark pairing/coverage, effective Hermes timeouts and feed crash recovery. Read [current status](docs/current-status.md), [model strategy](docs/model-strategy.md) and the newest [verification](docs/verification.md). Both local GGUF candidates exist; the saved direct 2B report failed source-learning and numerical checks. Newer free-form and constrained 4B reports are now saved. Constrained 4B is the preferred experimental profile: six tested outputs valid, drawdown 0/16, production Hermes schema support and qualification still open. See [model selection](docs/model-selection.md). Do not claim no real inference has run or treat direct runs as pinned-Hermes qualification. The disabled example uses the 4B alias on port 8080; private .env was not changed.
+
+Migrations remain through 022. Ten distinct user-supplied repositories were identified and reviewed at capability level, not fourteen full codebases. The organisation retains separate bot contexts, reviewed knowledge and deterministic authority; unlimited growth, autonomous fine-tuning and live trading are not implemented. Use Command Prompt, not PowerShell. Docker testing remains deferred. Earlier continuation sections below are historical.
+
+## Historical continuation — v0.1.30
+
+v0.1.30 adds migration 022:
+- Immutable `inference_reports` (one per model ticket).
+- The `inference_request_kind` and `inference_reservation` SQL functions.
+- An optional owner `maxTokensPerDay` checked by `assertTokenCapacity` before every `development_requests` insert.
+
+Workers report through `integrations/hermes/inference_reporting.py`. Owner view: `lifecycle:admin -- inference-usage`.
+
+Still needed from the owner: a model endpoint.
+
+## Continuation — v0.1.29
+
+v0.1.29 adds [model readiness tooling](docs/model-readiness.md): versioned prompt contracts (`integrations/hermes/contracts.py`), `model:doctor`, and a budgeted `model:benchmark` with a paired with/without-lessons comparison. 46 Hermes tests pass.
+
+The next real step needs the owner:
+1. Choose a model, its weight revision and a server (local CPU is feasible but slow on this 15.7 GB, no-CUDA machine) or a hosted budget.
+2. Run the doctor and benchmark.
+3. Install the pinned Hermes checkout.
+
+Then implement per-request usage recording in the backend.
+
+## Continuation — v0.1.28
+
+Updated 6 October 2026. Versions 0.1.23–0.1.27 built the learning pipeline: cross-bot transfer, knowledge graph, fresh-task assessments, source observations, article-to-lesson proposals, bounded learning workflows, the review inbox, lesson discovery and the Vibe news cycle. See [current status](docs/current-status.md).
+
+v0.1.28 adds [publisher feed intake](docs/publisher-feeds.md) (`sources:feed`), a generic RSS/Atom adapter for DATA-01 with checkpointed, replay-safe submission. Verified results:
+- 113 backend tests.
+- 19 feed tests.
+- 34 Vibe/importer tests.
+- 34 Hermes Python tests (from v0.1.27, unchanged).
+- The real-backend feed check.
+
+Still unset: the owner's first publisher, the model endpoint (Qwen3.5-9B is only provisional) and the first market. Docker testing stays deferred.
+
+Git requires `-c safe.directory=...` in this folder (the repo is owned by another Windows identity). The work from v0.1.23 onward is uncommitted. The folder is now `Nexus`; older docs still say `trading-organisation`.
+
+## Previous continuation — v0.1.22
 
 Migration 016 and `backend/src/research-approvals.ts` add owner-only, append-only research candidate approval/revocation with expiry and effective policy/halt state. Exact passing paired plan/candidate hashes and independent evaluation are required. No worker consumes these records, so they are not a deployment allowlist or code rollout. Read [the contract](docs/research-approvals.md) and newest verification entry. Preserve historical receipts and never treat them as current permission. Earlier milestone text below remains historical.
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](docs/current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](docs/current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
-Updated: 5 October 2026. Source version: **0.1.22**. This is the resumption entry point for another Codex account or a new coding chat. It preserves the owner's decisions and implementation context; it is not a claim that unfinished capabilities are working.
+Updated: 6 October 2026. Source version: **0.1.32** (sections below the latest continuation are historical). This is the resumption entry point for another Codex account or a new coding chat. It preserves the owner's decisions and implementation context; it is not a claim that unfinished capabilities are working.
 
 ## Start here
 
@@ -297,3 +420,6 @@ npm run lifecycle:admin -- workers
 ```
 
 No result from these latest commands has been received at handover. Worker and policy commands are in [research-dispatch.md](docs/research-dispatch.md); they require explicit owner configuration. Do not run them as part of reading this document.
+
+<!-- documentation-navigation -->
+[Documentation index](docs/documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

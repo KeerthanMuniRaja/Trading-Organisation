@@ -1,12 +1,37 @@
 # Remaining work to build the self-growing trading organisation
 
+> **Status claims superseded, 14 October 2026.** The [audit of 14 October](audit-2026-10-14.md) checked every requirement ID against the code and tests. Some items this page calls missing now exist: hackathons, departments, alert delivery and Docker sandboxing. Others are built but not yet used by the daily workflow. The requirement definitions below remain the plan.
+
 **Assessment date:** 6 October 2026  
-**Codebase:** v0.1.25, migrations 001–019  
+**Original codebase snapshot:** v0.1.25, migrations 001–019; updates through v0.1.32 / migration 022 follow.
 **Purpose:** turn the owner's original vision into an implementation-backed completion plan.
+
+**Development update, v0.1.32:** Corrected benchmark pairing and coverage, effective Hermes timeouts and feed failure/304 recovery. Local model artifacts and a direct 2B report now exist, superseding older no-inference statements. The 2B run failed source-learning and numerical tasks; Newer direct constrained 4B results pass the tested schemas but still fail drawdown. Constrained 4B is the preferred experimental profile; production Hermes remains unqualified. See [selection evidence](model-selection.md). AI-01 stays open for production Hermes/task qualification. Read [model strategy](model-strategy.md) for shared inference, memory constraints and role-specific growth. No autonomous retraining, release, live funds or new departments were activated.
+
+**Development update, v0.1.30:** Per-request inference reports and an owner token ceiling (migration 022) cover AI-01's usage-recording and spend-ceiling evidence at token level, and gap 12's request-kind reporting. Production token counts, monetary budgets and a real endpoint remain open.
+
+**Development update, v0.1.29:** [Model readiness](model-readiness.md) adds AI-01 pre-activation tooling: versioned prompt contracts, an endpoint doctor and a budgeted task benchmark that records validity, latency, tokens and a paired with/without-lessons assessment comparison. AI-01 remains open until a real endpoint completes these contracts and usage is recorded per backend request.
+
+**Development update, v0.1.28:** [Publisher feed intake](publisher-feeds.md) implements DATA-01's generic adapter: bounded fetch, checkpoint/cursor, backoff, size/time limits, refused redirects, replay-safe resubmission, corrections as new revisions and source-withdrawal handling, verified against a synthetic loopback publisher and real in-memory backend. DATA-01 stays partial until an owner-selected publisher and its access terms are exercised on a real feed.
 
 **Development update, v0.1.27:** [Bounded learning workflows](learning-workflows.md) now connect source proposals, transfer, assessment issuance/answers/grading with owner-selected participants and durable links. AUTO-01 remains partial: review judgement, discovery, recipient selection, distributed leases and persistent organisation-wide scheduling remain outstanding. The v0.1.25 inventory below is historical.
 
 **Development update, v0.1.26:** [Source learning](source-learning.md) now implements a bounded article-to-lesson proposal and dedicated review path with exact quotation checks. DATA-02 remains partial: corroboration, claim/entity modelling, real inference validation and orchestration are still pending. The inventory and findings below remain the dated v0.1.25 review snapshot.
+
+## Updated handoff — v0.1.35
+
+The v0.1.34 direct production engine and optional methods rubric are implemented; v0.1.35 hardens completion checks and launcher routing. Next validate the selected engine end to end on fresh cases and exercise failures/recovery under the production task limits. Keep old numerical failures; methods assessments are a separate rubric. The older handoff below records the prior plan and is superseded where it says no direct production engine exists.
+
+## Earlier implementation handoff — 7 October 2026
+
+The next bounded development task is production parity for constrained model output, not autonomous expansion. The direct benchmark already uses contracts.output_schema through openai_compat.chat; the Hermes production runner does not yet request it.
+
+1. Inspect the pinned Hermes adapter API and add explicit, tested schema propagation only if supported; otherwise design a separately reviewed production engine. Preserve tool restrictions, role credentials, strict output validation, timeout caps, journal recovery and inference reporting.
+2. Test all five task contracts with malformed output, unsupported schema, truncation, timeout, source withdrawal and uncertain completion. A failed or interrupted attempt must not silently regenerate or switch engines.
+3. Compare fresh held-out cases and record effective engine/schema/prompt versions. Keep the original arithmetic rubric and its failures; any calculator-assisted rubric must be a new version, not a rewrite of historical scores.
+4. Require independent source/lesson quality review and a production-path paper workflow before enabling the profile. A valid JSON response and two positive synthetic pairs are insufficient.
+
+After that: connect collection and discovery to bounded workflow queues, add claim corroboration and role-specific fitness, then evaluate differentiated recruitment. Preserve non-revenue risk/control roles and retain knowledge before retirement. These are pending acceptance gates, not changes made by this documentation refresh.
 
 ## 1. Where we actually stand
 
@@ -230,3 +255,6 @@ These do not all block the next development step, and no answer is requested by 
 Start with **AI-01 + DATA-01**, then **DATA-02 + minimal KG-01**, then **AUTO-01 + LEARN-01**. Use a small team with one analyst, one independent evaluator and a receiving specialist; do not spawn a large population before their work creates measurable value.
 
 The next meaningful demonstration should show a bot receiving new external evidence, forming a reviewed lesson, teaching another bot, and being evaluated on a fresh task—with actual inference, lineage and cost records. That is the shortest path from today's governed research backend toward the self-developing organisation you described.
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

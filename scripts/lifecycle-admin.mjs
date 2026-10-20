@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 
 const [command,filename,...extra]=process.argv.slice(2);
-const readRoutes={status:'/lifecycle',community:'/lifecycle/community',archives:'/lifecycle/archives',knowledge:'/knowledge',dispatch:'/dispatch',report:'/organisation/report',learning:'/learning',development:'/development',experiments:'/development/experiments',workers:'/workers'};
+const readRoutes={status:'/lifecycle',community:'/lifecycle/community',archives:'/lifecycle/archives',knowledge:'/knowledge',dispatch:'/dispatch',report:'/organisation/report',learning:'/learning',development:'/development','inference-usage':'/development/inference-usage',experiments:'/development/experiments',workers:'/workers'};
 const writeRoutes={policy:'/lifecycle/policy',blueprint:'/lifecycle/blueprints',withdraw:'/lifecycle/withdrawals','dispatch-policy':'/dispatch/policy','cancel-assignment':'/dispatch/cancellations',model:'/learning/models','revoke-model':'/learning/model-revocations','learning-policy':'/learning/policy',memory:'/learning/memory','development-policy':'/development/policy','development-review':'/development/reviews',experiment:'/development/experiments','cancel-experiment':'/development/experiments/cancellations'};
 readRoutes.skills='/skills';
 writeRoutes['skills-policy']='/skills/policy';

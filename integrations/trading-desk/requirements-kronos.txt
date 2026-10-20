@@ -1,0 +1,9 @@
+# Kronos forecast analyst environment (.local\kronos-venv). Install torch first from the CPU index:
+#   .local\kronos-venv\Scripts\python.exe -m pip install "torch>=2.0.0" --index-url https://download.pytorch.org/whl/cpu
+# Pins follow the Kronos repository's requirements.txt; pandas is a floor so newer Python versions have wheels.
+einops==0.8.1
+huggingface_hub==0.33.1
+safetensors==0.6.2
+tqdm==4.67.1
+pandas>=2.2.2
+numpy

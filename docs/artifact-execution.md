@@ -1,6 +1,6 @@
 # Artifact execution, isolation and recovery
 
-> Documentation refreshed for v0.1.21 (5 October 2026). [Current implementation, validation and limits](current-status.md). Dated milestones and design proposals retain their original scope.
+> [Current implementation, validation and limits](current-status.md) is the current status index (v0.1.32). Dated milestones and design proposals retain their original scope.
 
 Version 0.1.15 adds a manual runner for reviewed standalone Python solvers in paired academy experiments. It checks source bytes, separates each arm into a process, bounds execution time/output and preserves results for retries. **This mode is not an OS sandbox and must not execute untrusted generated code.** Trusted local mode requires the explicit `--trust-reviewed-local-code` flag and is not called by autonomous department cycles.
 
@@ -20,7 +20,25 @@ The healthy supervising process enforces a default 10-second deadline per arm (c
 
 These controls do not restrict filesystem or network access under the current OS identity, limit memory/disk consumption, protect the parent from hostile code, or guarantee descendant cleanup after an OS/parent crash. Solvers must not spawn descendants. Temporary working directories and isolated Python import flags are not a security boundary. Strong OS isolation and independently trusted execution evidence remain prerequisites for unattended generated-code execution and release approval.
 
-A Docker Linux adapter was added in v0.1.16. It requires a full local `sha256:` image ID, makes no pulls, enforces Linux/cgroup-v2 prerequisites and checks the effective runtime guard. It requests no network or host mounts, a read-only root, non-root UID/GID, dropped capabilities, no-new-privileges, seccomp, CPU/memory/PID limits and bounded tmpfs. There is no fallback to trusted-local execution. Live verification remains deferred because Docker Desktop did not establish a usable engine; mocked transport and runtime-guard tests are not live isolation proof.
+A Docker Linux adapter was added in v0.1.16. It requires a full local `sha256:` image ID, makes no pulls, enforces Linux/cgroup-v2 prerequisites and checks the effective runtime guard. It requests no network or host mounts, a read-only root, non-root UID/GID, dropped capabilities, no-new-privileges, seccomp, CPU/memory/PID limits and bounded tmpfs. There is no fallback to trusted-local execution.
+
+**Live verification passed on 13 October 2026.** Earlier attempts failed because hardware virtualisation was off in the laptop's firmware, so Docker Desktop never had a working engine. After the owner enabled it, the setup was:
+- Ubuntu 24.04 in WSL 2: systemd, cgroup v2, kernel 6.18;
+- Docker Engine 29.1.3 (`docker.io`), installed inside Ubuntu rather than Docker Desktop;
+- the official `python:3.12-slim` image, pinned as `sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1`.
+
+`verify_artifact_sandbox.py`, run inside Ubuntu, reported `passed`:
+- the effective privilege, filesystem, network and resource guards held, and the solver contract passed;
+- a write to the root filesystem and an external connection were both refused;
+- a 0.5-second timeout fired, and the container was confirmed removed.
+
+No sandbox containers were left behind. The report is in `.local/artifact-sandbox-verification.json`. Run it again with:
+
+```cmd
+wsl -d Ubuntu-24.04 -u root -- bash -c "cd /mnt/c/Users/<you>/.../Nexus/integrations/skfolio && python3 verify_artifact_sandbox.py --image sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1"
+```
+
+This is local containment evidence, not remote attestation (`remoteAttestation: false`).
 
 Version 0.1.17 added durable ownership records before creation, nonce labels, exact container/image/name matching and removal by verified container ID. Cleanup uncertainty blocks new execution. `artifact_executor.py sandbox-recover` recovers recorded stale/failed operations; explicit absence acknowledgement is needed for uncertain creation. Recovery runs when invoked or on a later operation, not as a continuous reaper. Parent death does not guarantee immediate cleanup.
 
@@ -41,15 +59,15 @@ These are local reliability controls, not tamper-proof history or a server-wide 
 
 Place each reviewed standalone solver in its own directory. The read-only descriptor command hashes the file without executing it; save its output beside that file:
 
-```powershell
-& .\integrations\skfolio\.venv\Scripts\python.exe .\integrations\skfolio\artifact_executor.py describe .\.local\candidate\solver.py --name candidate-solver --version 1 | Set-Content -Encoding utf8 .\.local\candidate\artifact.json
+```cmd
+.\integrations\skfolio\.venv\Scripts\python.exe .\integrations\skfolio\artifact_executor.py describe .\.local\candidate\solver.py --name candidate-solver --version 1 > .\.local\candidate\artifact.json
 ```
 
 Prepare the baseline descriptor similarly, then use both descriptors' `producer` objects in the existing owner [paired experiment registration](skill-experiments.md). The assigned researcher ID must match the configured scoped researcher credential. No code is reviewed, approved or registered merely by generating its descriptor.
 
 With an actual experiment UUID, run one manual diagnostic operation from the project root:
 
-```powershell
+```cmd
 npm run worker:paired-artifacts -- --experiment EXPERIMENT_UUID --baseline .local/baseline/artifact.json --candidate .local/candidate/artifact.json --trust-reviewed-local-code
 ```
 
@@ -64,3 +82,6 @@ The report is `.local/paired-artifacts-verification.json`. Generated fixture sou
 ## Current operation commands
 
 Use `--sandbox-image sha256:FULL_LOCAL_IMAGE_HASH` instead of `--trust-reviewed-local-code` for the Docker adapter after an appropriate local image and engine are available. Do not treat this example as a completed Docker validation. No image is pulled or built automatically. For journal inspection, selected-journal batch recovery and backend reports, follow [the recovery guide](artifact-recovery.md).
+
+<!-- documentation-navigation -->
+[Documentation index](documentation-index.md) · Documentation reconciled for v0.1.32 on 7 October 2026; historical records retain their original scope.

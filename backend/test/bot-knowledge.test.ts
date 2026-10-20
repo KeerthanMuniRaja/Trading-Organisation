@@ -135,5 +135,32 @@ test('knowledge HTTP graph and proposal roles are scoped',async()=>{
     assert.equal((await post('owner','graph',{botId:'student'})).status,201);
     assert.equal((await post('evaluator','requests',f.input)).status,403);
     assert.equal((await post('researcher','requests',f.input)).status,201);
+    assert.equal((await post('trader','discover',{botId:'student',query:'fees'})).status,403);
+    const discovery=await post('researcher','discover',{botId:'student',query:'fees'});
+    assert.equal(discovery.status,201);assert.deepEqual((await discovery.json()).suggestedLessonIds,[f.lesson.id]);
+    assert.equal((await post('researcher','discover',{botId:'student',query:'fees',approve:true})).status,400);
   }finally{if(app)await app.close();await f.db.close();}
+});
+
+test('lesson discovery ranks current reviewed cross-bot knowledge and preserves retired mentors',async()=>{
+  const f=await setup();try{
+    const partial=await f.org.lesson(researcher,key(),{botId:'mentor',content:'Fees reduce returns.',evidenceId:f.evidence.evidenceId});
+    await f.org.verifyLesson(evaluator,key(),{lessonId:partial.id});
+    await f.org.lesson(researcher,key(),{botId:'mentor',content:'Unreviewed fees slippage drawdown claims',evidenceId:f.evidence.evidenceId});
+    const own=await f.org.lesson(researcher,key(),{botId:'student',content:'Fees slippage drawdown own lesson',evidenceId:f.evidence.evidenceId});
+    await f.org.verifyLesson(evaluator,key(),{lessonId:own.id});
+    await f.org.retire(owner,key(),{botId:'mentor',reason:'Preserve reviewed expertise',transferLessonIds:[f.lesson.id,partial.id]});
+    const result=await f.k.discover(researcher,{botId:'student',query:'Fees fees slippage drawdown',limit:1});
+    assert.deepEqual(result.suggestedLessonIds,[f.lesson.id]);assert.equal(result.truncated,true);
+    assert.equal(result.lessons[0]!.relevance,3);assert.equal(result.lessons[0]!.author_state,'retired');
+    assert.equal(result.modelInvoked,false);assert.equal(result.fitnessChanged,false);
+    assert.equal((await f.k.discover(researcher,{botId:'student',query:'unmatchedterm'})).lessons.length,0);
+    // Retrieval is a suggestion: the existing transfer freezes and validates support again.
+    const ticket=await f.k.request(researcher,key(),{...f.input,lessonIds:result.suggestedLessonIds});
+    assert.equal(ticket.context.lessons[0]!.id,f.lesson.id);
+    await f.org.revoke(owner,key(),{kind:'evidence',targetId:f.evidence.evidenceId,reason:'Withdraw supporting claim'});
+    assert.equal((await f.k.discover(researcher,{botId:'student',query:'fees'})).lessons.length,0);
+    await assert.rejects(()=>f.k.request(researcher,key(),{...f.input,lessonIds:result.suggestedLessonIds}),/verified/);
+    assert.throws(()=>f.k.discover(researcher,{botId:'student',query:'%%%'}));
+  }finally{await f.db.close();}
 });
