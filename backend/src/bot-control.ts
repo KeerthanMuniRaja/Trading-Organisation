@@ -17,39 +17,44 @@ export async function isSuspended(tx: Sql, botId: string) {
   return (await tx.query('SELECT suspended FROM bot_suspensions WHERE bot_id=$1 ORDER BY sequence DESC LIMIT 1', [botId])).rows[0]?.suspended === true;
 }
 
+/** Suspends or resumes a bot inside the caller's transaction (owner decisions only). */
+export async function applySuspension(tx: Sql, actor: Actor, botId: string, suspended: boolean, reason: string) {
+  const bot = (await tx.query('SELECT state FROM bots WHERE id=$1', [botId])).rows[0];
+  requireThat(bot, 'Bot not found', 404);
+  requireThat(bot.state !== 'retired', 'A retired bot cannot be suspended or resumed');
+  requireThat(await isSuspended(tx, botId) !== suspended, suspended ? 'The bot is already suspended' : 'The bot is not suspended');
+  await tx.query('INSERT INTO bot_suspensions(id,bot_id,suspended,reason,decided_by) VALUES($1,$2,$3,$4,$5)', [uuid(), botId, suspended, reason, actor.id]);
+  await audit(tx, actor, suspended ? 'bot.suspended' : 'bot.resumed', botId, { reason });
+  return { botId, suspended };
+}
+
+/** Changes a bot's budget inside the caller's transaction, with its append-only record (owner decisions only). */
+export async function applyBudget(tx: Sql, actor: Actor, botId: string, budgetPaise: string, reason: string) {
+  const bot = (await tx.query('SELECT state,budget_paise::text AS budget FROM bots WHERE id=$1', [botId])).rows[0];
+  requireThat(bot, 'Bot not found', 404);
+  requireThat(bot.state !== 'retired', 'A retired bot has no budget to change');
+  requireThat(bot.budget !== budgetPaise, 'The budget is already that amount');
+  // a lower budget than what is already invested is allowed: it blocks new buys until positions are reduced
+  await tx.query('UPDATE bots SET budget_paise=$2 WHERE id=$1', [botId, budgetPaise]);
+  await tx.query('INSERT INTO bot_budget_changes(id,bot_id,budget_before,budget_after,reason,decided_by) VALUES($1,$2,$3,$4,$5,$6)',
+    [uuid(), botId, bot.budget, budgetPaise, reason, actor.id]);
+  await audit(tx, actor, 'bot.budget.changed', botId, { budgetBeforePaise: bot.budget, budgetAfterPaise: budgetPaise, reason });
+  return { botId, budgetBeforePaise: bot.budget as string, budgetPaise };
+}
+
 export class BotControl {
   constructor(private readonly db: Database) {}
 
   suspend(actor: Actor, key: string, raw: unknown) {
     permit(actor, 'owner');
     const input = parse(suspendSchema, raw);
-    return this.db.command(actor, 'bot-suspension', key, input, async tx => {
-      const bot = (await tx.query('SELECT state FROM bots WHERE id=$1', [input.botId])).rows[0];
-      requireThat(bot, 'Bot not found', 404);
-      requireThat(bot.state !== 'retired', 'A retired bot cannot be suspended or resumed');
-      requireThat(await isSuspended(tx, input.botId) !== input.suspended, input.suspended ? 'The bot is already suspended' : 'The bot is not suspended');
-      await tx.query('INSERT INTO bot_suspensions(id,bot_id,suspended,reason,decided_by) VALUES($1,$2,$3,$4,$5)',
-        [uuid(), input.botId, input.suspended, input.reason, actor.id]);
-      await audit(tx, actor, input.suspended ? 'bot.suspended' : 'bot.resumed', input.botId, { reason: input.reason });
-      return { botId: input.botId, suspended: input.suspended };
-    });
+    return this.db.command(actor, 'bot-suspension', key, input, tx => applySuspension(tx, actor, input.botId, input.suspended, input.reason));
   }
 
   budget(actor: Actor, key: string, raw: unknown) {
     permit(actor, 'owner');
     const input = parse(budgetSchema, raw);
-    return this.db.command(actor, 'bot-budget-change', key, input, async tx => {
-      const bot = (await tx.query('SELECT state,budget_paise::text AS budget FROM bots WHERE id=$1', [input.botId])).rows[0];
-      requireThat(bot, 'Bot not found', 404);
-      requireThat(bot.state !== 'retired', 'A retired bot has no budget to change');
-      requireThat(bot.budget !== input.budgetPaise, 'The budget is already that amount');
-      // a lower budget than what is already invested is allowed: it blocks new buys until positions are reduced
-      await tx.query('UPDATE bots SET budget_paise=$2 WHERE id=$1', [input.botId, input.budgetPaise]);
-      await tx.query('INSERT INTO bot_budget_changes(id,bot_id,budget_before,budget_after,reason,decided_by) VALUES($1,$2,$3,$4,$5,$6)',
-        [uuid(), input.botId, bot.budget, input.budgetPaise, input.reason, actor.id]);
-      await audit(tx, actor, 'bot.budget.changed', input.botId, { budgetBeforePaise: bot.budget, budgetAfterPaise: input.budgetPaise, reason: input.reason });
-      return { botId: input.botId, budgetBeforePaise: bot.budget, budgetPaise: input.budgetPaise };
-    });
+    return this.db.command(actor, 'bot-budget-change', key, input, tx => applyBudget(tx, actor, input.botId, input.budgetPaise, input.reason));
   }
 }
 

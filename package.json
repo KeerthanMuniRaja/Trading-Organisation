@@ -32,6 +32,7 @@
     "readiness": "node --env-file=.env scripts/readiness.mjs",
     "fitness:live": "node --env-file=.env scripts/live-fitness.mjs",
     "rulebot": "node --env-file=.env scripts/activate-rule-bot.mjs",
+    "agenda": "node --env-file=.env scripts/agenda.mjs",
     "test:cycle": "node --test scripts/organisation-cycle.test.mjs",
     "test:secrets": "node --test scripts/secret-scan.test.mjs",
     "build": "tsc -p backend/tsconfig.json",

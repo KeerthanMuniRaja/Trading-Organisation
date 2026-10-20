@@ -31,7 +31,10 @@ flowchart LR
 | **Researcher bots** | Propose and draft | Draft trade proposals and news claims, and propose lessons. They can never review their own work |
 | **Evaluator bots** | Review independently | Review evidence, lessons and proposals by fixed rules. The fact-checker uses no model at all |
 | **Trader bots** | Act within a budget | Execute only reviewed proposals for their own bot, within its budget and the order limit |
+| **Management review** | Reviews staff daily | Applies the published `management-v1` rules to every working bot and recommends: watch, suspend, raise its budget or retire it. It never acts by itself ([management](docs/management.md)) |
 | **The backend** | Enforces the rules | Roles, idempotency, the hash-chained audit trail and append-only history. No bot can change its own permissions |
+
+Every decision waiting on the owner (recommendations, new bots, departments, releases ready to activate, bots ready to trade) is in one **owner agenda**: `npm run agenda`, then `npm run agenda -- accept <id>` or `decline <id>`.
 
 ### Members working today
 
@@ -71,6 +74,7 @@ All amounts are integer paise in balanced double-entry journals ([financial mode
 | Test | Forward tests |
 | Propose | Rule bot, then the model allocator (needs the model) |
 | Trade | Review at the verified close, fill at the next verified open, then score signals and live fitness |
+| Manage | After the paper snapshot: the management review of every working bot (recommendations for the owner agenda) |
 | Report | Paper snapshot, then alerts, then the owner digest |
 
 The daily routine and recovery steps are in the [live testing runbook](docs/live-testing.md).

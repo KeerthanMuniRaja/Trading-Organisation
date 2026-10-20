@@ -52,7 +52,9 @@ export class OwnerDigest {
         ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END, raised_at DESC LIMIT 5`)).rows;
       const pending = await one(`SELECT
           (SELECT COUNT(*) FROM department_proposals x WHERE NOT EXISTS (SELECT 1 FROM department_decisions d WHERE d.proposal_id=x.id))::int AS departments,
-          (SELECT COUNT(*) FROM bot_birth_proposals x WHERE NOT EXISTS (SELECT 1 FROM bot_birth_decisions d WHERE d.proposal_id=x.id))::int AS births`, []);
+          (SELECT COUNT(*) FROM bot_birth_proposals x WHERE NOT EXISTS (SELECT 1 FROM bot_birth_decisions d WHERE d.proposal_id=x.id))::int AS births,
+          (SELECT COUNT(*) FROM (SELECT DISTINCT ON (bot_id) id FROM bot_recommendations ORDER BY bot_id,sequence DESC) r
+            WHERE NOT EXISTS (SELECT 1 FROM bot_recommendation_decisions d WHERE d.recommendation_id=r.id))::int AS recommendations`, []);
       const accuracy = (await tx.query(`SELECT s.bot_id,COUNT(*)::int AS scored,AVG(CASE WHEN o.correct THEN 1 ELSE 0 END)::float AS accuracy
         FROM trade_signal_outcomes o JOIN trade_signals s ON s.id=o.signal_id WHERE o.created_at >= now() - interval '90 days'
         GROUP BY s.bot_id HAVING COUNT(*) >= 5 ORDER BY accuracy DESC,s.bot_id`, [])).rows
@@ -70,8 +72,9 @@ export class OwnerDigest {
       const needsOwner = [
         ...(halted ? ['New risk is HALTED.'] : []),
         ...topAlerts.filter(a => a.severity !== 'info').map(a => `${a.severity}: ${a.message}`),
-        ...(pending.departments ? [`${pending.departments} department proposal(s) await your decision.`] : []),
-        ...(pending.births ? [`${pending.births} bot birth proposal(s) await your decision.`] : []),
+        ...(pending.recommendations ? [`${pending.recommendations} management recommendation(s) await your decision (npm run agenda).`] : []),
+        ...(pending.departments ? [`${pending.departments} department proposal(s) await your decision (npm run agenda).`] : []),
+        ...(pending.births ? [`${pending.births} bot birth proposal(s) await your decision (npm run agenda).`] : []),
       ];
       return { windowHours: input.hours, generatedAt: new Date().toISOString(), mode: 'paper', halted,
         money: { realisedPaise: money.realised.toString(), unrealisedPaise: money.unrealised.toString(), totalPaise: (money.realised + money.unrealised).toString(),
