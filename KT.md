@@ -8,7 +8,19 @@ Daily operation is in the [live testing runbook](docs/live-testing.md).
 
 The model-free [rule bot](docs/trade-signals.md#the-rule-bot-a-model-free-member) keeps proposals flowing without the local model. Owner activation: `npm run rulebot -- plan | credential --yes | apply --yes`.
 
-### State on 14 October 2026 (read this first)
+### Added on 20 October 2026 (read this first)
+
+The organisation now manages itself like a firm, with the owner as CEO:
+- **Management review** (migration 051, [management](docs/management.md)). Every cycle, fixed rules (`management-v1`) review each bot in paper trading and recommend watch, suspend, a 25% budget raise or retirement. Nothing changes until the owner accepts.
+- **Owner agenda.** `npm run agenda` lists every decision waiting on the owner: recommendations, births, departments, releases ready to activate, and qualifications. `npm run agenda -- accept <id>` or `decline <id>` answers through the existing owner routes.
+- **R&D scout** ([R&D scout](docs/rnd-scout.md)). Every cycle it screens 13 strategy ideas, net of costs and Bonferroni-corrected. None passes on data through 2026-09; the best is the live momentum rule (p = 0.027). With `RND_SOURCE` set, a passing idea becomes verified evidence and a birth proposal. Not built yet: onboarding and a runner for R&D-born bots (deliberately left until an idea passes).
+- **Release gate.** The cycle runs the rule bot only while its code fingerprint matches its authorised release. `rule_bot.py` changed at 14:36 on 14 October, probably after its release was registered. If the gate refuses it, run `npm run rulebot -- apply --yes` (v2 for the current code). Accepted proposals still execute.
+- **Fact-checking.** Verified claims are recorded in the backend claim registry, with fact keys.
+- **Holidays.** Readiness reads an owner-supplied `.local/nse-holidays.json`.
+- **CI.** `.github/workflows/verify.yml` runs the full gate on GitHub. It runs for the first time on the next push.
+- **On the next backend start:** migration 051 applies. Take a backup first.
+
+### State on 14 October 2026
 
 **Live setup.**
 - **Order limit:** ₹5,000 per order (`MAX_ORDER_PAISE=500000`).
