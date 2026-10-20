@@ -65,6 +65,20 @@ thresholds were not re-tuned on the same history, because that would be mining i
 The adopted methods do not beat holding the eight shares equally, and the distribution filter weakens momentum. They stay
 in the catalogue: they were tried, so they keep raising the bar. Their variants can still be invented under the same limits.
 
+**On 10 years** (after the owner approved the longer history), the study covers August 2017 to September 2026:
+
+| Risk | Days | Average return, next 20 sessions | Average worst fall | Falls over 5% |
+| --- | --- | --- | --- | --- |
+| SEVERE | 691 | +0.64% | −3.58% | 21.1% |
+| HIGH | 585 | +1.16% | −2.12% | 12.8% |
+| CAUTION | 512 | +1.12% | −2.26% | 13.9% |
+| NORMAL | 464 | +1.76% | −2.04% | 14.4% |
+
+The verdict is now **warns of falls**. After SEVERE days, the basket earned less and fell further than after NORMAL days.
+As a monthly cash filter, the regime still loses: `equal-weight-distribution` is behind the basket in 56 of 81 differing
+months, at −0.45% a month. Sitting out misses the rebounds. So the regime is useful as a **risk warning**, not as a timing
+rule, and it stays advice.
+
 **Today's regime** (19 Oct close): SEVERE, with 9 distribution days. 1 of 8 shares is above its 50-day and 200-day averages,
 and the basket is below its 200-day trend. The advisory ceiling is 0%.
 

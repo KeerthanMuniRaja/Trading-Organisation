@@ -47,6 +47,25 @@ instead. Either answer is worth having.
 Once fetched, a refresh keeps at least the history a file already holds (`daily.years_to_fetch`). Without that, the
 daily 5-year refresh would be rejected by the data steward as shrunk history.
 
+### The 10-year result (20 October 2026)
+
+The owner approved the download. The data steward held back two real moves until the owner confirmed them: Axis Bank
+−27.9% on 23 Mar 2020 (the COVID crash) and SBI +27.7% on 25 Oct 2017 (the bank recapitalisation). With both confirmed,
+the scout judged **106 months**, 2017-12 to 2026-09. **No idea passes.**
+
+| Idea | Ahead / behind | Average excess a month | p | Halves (ahead/behind) |
+| --- | --- | ---: | ---: | --- |
+| Momentum 6 months, top 3 (`momentum-rules`) | 61 / 45 | 0.00% | 0.07 | 27/26, 34/19 |
+| Low volatility, top 3 | 54 / 52 | −0.09% | 0.46 | 28/25, 26/27 |
+| Momentum 6 months, top 4 | 54 / 52 | +0.05% | 0.46 | 25/28, 29/24 |
+| Reversal 1 month, bottom 3 | 51 / 55 | +0.13% | 1.00 | 26/27, 25/28 |
+| All others, the adopted methods included | — | ≤ +0.11% | 1.00 | — |
+
+The longer record answers the question the 46 months could not. Momentum's apparent edge came from 2022–2026. Over
+2017–2021 it was level with the basket (27/26). On average it adds nothing after costs, though it is ahead slightly more
+often than behind. The live bot remains a paper experiment judged on its live calls. Nothing on this history beats holding
+the eight shares equally.
+
 ## R&D invents its own ideas (`rnd_ideas.py`)
 
 The fixed catalogue is only the start: the research department proposes new ideas itself.
