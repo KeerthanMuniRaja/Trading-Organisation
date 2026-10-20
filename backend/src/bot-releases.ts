@@ -47,6 +47,43 @@ async function current(tx: Sql, botId: string) {
   return { active: by('active'), canary: by('canary'), map };
 }
 
+/** Stages a release inside the caller's transaction: the owner's decision, or a standing approval acting for the owner. */
+export async function applyStage(tx: Sql, actor: Actor, input: { releaseId: string; stage: 'canary' | 'active' | 'revoked'; reason: string }) {
+  const release = (await tx.query('SELECT * FROM bot_releases WHERE id=$1', [input.releaseId])).rows[0];
+  requireThat(release, 'Release not found', 404);
+  const { map } = await current(tx, release.bot_id);
+  requireThat(map.get(String(release.id))?.stage !== 'revoked', 'A revoked release cannot be staged again; register a new one');
+  if (input.stage !== 'revoked') {
+    const flag = input.stage === 'canary' ? 'canary_eligible' : 'active_eligible';
+    // the newest evaluation decides: a later worse result withdraws eligibility
+    const latest = (await tx.query(`SELECT ${flag} AS ok,created_at >= now() - ($2::int * interval '1 day') AS fresh FROM bot_release_evaluations
+      WHERE release_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1`, [release.id, EVALUATION_VALID_DAYS])).rows[0];
+    requireThat(latest?.ok === true, input.stage === 'canary' ? 'Canary needs an evaluation that is not worse than its baseline'
+      : 'Activation needs an evaluation with enough evidence that is not worse than its baseline');
+    requireThat(latest.fresh === true, `The release's evaluation is older than ${EVALUATION_VALID_DAYS} days; re-test before staging it`);
+  }
+  await tx.query('INSERT INTO bot_release_stages(id,bot_id,release_id,stage,reason,decided_by) VALUES($1,$2,$3,$4,$5,$6)',
+    [uuid(), release.bot_id, release.id, input.stage, input.reason, actor.id]);
+  await audit(tx, actor, 'bot.release.staged', release.id, { botId: release.bot_id, stage: input.stage });
+  return { releaseId: String(release.id), botId: release.bot_id as string, stage: input.stage };
+}
+
+/** Qualifies a school or college bot for paper trading inside the caller's transaction (see BotReleases.qualify). */
+export async function applyQualify(tx: Sql, actor: Actor, input: { botId: string; reason: string }) {
+  const bot = (await tx.query('SELECT state,lifecycle_managed FROM bots WHERE id=$1', [input.botId])).rows[0];
+  requireThat(bot, 'Bot not found', 404);
+  requireThat(bot.state === 'school' || bot.state === 'college', bot.state === 'paper' ? 'Bot is already qualified' : 'Retired bots cannot qualify');
+  requireThat(!bot.lifecycle_managed, 'Lifecycle-managed students qualify through their research route');
+  const { active } = await current(tx, input.botId);
+  requireThat(active, 'Qualification needs an active release');
+  const evaluation = (await tx.query(`SELECT active_eligible,fitness_verdict,created_at >= now() - ($2::int * interval '1 day') AS fresh FROM bot_release_evaluations
+    WHERE release_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1`, [active, EVALUATION_VALID_DAYS])).rows[0];
+  requireThat(evaluation?.active_eligible === true && evaluation.fresh === true, 'The active release needs a fresh evaluation with enough evidence that is not worse than its baseline');
+  await tx.query("UPDATE bots SET state='paper' WHERE id=$1", [input.botId]);
+  await audit(tx, actor, 'bot.qualified.paper', input.botId, { releaseId: active, fitnessVerdict: evaluation.fitness_verdict, reason: input.reason });
+  return { botId: input.botId, state: 'paper', releaseId: active };
+}
+
 export class BotReleases {
   constructor(private readonly db: Database) {}
 
@@ -94,25 +131,7 @@ export class BotReleases {
   stage(actor: Actor, key: string, raw: unknown) {
     permit(actor, 'owner');
     const input = parse(stageSchema, raw);
-    return this.db.command(actor, 'bot-release-stage', key, input, async tx => {
-      const release = (await tx.query('SELECT * FROM bot_releases WHERE id=$1', [input.releaseId])).rows[0];
-      requireThat(release, 'Release not found', 404);
-      const { map } = await current(tx, release.bot_id);
-      requireThat(map.get(String(release.id))?.stage !== 'revoked', 'A revoked release cannot be staged again; register a new one');
-      if (input.stage !== 'revoked') {
-        const flag = input.stage === 'canary' ? 'canary_eligible' : 'active_eligible';
-        // the newest evaluation decides: a later worse result withdraws eligibility
-        const latest = (await tx.query(`SELECT ${flag} AS ok,created_at >= now() - ($2::int * interval '1 day') AS fresh FROM bot_release_evaluations
-          WHERE release_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1`, [release.id, EVALUATION_VALID_DAYS])).rows[0];
-        requireThat(latest?.ok === true, input.stage === 'canary' ? 'Canary needs an evaluation that is not worse than its baseline'
-          : 'Activation needs an evaluation with enough evidence that is not worse than its baseline');
-        requireThat(latest.fresh === true, `The release's evaluation is older than ${EVALUATION_VALID_DAYS} days; re-test before staging it`);
-      }
-      await tx.query('INSERT INTO bot_release_stages(id,bot_id,release_id,stage,reason,decided_by) VALUES($1,$2,$3,$4,$5,$6)',
-        [uuid(), release.bot_id, release.id, input.stage, input.reason, actor.id]);
-      await audit(tx, actor, 'bot.release.staged', release.id, { botId: release.bot_id, stage: input.stage });
-      return { releaseId: String(release.id), botId: release.bot_id, stage: input.stage };
-    });
+    return this.db.command(actor, 'bot-release-stage', key, input, tx => applyStage(tx, actor, input));
   }
 
   /** SCHOOL-01: the owner qualifies a school or college bot for paper trading on the strength of its own versioned
@@ -121,20 +140,7 @@ export class BotReleases {
   qualify(actor: Actor, key: string, raw: unknown) {
     permit(actor, 'owner');
     const input = parse(qualifySchema, raw);
-    return this.db.command(actor, 'bot-qualification', key, input, async tx => {
-      const bot = (await tx.query('SELECT state,lifecycle_managed FROM bots WHERE id=$1', [input.botId])).rows[0];
-      requireThat(bot, 'Bot not found', 404);
-      requireThat(bot.state === 'school' || bot.state === 'college', bot.state === 'paper' ? 'Bot is already qualified' : 'Retired bots cannot qualify');
-      requireThat(!bot.lifecycle_managed, 'Lifecycle-managed students qualify through their research route');
-      const { active } = await current(tx, input.botId);
-      requireThat(active, 'Qualification needs an active release');
-      const evaluation = (await tx.query(`SELECT active_eligible,fitness_verdict,created_at >= now() - ($2::int * interval '1 day') AS fresh FROM bot_release_evaluations
-        WHERE release_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1`, [active, EVALUATION_VALID_DAYS])).rows[0];
-      requireThat(evaluation?.active_eligible === true && evaluation.fresh === true, 'The active release needs a fresh evaluation with enough evidence that is not worse than its baseline');
-      await tx.query("UPDATE bots SET state='paper' WHERE id=$1", [input.botId]);
-      await audit(tx, actor, 'bot.qualified.paper', input.botId, { releaseId: active, fitnessVerdict: evaluation.fitness_verdict, reason: input.reason });
-      return { botId: input.botId, state: 'paper', releaseId: active };
-    });
+    return this.db.command(actor, 'bot-qualification', key, input, tx => applyQualify(tx, actor, input));
   }
 
   /** Revokes the current active release and reactivates the previous one that was active and not revoked. */

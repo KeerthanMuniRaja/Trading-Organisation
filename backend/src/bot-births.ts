@@ -54,29 +54,7 @@ export class BotBirths {
   decide(actor: Actor, key: string, raw: unknown) {
     permit(actor, 'owner');
     const input = parse(decisionSchema, raw);
-    return this.db.command(actor, 'bot-birth-decision', key, input, async tx => {
-      const p = (await tx.query('SELECT * FROM bot_birth_proposals WHERE id=$1', [input.proposalId])).rows[0];
-      requireThat(p, 'Proposal not found', 404);
-      requireThat(!(await tx.query('SELECT 1 FROM bot_birth_decisions WHERE proposal_id=$1', [p.id])).rows.length, 'Proposal already decided');
-      let mentor: string | null = null;
-      if (input.outcome === 'approved') {
-        const dept = (await tx.query('SELECT status,lead_bot_id FROM departments WHERE id=$1', [p.department])).rows[0];
-        requireThat(dept?.status === 'active', 'The department is no longer active');
-        const clash = await duplicate(tx, p.bot_id, p.novelty_key, String(p.id));
-        requireThat(!clash, 'No longer novel: ' + clash);
-        const active = async (botId: string) => (await tx.query("SELECT 1 FROM bots WHERE id=$1 AND state<>'retired'", [botId])).rows.length > 0;
-        if (input.mentorId) { requireThat(await active(input.mentorId), 'Mentor not found or retired'); mentor = input.mentorId; }
-        // the department lead mentors by default; a lead who has since retired simply leaves the new bot without one
-        else mentor = dept.lead_bot_id && await active(dept.lead_bot_id) ? dept.lead_bot_id : null;
-        await tx.query(`INSERT INTO bots(id,name,department,specialty,method,novelty_key,contribution,state,budget_paise,mentor_id)
-          VALUES($1,$2,$3,$4,$5,$6,$7,'school',0,$8)`, [p.bot_id, p.name, p.department, p.specialty, p.method, p.novelty_key, p.contribution, mentor]);
-        await audit(tx, actor, 'bot.created', p.bot_id, { birthProposal: String(p.id), department: p.department, state: 'school', budgetPaise: '0', mentorId: mentor });
-      }
-      await tx.query('INSERT INTO bot_birth_decisions(proposal_id,outcome,mentor_id,note,decided_by) VALUES($1,$2,$3,$4,$5)',
-        [p.id, input.outcome, mentor, input.note, actor.id]);
-      await audit(tx, actor, 'bot.birth.decided', String(p.id), { outcome: input.outcome, botId: p.bot_id });
-      return { proposalId: String(p.id), outcome: input.outcome, ...(input.outcome === 'approved' ? { botId: p.bot_id, state: 'school', budgetPaise: '0', mentorId: mentor } : {}) };
-    });
+    return this.db.command(actor, 'bot-birth-decision', key, input, tx => applyBirthDecision(tx, actor, input));
   }
 
   list(actor: Actor) {
@@ -94,6 +72,31 @@ export class BotBirths {
         note: 'Approved births start in school with zero budget; trading requires qualification.' };
     }, false);
   }
+}
+
+/** The owner's birth decision inside the caller's transaction (or a standing approval acting for the owner). */
+export async function applyBirthDecision(tx: Sql, actor: Actor, input: { proposalId: string; outcome: 'approved' | 'rejected'; mentorId?: string; note: string }) {
+  const p = (await tx.query('SELECT * FROM bot_birth_proposals WHERE id=$1', [input.proposalId])).rows[0];
+  requireThat(p, 'Proposal not found', 404);
+  requireThat(!(await tx.query('SELECT 1 FROM bot_birth_decisions WHERE proposal_id=$1', [p.id])).rows.length, 'Proposal already decided');
+  let mentor: string | null = null;
+  if (input.outcome === 'approved') {
+    const dept = (await tx.query('SELECT status,lead_bot_id FROM departments WHERE id=$1', [p.department])).rows[0];
+    requireThat(dept?.status === 'active', 'The department is no longer active');
+    const clash = await duplicate(tx, p.bot_id, p.novelty_key, String(p.id));
+    requireThat(!clash, 'No longer novel: ' + clash);
+    const active = async (botId: string) => (await tx.query("SELECT 1 FROM bots WHERE id=$1 AND state<>'retired'", [botId])).rows.length > 0;
+    if (input.mentorId) { requireThat(await active(input.mentorId), 'Mentor not found or retired'); mentor = input.mentorId; }
+    // the department lead mentors by default; a lead who has since retired simply leaves the new bot without one
+    else mentor = dept.lead_bot_id && await active(dept.lead_bot_id) ? dept.lead_bot_id : null;
+    await tx.query(`INSERT INTO bots(id,name,department,specialty,method,novelty_key,contribution,state,budget_paise,mentor_id)
+      VALUES($1,$2,$3,$4,$5,$6,$7,'school',0,$8)`, [p.bot_id, p.name, p.department, p.specialty, p.method, p.novelty_key, p.contribution, mentor]);
+    await audit(tx, actor, 'bot.created', p.bot_id, { birthProposal: String(p.id), department: p.department, state: 'school', budgetPaise: '0', mentorId: mentor });
+  }
+  await tx.query('INSERT INTO bot_birth_decisions(proposal_id,outcome,mentor_id,note,decided_by) VALUES($1,$2,$3,$4,$5)',
+    [p.id, input.outcome, mentor, input.note, actor.id]);
+  await audit(tx, actor, 'bot.birth.decided', String(p.id), { outcome: input.outcome, botId: p.bot_id });
+  return { proposalId: String(p.id), outcome: input.outcome, ...(input.outcome === 'approved' ? { botId: p.bot_id, state: 'school', budgetPaise: '0', mentorId: mentor } : {}) };
 }
 
 type Request = { actor: Actor };

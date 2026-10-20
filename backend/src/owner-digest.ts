@@ -71,7 +71,8 @@ export class OwnerDigest {
           (SELECT COUNT(*) FROM departments WHERE status='active')::int AS "departmentsActive",
           (SELECT COUNT(*) FROM departments WHERE status='closed')::int AS "departmentsClosed",
           (SELECT COUNT(*) FROM hackathons WHERE status='open')::int AS "hackathonsOpen",
-          (SELECT COUNT(*) FROM hackathons WHERE status='judging')::int AS "hackathonsJudging"`, []);
+          (SELECT COUNT(*) FROM hackathons WHERE status='judging')::int AS "hackathonsJudging",
+          (SELECT COUNT(*) FROM autonomy_actions WHERE created_at >= now() - ($1::int * interval '1 hour'))::int AS "automaticDecisions"`, p);
       const halted = (await one('SELECT halted FROM system_lock WHERE id=1', [])).halted as boolean;
       const needsOwner = [
         ...(halted ? ['New risk is HALTED.'] : []),

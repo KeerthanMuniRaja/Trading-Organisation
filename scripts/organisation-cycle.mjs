@@ -78,6 +78,8 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     { id: 'paper-snapshot', kind: 'http', method: 'POST', path: '/v1/paper/performance/snapshots', role: 'evaluator' },
     // ORG-02: the daily management review of every working bot; it only recommends, the owner decides (npm run agenda)
     { id: 'management-review', kind: 'http', method: 'POST', path: '/v1/management/reviews', role: 'evaluator' },
+    // AUTO-03: the agents carry out what the owner's standing approvals cover (nothing without a policy)
+    { id: 'autonomy', kind: 'http', method: 'POST', path: '/v1/autonomy/apply', role: 'evaluator' },
     { id: 'alerts', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'deliver-alerts.mjs')], timeoutMs: 120_000 },
     { id: 'owner-digest', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'daily-digest.mjs')], timeoutMs: 120_000 },
   ];

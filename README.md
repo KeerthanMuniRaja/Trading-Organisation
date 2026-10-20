@@ -36,6 +36,11 @@ flowchart LR
 
 Every decision waiting on the owner (recommendations, new bots, departments, releases ready to activate, bots ready to trade) is in one **owner agenda**: `npm run agenda`, then `npm run agenda -- accept <id>` or `decline <id>`.
 
+**Agents act, the owner oversees.** With **standing approvals** (`npm run autonomy`, [autonomy](docs/autonomy.md)), the owner approves classes of decisions once, with limits:
+- **What agents can then do:** suspend a flagged bot, accept small budget raises within a monthly total, approve births, activate evaluated releases, qualify bots, and give a new bot a starting budget.
+- **How:** the agents carry these out every cycle, as the visible identity `autonomy-policy`.
+- **Never automatic:** retirement, departments, limits, permissions and real money.
+
 ### Members working today
 
 - **`momentum-rules`, the rule bot.** Model-free. Once a month it picks the top three shares by momentum, sells before it buys, and keeps its decision for the month. Release v1 is active with a ₹5,000 budget ([trade signals](docs/trade-signals.md#the-rule-bot-a-model-free-member)).
@@ -78,7 +83,7 @@ All amounts are integer paise in balanced double-entry journals ([financial mode
 | Research | The R&D scout's screen of strategy ideas |
 | Propose | Rule bot, then R&D-born bots (onboarded and gated by their release), then the model allocator (needs the model) |
 | Trade | Review at the verified close, fill at the next verified open (at most 1% of that session's volume), then score signals and live fitness |
-| Manage | After the paper snapshot: the management review of every working bot (recommendations for the owner agenda) |
+| Manage | After the paper snapshot: the management review of every working bot, then the agents carry out what the standing approvals cover |
 | Report | Paper snapshot, then alerts, then the owner digest |
 
 The daily routine and recovery steps are in the [live testing runbook](docs/live-testing.md).

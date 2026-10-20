@@ -35,6 +35,7 @@
     "agenda": "node --env-file=.env scripts/agenda.mjs",
     "bot-credential": "node scripts/bot-credential.mjs",
     "env:prune": "node scripts/prune-env-backups.mjs",
+    "autonomy": "node --env-file=.env scripts/autonomy.mjs",
     "test:cycle": "node --test scripts/organisation-cycle.test.mjs",
     "test:secrets": "node --test scripts/secret-scan.test.mjs",
     "build": "tsc -p backend/tsconfig.json",

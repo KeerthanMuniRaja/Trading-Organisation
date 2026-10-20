@@ -8,7 +8,7 @@ import { createApp } from '../src/app.js';
 // default (off) each must answer successfully and do nothing, so the cycle never fails for a feature the owner left off.
 const CYCLES: [string, string][] = [['/v1/skills/cycles', 'evaluator'], ['/v1/skills/remediation/cycles', 'evaluator'], ['/v1/lifecycle/cycles', 'evaluator'],
   ['/v1/dispatch/cycles', 'evaluator'], ['/v1/development/experiments/cycles', 'evaluator'], ['/v1/learning/cycles', 'researcher'], ['/v1/learning/cycles', 'evaluator'],
-  ['/v1/management/reviews', 'evaluator']];
+  ['/v1/management/reviews', 'evaluator'], ['/v1/autonomy/apply', 'evaluator']];
 
 test('every daily backend cycle succeeds and does nothing while its policy is off', async () => {
   const { cfg } = config(), db = await Database.open(), app = await createApp(cfg, db, true);
@@ -20,7 +20,7 @@ test('every daily backend cycle succeeds and does nothing while its policy is of
         Authorization: 'Bearer ' + cfg.principals.find(p => p.role === role)!.token } });
       const body = await r.json();
       assert.ok(r.status === 200 || r.status === 201, `${path} as ${role}: HTTP ${r.status} ${JSON.stringify(body)}`);
-      if ('status' in body) assert.ok(['disabled', 'halted', 'cooldown', 'idle', 'ok'].includes(body.status) || Array.isArray(body.actions), `${path}: ${JSON.stringify(body)}`);
+      if ('status' in body) assert.ok(['disabled', 'halted', 'cooldown', 'idle', 'ok', 'no-policy'].includes(body.status) || Array.isArray(body.actions), `${path}: ${JSON.stringify(body)}`);
     }
   } finally { await app.close(); await db.close(); }
 });

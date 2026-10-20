@@ -1,0 +1,45 @@
+// The owner's standing approvals (AUTO-03): which classes of decision the organisation's agents may carry out by
+// themselves, with limits. Everything else stays on the agenda. See docs/autonomy.md.
+//   npm run autonomy                                         the current policy and recent automatic actions
+//   npm run autonomy -- set <policy.json> --reason "why"     replace the policy (owner credential; history is kept)
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+function owner(env) {
+  const base = (env.API_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
+  if (!/^(https:\/\/[^/@?#]+|http:\/\/(127\.0\.0\.1|localhost)(:\d+)?)$/.test(base)) throw new Error('Invalid backend API origin');
+  const found = JSON.parse(env.PRINCIPALS_JSON || '[]').filter(p => p.role === 'owner');
+  if (found.length !== 1 || !found[0].token) throw new Error('Configure exactly one owner credential');
+  return { base, token: found[0].token };
+}
+
+export async function show(env, fetchImpl = fetch) {
+  const { base, token } = owner(env);
+  const r = await fetchImpl(base + '/v1/autonomy', { headers: { Authorization: 'Bearer ' + token }, redirect: 'error' });
+  if (!r.ok) throw new Error(`/v1/autonomy refused (HTTP ${r.status})`);
+  return JSON.parse(await r.text());
+}
+
+export async function set(env, rules, reason, fetchImpl = fetch) {
+  if (!reason?.trim()) throw new Error('Say why: --reason "..."');
+  const { base, token } = owner(env), body = JSON.stringify({ rules, reason });
+  const r = await fetchImpl(base + '/v1/autonomy/policy', { method: 'POST', redirect: 'error', body, headers: { Authorization: 'Bearer ' + token,
+    'Content-Type': 'application/json', 'Idempotency-Key': 'autonomy-' + createHash('sha256').update(body).digest('hex').slice(0, 48) } });
+  const text = await r.text();
+  if (!r.ok) throw new Error(`/v1/autonomy/policy refused (HTTP ${r.status}): ${text.slice(0, 300)}`);
+  return JSON.parse(text);
+}
+
+async function main() {
+  const args = process.argv.slice(2), [command = 'show', file] = args.filter(a => !a.startsWith('--'));
+  const at = args.indexOf('--reason'), reason = at >= 0 ? args[at + 1] : args.find(a => a.startsWith('--reason='))?.slice(9);
+  if (command === 'show') { console.log(JSON.stringify(await show(process.env), null, 2)); return; }
+  if (command !== 'set' || !file) throw new Error('Usage: npm run autonomy [-- set <policy.json> --reason "why"]');
+  console.log(JSON.stringify(await set(process.env, JSON.parse(await readFile(file, 'utf8')), reason), null, 2));
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === resolve(dirname(fileURLToPath(import.meta.url)), 'autonomy.mjs')) {
+  main().catch(error => { console.error(error.message); process.exitCode = 1; });
+}

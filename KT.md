@@ -25,7 +25,13 @@ The organisation now manages itself like a firm, with the owner as CEO:
   - **Learning:** the cycle advances open learning workflows (with the model).
   - **Academy:** exams, lifecycle, dispatch, experiments and memory cycles run daily, and stay disabled until their policies are on.
   - **Credential backups:** `npm run env:prune` prunes old `.env` backups (owner, `--yes`).
-- **On the next backend start:** migration 051 applies. Take a backup first.
+- **Live, 20 October:**
+  - **Rule bot:** release v2 (current code) is active.
+  - **Fills:** the three buys filled at the 19 October open.
+  - **Migration:** 051 is applied.
+- **Standing approvals** (migration 052, [autonomy](docs/autonomy.md)): the owner approves classes of decisions once, with `npm run autonomy -- set <policy.json> --reason "..."`. The cycle's `autonomy` step then carries them out as `autonomy-policy`. With no policy, nothing is automatic.
+- **On the next backend start:** migration 052 applies. Take a backup first.
+- **Owner's direction:** agents decide and act, and the system develops itself; the owner approves and oversees. Build towards this.
 
 ### State on 14 October 2026
 

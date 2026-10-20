@@ -35,7 +35,8 @@ export function render(d) {
     '## Organisation',
     `- Suspended bots: ${(d.organisation?.suspendedBots ?? []).join(', ') || 'none'}`,
     ...(d.organisation ? [`- Departments: ${d.organisation.departmentsActive} active, ${d.organisation.departmentsClosed} closed; `
-      + `hackathons: ${d.organisation.hackathonsOpen} open, ${d.organisation.hackathonsJudging} being judged`] : []), '',
+      + `hackathons: ${d.organisation.hackathonsOpen} open, ${d.organisation.hackathonsJudging} being judged`] : []),
+    ...(d.organisation?.automaticDecisions ? [`- Decisions the agents carried out under your standing approvals: ${d.organisation.automaticDecisions} (npm run autonomy)`] : []), '',
     '## Live fitness (paper calls on new days)',
     ...((d.liveFitness ?? []).length ? d.liveFitness.map(f => `- ${f.botId} (${f.scope}): ${f.verdict}, ${f.right} of ${f.judged} right`)
       : ['- No bot has scored live calls yet.']), '',
