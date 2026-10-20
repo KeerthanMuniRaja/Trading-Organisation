@@ -32,6 +32,10 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     { id: 'news-triage', kind: 'http', method: 'POST', path: '/v1/evidence/triage', role: 'evaluator', freshKey: true },
     // NEWS-02: the collected items of every country grouped into stories and linked to the shares (no network, no model)
     { id: 'world-stories', cmd: NODE, args: [join(root, 'scripts', 'world-news.mjs'), 'stories'], timeoutMs: 120_000 },
+    // the organisation tests its own driver links on everything it has collected: are linked shares' moves larger after
+    // a driver's news? (direction-free; a link that shows nothing stays labelled until the owner edits the links)
+    { id: 'link-study', cmd: PY, args: [desk('chains.py'), 'study', '--headlines', join('.local', 'world', 'headline-history.json')],
+      timeoutMs: 300_000, requires: join(root, '.local', 'world', 'headline-history.json') },
     withModel
       ? { id: 'claims-and-fact-check', cmd: PY, args: [join(root, 'integrations', 'claims', 'autolearn.py'), 'run', '--config', join('.local', 'claims', 'autolearn.json'),
           '--cycles', '1'], timeoutMs: 3_600_000, requires: join(root, '.local', 'claims', 'autolearn.json') }

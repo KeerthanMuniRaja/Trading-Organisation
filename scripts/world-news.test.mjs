@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { cluster, coverage, enable, loadCatalogue, probe, stories } from './world-news.mjs';
+import { cluster, coverage, enable, headlineHistory, linkStudy, loadCatalogue, probe, stories } from './world-news.mjs';
 
 const NOW = Date.parse('2026-10-20T12:00:00Z');
 const source = (id, country, extra = {}) => ({ id, name: `Wire ${id}`, country, tier: 2, topics: ['markets'], feedUrl: `https://${id}.example/feed.xml`,
@@ -118,5 +118,25 @@ test('stories read the feed runs of the window and write the latest report', asy
     assert.equal(latest.top[0].drivers[0].driver, 'us-fed-rates');
     assert.ok(existsSync(join(root, '.local', 'world', 'stories-2026-10-20.json')));
     assert.match(latest.note, /Unverified press/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('every collected headline is kept in the desk format for the link study, and the study is summarised', async () => {
+  const root = await temp();
+  try {
+    const run = join(root, '.local', 'feeds', 'us', 'runs', 'r1');
+    await mkdir(run, { recursive: true });
+    await writeFile(join(run, 'selection.json'), JSON.stringify({ observations: [item('news-us', 'Infosys and HDFC Bank rise', 2),
+      { ...item('news-us', 'An old Brent story', 1), publishedAt: '2026-01-05T00:00:00.000Z' }] }));
+    assert.equal(await headlineHistory({ root, catalogue: [source('us', 'US')] }), 2);
+    const rows = JSON.parse(await readFile(join(root, '.local', 'world', 'headline-history.json'), 'utf8'));
+    assert.deepEqual(rows[0], { publishedAt: '2026-01-05T00:00:00+00:00', source: 'Wire us', title: 'An old Brent story', symbols: [] });
+    assert.deepEqual(rows[1].symbols, ['HDFCBANK.NS', 'INFY.NS']);
+    assert.equal(await linkStudy(root), null); // no study yet
+    await mkdir(join(root, '.local', 'trading-desk', 'chains'), { recursive: true });
+    await writeFile(join(root, '.local', 'trading-desk', 'chains', 'link-study.json'), JSON.stringify({ headlines: 2, drivers: {
+      'crude-oil': { verdict: 'link-carries-information' }, 'us-fed-rates': { verdict: 'insufficient-evidence' } } }));
+    assert.deepEqual(await linkStudy(root), { headlines: 2, drivers: 2, carrying: ['crude-oil'],
+      verdicts: { 'link-carries-information': 1, 'insufficient-evidence': 1 } });
   } finally { await rm(root, { recursive: true, force: true }); }
 });

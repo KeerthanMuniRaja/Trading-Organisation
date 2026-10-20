@@ -91,6 +91,22 @@ step `world-stories` writes `.local/world/latest.json`. The digest shows the sto
 As before, every link is **inferred**. It says "may affect", never the direction. `chains.py study` tests whether a link
 carries information, and `chains.py expand` labels inferred headlines `[inferred link: <driver>]`.
 
+### The organisation tests its own links
+
+Every collected headline is kept in `.local/world/headline-history.json`. This covers every source and country, and every
+day since collection began. The step `world-stories` writes it, in the desk's headline format.
+
+The next cycle step, `link-study`, runs `chains.py study` on that history. For each driver, it asks whether the linked
+shares move further than usual against the basket in the 5 sessions after the driver's news. Each driver gets one of
+three verdicts:
+- carries information;
+- no detectable effect;
+- not enough events yet.
+
+The digest and `npm run status` show how many links carry information. Each headline needs 5 later sessions before it can be
+judged, so the first verdicts appear about a week after collection starts. The study only measures. Changing or removing a
+link is still an edit to the reviewed links file.
+
 ## Triage scope-v2
 
 Relevance triage (`backend/src/evidence-triage.ts`) adds world terms, recorded as `world:<term>`:

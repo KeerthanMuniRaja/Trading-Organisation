@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { modelHealthUrl, nextRuns } from './supervisor.mjs';
+import { worldSummary } from './world-news.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const rupees = p => p === null || p === undefined ? 'n/a' : `Rs ${(Number(p) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -37,6 +38,12 @@ export function render(f) {
   out.push(`Cycle     ${f.lastCycle ? `${f.lastCycle.day}: ${f.lastCycle.failed.length ? 'failed ' + f.lastCycle.failed.join(', ') : 'no failed steps'}` : 'none yet'}`);
   out.push(`Next      ${f.next.map(r => `${r.id} ${new Date(r.at + 330 * 60_000).toISOString().slice(5, 16).replace('T', ' ')} IST`).join('; ')}`);
   out.push(`R&D       ${f.ideas} invented idea(s) in the ledger${f.scout ? `; last screen ${f.scout.through}: ${f.scout.passing} passing of ${f.scout.ideasTried}` : ''}`);
+  if (f.world && !f.world.error) {
+    const w = f.world, s = w.stories;
+    out.push(`World     feeds working in ${w.coverage.countriesCovered.join(', ') || 'no country yet'}`
+      + (s ? `; last ${s.windowHours}h: ${s.stories} stories, ${s.crossBorder} across countries, ${s.reachingShares} reach the shares` : '')
+      + (w.links ? `; links carrying information: ${w.links.carrying.join(', ') || 'none yet'} of ${w.links.drivers}` : ''));
+  }
   if (f.tradingagents) out.push(`TradingAgents  last decided ${f.tradingagents.day}: ${Object.entries(f.tradingagents.ratings).map(([s, r]) => `${s} ${r ?? '?'}`).join(', ')}`);
   if (f.digest?.needsOwner?.length) out.push('', 'Needs you', ...f.digest.needsOwner.map(n => '  - ' + n));
   return out;
@@ -81,6 +88,8 @@ export async function gather(env = process.env, { fetchImpl = fetch, root = ROOT
   const decided = existsSync(decisions) ? (await readdir(decisions)).filter(n => /^\d{4}-\d{2}-\d{2}\.json$/.test(n)).sort() : [];
   const ta = decided.length ? await json(join(decisions, decided.at(-1))) : null;
   facts.tradingagents = ta ? { day: ta.day, ratings: Object.fromEntries(Object.entries(ta.decisions).map(([s, d]) => [s, d.rating])) } : null;
+  facts.world = await worldSummary({ root, now });
+  if (facts.world?.coverage?.advice?.length && facts.digest) facts.digest.needsOwner = [...(facts.digest.needsOwner ?? []), ...facts.world.coverage.advice];
   return facts;
 }
 

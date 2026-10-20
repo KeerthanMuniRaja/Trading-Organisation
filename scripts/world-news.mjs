@@ -5,7 +5,8 @@
 //   node --env-file=.env scripts/world-news.mjs enable <id...> --yes
 //                                                             owner: probe, register and approve the source, write .local/feed-<id>.json
 //   node scripts/world-news.mjs coverage                      which feeds work, by country; a failing one names its backup
-//   node scripts/world-news.mjs stories [--hours 48]          group the last hours' items into stories across countries
+//   node scripts/world-news.mjs stories [--hours 48]          group the last hours' items into stories across countries, and keep
+//                                                             every collected headline for the daily link study (chains.py study)
 // What it never does: verify anything (stories are unverified press; evidence review is unchanged), trade, or enable a
 // source on its own. The cycle collects enabled feeds as before; this command adds the catalogue, coverage and stories.
 import { createHash } from 'node:crypto';
@@ -192,13 +193,41 @@ export async function stories({ root = ROOT, hours = 48, now = Date.now(), catal
   return report;
 }
 
-/** The digest's world section: coverage (with advice) and the latest stories; never throws. */
+/**
+ * Every item ever collected, in the desk's headline format, for chains.py study: the organisation tests its own
+ * driver links (Indian and world) against the share moves that followed. Titles of unverified press are fine here: the
+ * study measures whether a link is followed by larger moves, it never trades or treats a title as a fact.
+ */
+export async function headlineHistory({ root = ROOT, catalogue } = {}) {
+  const names = new Map((catalogue ?? await loadCatalogue()).map(s => [s.sourceId, s.name]));
+  const items = await recentItems({ root, hours: 24 * 3650, now: Date.now() });
+  const rows = items.map(o => ({ publishedAt: o.publishedAt.replace(/(\.\d+)?Z$/, '+00:00'), source: (names.get(o.sourceId) ?? o.sourceId).slice(0, 80),
+    title: o.title.slice(0, 240), symbols: classify(`${o.title}\n${o.content ?? ''}`).matched.filter(m => !m.includes(':')).map(s => s + '.NS') }))
+    .sort((a, b) => a.publishedAt.localeCompare(b.publishedAt) || a.title.localeCompare(b.title));
+  const dir = join(root, '.local', 'world');
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'headline-history.json'), JSON.stringify(rows) + '\n');
+  return rows.length;
+}
+
+/** The latest link study (chains.py study): how many driver links carry information, show no effect, or need more events. */
+export async function linkStudy(root = ROOT) {
+  const path = join(root, '.local', 'trading-desk', 'chains', 'link-study.json');
+  if (!existsSync(path)) return null;
+  const report = JSON.parse(await readFile(path, 'utf8'));
+  const verdicts = {};
+  for (const r of Object.values(report.drivers)) verdicts[r.verdict] = (verdicts[r.verdict] ?? 0) + 1;
+  const carrying = Object.entries(report.drivers).filter(([, r]) => r.verdict === 'link-carries-information').map(([d]) => d);
+  return { headlines: report.headlines, drivers: Object.keys(report.drivers).length, verdicts, carrying };
+}
+
+/** The digest's world section: coverage (with advice), the latest stories and the link study; never throws. */
 export async function worldSummary({ root = ROOT, now = Date.now() } = {}) {
   try {
     const cov = await coverage({ root, now });
     const path = join(root, '.local', 'world', 'latest.json');
     const latest = existsSync(path) ? JSON.parse(await readFile(path, 'utf8')) : null;
-    return { coverage: cov, stories: latest };
+    return { coverage: cov, stories: latest, links: await linkStudy(root) };
   } catch (error) { return { error: error.message }; }
 }
 
@@ -235,7 +264,8 @@ async function main() {
     const i = args.indexOf('--hours'), hours = i >= 0 ? Number(args[i + 1]) : 48;
     if (!Number.isInteger(hours) || hours < 1 || hours > 336) throw new Error('--hours must be 1–336');
     const r = await stories({ hours });
-    console.log(`${r.items} items → ${r.stories} stories (${r.crossBorder} across countries, ${r.reachingShares} reach the shares)`);
+    const history = await headlineHistory();
+    console.log(`${r.items} items → ${r.stories} stories (${r.crossBorder} across countries, ${r.reachingShares} reach the shares); ${history} headlines kept for the link study`);
     for (const s of r.top.slice(0, 10)) console.log('  ' + describe(s));
     console.log(JSON.stringify({ state: 'done', items: r.items, stories: r.stories, crossBorder: r.crossBorder, reachingShares: r.reachingShares }));
     return;

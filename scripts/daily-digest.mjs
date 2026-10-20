@@ -21,7 +21,9 @@ export function worldLines(world) {
     `- Feeds working: ${working} of ${enabled} enabled; countries covered: ${c.countriesCovered.join(', ') || 'none yet'}`,
     ...(s ? [`- Last ${s.windowHours} hours: ${s.items} items in ${s.stories} stories; ${s.crossBorder} across countries, ${s.reachingShares} reach the shares`,
       ...s.top.filter(x => x.directShares.length || x.drivers.length).slice(0, 8).map(x => `- ${describeStory(x)}`)]
-      : ['- No stories grouped yet (cycle step world-stories).']), ''];
+      : ['- No stories grouped yet (cycle step world-stories).']),
+    ...(world.links ? [`- Driver links tested on ${world.links.headlines} headlines: ${world.links.carrying.length} of ${world.links.drivers} carry information`
+      + (world.links.carrying.length ? ` (${world.links.carrying.join(', ')})` : '') + `; ${world.links.verdicts['insufficient-evidence'] ?? 0} need more events`] : []), ''];
 }
 
 export function render(d, world = null) {
