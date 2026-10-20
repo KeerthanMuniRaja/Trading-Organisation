@@ -25,6 +25,8 @@ jobs:
           python-version: '3.12'
       - name: Node dependencies (lockfile, no install scripts)
         run: npm ci --ignore-scripts
+      - name: Ruflo integration dependencies (its own lockfile, no install scripts; its pinned toml is tested)
+        run: npm ci --ignore-scripts --prefix integrations/ruflo
       - name: Research environment (pinned lock)
         run: |
           python -m venv .local/replay-venv
