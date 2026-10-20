@@ -78,6 +78,21 @@ export async function compute(tx: Sql, only: string | null, now: number) {
   });
 }
 
+/** RISK-01: standard risk figures from a daily equity series, so the owner can oversee risk at a glance: annualised
+ *  volatility, Sharpe ratio (risk-free rate 0, stated), 95% one-day historical value at risk (the loss exceeded on the
+ *  worst 5% of days) and the worst fall. Null until there are at least 20 daily returns: fewer say nothing. */
+export function riskStats(equity: bigint[]) {
+  const returns: number[] = [];
+  for (let i = 1; i < equity.length; i++) if (equity[i - 1]! > 0n) returns.push(Number(equity[i]! - equity[i - 1]!) / Number(equity[i - 1]!));
+  if (returns.length < 20) return { days: returns.length, volatilityPct: null, sharpe: null, var95Pct: null, maxDrawdownPct: curveStats(equity).maxDrawdownPct };
+  const mean = returns.reduce((s, r) => s + r, 0) / returns.length;
+  const sd = Math.sqrt(returns.reduce((s, r) => s + (r - mean) ** 2, 0) / (returns.length - 1));
+  const sorted = [...returns].sort((a, b) => a - b), worst5 = sorted[Math.floor(0.05 * (sorted.length - 1))]!;
+  return { days: returns.length, volatilityPct: Number((sd * Math.sqrt(252) * 100).toFixed(2)),
+    sharpe: sd > 0 ? Number((mean / sd * Math.sqrt(252)).toFixed(2)) : null, var95Pct: Number((Math.max(0, -worst5) * 100).toFixed(2)),
+    maxDrawdownPct: curveStats(equity).maxDrawdownPct };
+}
+
 /** The equal-weight basket's return between two India trading days, from verified daily marks: every share marked on
  *  both days counts equally, with splits, bonuses and dividends between them restated (total return). Null when fewer
  *  than half of the marked shares have both marks. */
@@ -113,7 +128,7 @@ export async function compare(tx: Sql, botId: string | null) {
     const basket = await basketReturn(tx, first.d, last.d);
     const excess = own === null || !basket ? null : Number((own - basket.returnPct).toFixed(2));
     out.push({ botId: id, from: first.d, to: last.d, days: list.length, returnPct: own, basketReturnPct: basket?.returnPct ?? null,
-      basketShares: basket?.shares ?? 0, excessPct: excess,
+      basketShares: basket?.shares ?? 0, excessPct: excess, risk: riskStats(list.map(r => BigInt(r.equity))),
       verdict: excess === null ? 'no-basket-marks' : excess > 0 ? 'ahead-of-basket' : excess < 0 ? 'behind-basket' : 'level-with-basket' });
   }
   return out;
@@ -207,7 +222,7 @@ export class PaperPerformance {
       return { bots: [...bots.entries()].map(([id, list]) => {
         const curve = list.map(r => ({ day: r.d as string, equityPaise: money(BigInt(r.budget) + BigInt(r.realised) + BigInt(r.unrealised)),
           totalPnlPaise: money(BigInt(r.realised) + BigInt(r.unrealised)), unpricedOrStale: r.unpriced_or_stale as number }));
-        return { botId: id, days: curve.length, ...curveStats(curve.map(c => BigInt(c.equityPaise))), curve };
+        return { botId: id, days: curve.length, ...curveStats(curve.map(c => BigInt(c.equityPaise))), risk: riskStats(curve.map(c => BigInt(c.equityPaise))), curve };
       }), note: 'Equity is budget plus paper P&L at each daily snapshot. Days with unpriced or stale marks are flagged.' };
     }, false);
   }

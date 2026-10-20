@@ -15,7 +15,7 @@ const NODE = process.execPath;
 const DESK_TESTS = ['test_desk', 'test_desk_v2', 'test_live', 'test_datasets', 'test_forecast', 'test_desk_learning', 'test_fitness', 'test_dashboard',
   'test_tournament', 'test_daily', 'test_portfolio_daily', 'test_ai_allocator', 'test_model_compare', 'test_risk_monitor', 'test_allocator_review',
   'test_curriculum', 'test_participants', 'test_chains', 'test_signals_bridge', 'test_regime_study', 'test_release_gate', 'test_data_steward',
-  'test_signal_scorer', 'test_rule_bot', 'test_model_allocator', 'test_rnd_scout', 'test_rnd_bot', 'test_rnd_ideas'];
+  'test_signal_scorer', 'test_rule_bot', 'test_model_allocator', 'test_rnd_scout', 'test_rnd_bot', 'test_rnd_ideas', 'test_reflections', 'test_debate'];
 
 const INTEGRATION_NODE_TESTS = ['integrations/kite/quotes.test.mjs', 'integrations/publisher-feeds/feed-client.test.mjs',
   'integrations/publisher-feeds/feed-parser.test.mjs', 'integrations/ruflo/coordinator.test.mjs', 'integrations/ruflo/dependency.test.mjs',
@@ -33,7 +33,7 @@ export function suites({ quick = false } = {}) {
     { id: 'script-tests', cmd: NODE, args: ['--test', 'scripts/backup.test.mjs', 'scripts/deliver-alerts.test.mjs', 'scripts/secret-scan.test.mjs',
       'scripts/organisation-cycle.test.mjs', 'scripts/verify-all.test.mjs', 'scripts/signal-loop.test.mjs', 'scripts/daily-digest.test.mjs', 'scripts/eod-loop.test.mjs',
       'scripts/rule-bot-loop.test.mjs', 'scripts/activate-rule-bot.test.mjs', 'scripts/readiness.test.mjs',
-      'scripts/live-fitness.test.mjs', 'scripts/model-allocator-loop.test.mjs', 'scripts/agenda.test.mjs', 'scripts/bot-credential.test.mjs', 'scripts/learning-cycle.test.mjs', 'scripts/prune-env-backups.test.mjs', 'scripts/autonomy.test.mjs', 'scripts/release-renewal.test.mjs'] },
+      'scripts/live-fitness.test.mjs', 'scripts/model-allocator-loop.test.mjs', 'scripts/agenda.test.mjs', 'scripts/bot-credential.test.mjs', 'scripts/learning-cycle.test.mjs', 'scripts/prune-env-backups.test.mjs', 'scripts/autonomy.test.mjs', 'scripts/release-renewal.test.mjs', 'scripts/supervisor.test.mjs', 'scripts/debate-setup.test.mjs'] },
     { id: 'trading-desk', cmd: REPLAY, args: ['-m', 'unittest', ...DESK_TESTS], cwd: join(ROOT, 'integrations', 'trading-desk'), requires: REPLAY },
     { id: 'quant-advisor', cmd: SKFOLIO, args: ['-m', 'unittest', 'test_quant_advisor'], cwd: join(ROOT, 'integrations', 'trading-desk'), requires: SKFOLIO },
     { id: 'claims', cmd: REPLAY, args: ['-m', 'unittest', 'test_claims', 'test_http_security', 'test_autolearn', 'test_refresh_headlines'],

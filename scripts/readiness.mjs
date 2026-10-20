@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const UNIVERSE = ['AXISBANK', 'HDFCBANK', 'ICICIBANK', 'INFY', 'ITC', 'NTPC', 'RELIANCE', 'SBIN'];
 const RULE_MODEL = 'rules:top3-momentum-6m';
-const LEARNING_STEPS = ['claims-and-fact-check', 'learning-workflows', 'chain-links', 'model-allocator-decide'];
+const LEARNING_STEPS = ['claims-and-fact-check', 'learning-workflows', 'chain-links', 'model-allocator-decide', 'debate'];
 const DAY = 86_400_000;
 
 /** The latest NSE session whose daily bar should be settled by `now` (15:30 IST close + 30 min); weekends skipped, and

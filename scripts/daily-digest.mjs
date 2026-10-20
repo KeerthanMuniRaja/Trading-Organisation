@@ -30,7 +30,9 @@ export function render(d) {
     '## Against holding all shares equally (same days)',
     ...((d.benchmark ?? []).length ? d.benchmark.map(b => b.excessPct === null ? `- ${b.botId}: no basket prices for ${b.from}..${b.to} yet`
       : `- ${b.botId} ${b.from}..${b.to}: ${b.returnPct > 0 ? '+' : ''}${b.returnPct}% vs basket ${b.basketReturnPct > 0 ? '+' : ''}${b.basketReturnPct}%`
-        + ` — ${b.excessPct > 0 ? 'ahead' : b.excessPct < 0 ? 'behind' : 'level'} by ${Math.abs(b.excessPct)} points`)
+        + ` — ${b.excessPct > 0 ? 'ahead' : b.excessPct < 0 ? 'behind' : 'level'} by ${Math.abs(b.excessPct)} points`
+        + (b.risk?.volatilityPct !== null && b.risk?.volatilityPct !== undefined
+          ? `; risk: volatility ${b.risk.volatilityPct}% a year, Sharpe ${b.risk.sharpe ?? 'n/a'}, 1-day 95% VaR ${b.risk.var95Pct}%, worst fall ${b.risk.maxDrawdownPct}%` : ''))
       : ['- No bot has two daily snapshots yet.']), '',
     '## Organisation',
     `- Suspended bots: ${(d.organisation?.suspendedBots ?? []).join(', ') || 'none'}`,
