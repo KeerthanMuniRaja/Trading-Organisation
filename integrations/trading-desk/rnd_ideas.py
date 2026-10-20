@@ -12,6 +12,14 @@ Families (all monthly, long-only, equal weight over the chosen shares, the desk'
                is below its 200-day average)
   low-vol      the `keep` calmest shares by `window`-day volatility; optional trend filter
   reversal     the `keep` weakest shares over the last `days` days; optional trend filter
+  trend-template  shares in a Minervini-style uptrend (close above the 50-day average, the 50-day above the 200-day, the
+               200-day rising over a month) within `nearHighPct`% of their 52-week high, the `keep` strongest over 6 months
+  pullback     shares above their 200-day average whose 14-day RSI is at most `rsiMax`, the `keep` most oversold
+               (a dip in an uptrend; adapted from the dividend-growth pullback screener)
+  Filters: `trend-200d` (cash when the universe is below its 200-day average) or `distribution-days` (cash when the
+  market regime's distribution-day risk is HIGH or SEVERE; market_regime.py).
+  The two newer families and the distribution-day filter adapt methods from claude-trading-skills (MIT).
+  A family that finds fewer qualifying shares than `keep` holds only those, the rest in cash.
 Proposals are bounded: at most MAX_NEW_PER_MONTH new ideas a calendar month, and duplicates (same canonical spec as
 anything in the catalogue or the ledger) are refused.
 """
@@ -35,9 +43,13 @@ GRAMMAR = {
     'momentum': {'months': (1, 12), 'keep': (1, 5)},
     'low-vol': {'window': (20, 120), 'keep': (1, 5)},
     'reversal': {'days': (5, 63), 'keep': (1, 5)},
+    'trend-template': {'nearHighPct': (5, 40), 'keep': (1, 5)},
+    'pullback': {'rsiMax': (20, 50), 'keep': (1, 5)},
 }
-FILTERS = (None, 'trend-200d')
-SPECIALTY = {'momentum': 'momentum-allocation', 'low-vol': 'risk-allocation', 'reversal': 'reversal-allocation'}
+FILTERS = (None, 'trend-200d', 'distribution-days')
+SPECIALTY = {'momentum': 'momentum-allocation', 'low-vol': 'risk-allocation', 'reversal': 'reversal-allocation',
+             'trend-template': 'trend-allocation', 'pullback': 'pullback-allocation'}
+SUFFIX = {'trend-200d': '-trend', 'distribution-days': '-dd'}
 
 
 def canonical(spec):
@@ -66,16 +78,62 @@ def canonical(spec):
 def name_of(spec):
     s = canonical(spec)
     body = {'momentum': f"momentum-{s.get('months')}m-top{s.get('keep')}", 'low-vol': f"lowvol-{s.get('window')}d-top{s.get('keep')}",
-            'reversal': f"reversal-{s.get('days')}d-bottom{s.get('keep')}"}[s['family']]
-    return 'idea-' + body + ('-trend' if s.get('filter') else '')
+            'reversal': f"reversal-{s.get('days')}d-bottom{s.get('keep')}",
+            'trend-template': f"trendtemplate-{s.get('nearHighPct')}pct-top{s.get('keep')}",
+            'pullback': f"pullback-rsi{s.get('rsiMax')}-top{s.get('keep')}"}[s['family']]
+    return 'idea-' + body + SUFFIX.get(s.get('filter'), '')
 
 
 def describe(spec):
     s = canonical(spec)
     text = {'momentum': f"The {s.get('keep')} strongest shares over {s.get('months')} months",
             'low-vol': f"The {s.get('keep')} calmest shares by {s.get('window')}-day volatility",
-            'reversal': f"The {s.get('keep')} weakest shares over the last {s.get('days')} days"}[s['family']]
-    return text + ', equal weights, monthly' + (', in cash while the universe is below its 200-day average' if s.get('filter') else '')
+            'reversal': f"The {s.get('keep')} weakest shares over the last {s.get('days')} days",
+            'trend-template': f"Up to {s.get('keep')} shares in a Minervini-style uptrend within {s.get('nearHighPct')}% of their 52-week high, strongest first",
+            'pullback': f"Up to {s.get('keep')} shares above their 200-day average with a 14-day RSI of at most {s.get('rsiMax')}, most oversold first"}[s['family']]
+    tail = {'trend-200d': ', in cash while the universe is below its 200-day average',
+            'distribution-days': ', in cash while distribution-day risk is high'}.get(s.get('filter'), '')
+    return text + ', equal weights, monthly' + tail
+
+
+def _sma(table, symbol, dates, i, window):
+    c = pd.closes(table, symbol, dates, i, window)
+    return sum(c) / window if len(c) == window else None
+
+
+def _trend_template(table, dates, i, near_high_pct, keep):
+    if i < 273:  # the 200-day average a month ago, and a 52-week high
+        return {}
+    chosen = []
+    for s in table:
+        close = table[s][dates[i]]['closePaise']
+        m50, m200, m200_before = _sma(table, s, dates, i, 50), _sma(table, s, dates, i, 200), _sma(table, s, dates, i - 21, 200)
+        high = max(table[s][d]['highPaise'] for d in dates[i - 251:i + 1])
+        if close > m50 > m200 > m200_before and close >= high * (1 - near_high_pct / 100):
+            chosen.append(s)
+    chosen.sort(key=lambda s: (-table[s][dates[i]]['closePaise'] / table[s][dates[i - 126]]['closePaise'], s))
+    return {s: 1 / keep for s in chosen[:keep]}
+
+
+def rsi(table, symbol, dates, i, window=14):
+    """Wilder's RSI over the last `window` changes (simple averages), or None without enough history."""
+    c = pd.closes(table, symbol, dates, i, window + 1)
+    if len(c) <= window:
+        return None
+    gains = sum(max(0, c[k] - c[k - 1]) for k in range(1, len(c)))
+    losses = sum(max(0, c[k - 1] - c[k]) for k in range(1, len(c)))
+    return 100.0 if losses == 0 else 100 - 100 / (1 + gains / losses)
+
+
+def _pullback(table, dates, i, rsi_max, keep):
+    if i < 200:
+        return {}
+    scored = {}
+    for s in table:
+        r = rsi(table, s, dates, i)
+        if r is not None and r <= rsi_max and table[s][dates[i]]['closePaise'] > _sma(table, s, dates, i, 200):
+            scored[s] = r
+    return {s: 1 / keep for s in sorted(scored, key=lambda s: (scored[s], s))[:keep]}
 
 
 def _calmest(table, dates, i, window, keep):
@@ -102,10 +160,17 @@ def rule_of(spec):
         base = lambda t, d, i: pd.top_momentum(t, d, i, months=s['months'], keep=s['keep'])  # noqa: E731
     elif s['family'] == 'low-vol':
         base = lambda t, d, i: _calmest(t, d, i, s['window'], s['keep'])  # noqa: E731
-    else:
+    elif s['family'] == 'reversal':
         base = lambda t, d, i: _weakest(t, d, i, s['days'], s['keep'])  # noqa: E731
+    elif s['family'] == 'trend-template':
+        base = lambda t, d, i: _trend_template(t, d, i, s['nearHighPct'], s['keep'])  # noqa: E731
+    else:
+        base = lambda t, d, i: _pullback(t, d, i, s['rsiMax'], s['keep'])  # noqa: E731
     if not s.get('filter'):
         return base
+    if s['filter'] == 'distribution-days':
+        import market_regime
+        return lambda t, d, i: base(t, d, i) if market_regime.calm(t, d, i) else {}
     return lambda t, d, i: base(t, d, i) if pd.trend_filtered(t, d, i) else {}
 
 
@@ -160,7 +225,7 @@ SCHEMA = {'type': 'object', 'additionalProperties': False, 'required': ['ideas']
     'ideas': {'type': 'array', 'maxItems': MAX_NEW_PER_MONTH, 'items': {'anyOf': [
         {'type': 'object', 'additionalProperties': False, 'required': ['family', *fields, 'filter', 'why'], 'properties': {
             'family': {'const': family}, **{f: {'type': 'integer', 'minimum': lo, 'maximum': hi} for f, (lo, hi) in fields.items()},
-            'filter': {'enum': [None, 'trend-200d']}, 'why': {'type': 'string', 'maxLength': 300}}}
+            'filter': {'enum': list(FILTERS)}, 'why': {'type': 'string', 'maxLength': 300}}}
         for family, fields in GRAMMAR.items()]}}}}
 
 
@@ -193,7 +258,7 @@ def explore(results, limit=MAX_NEW_PER_MONTH):
             for value in (s[name] - step, s[name] + step):
                 if low <= value <= high:
                     variants.append({**s, name: value})
-        variants.append({k: v for k, v in s.items() if k != 'filter'} if s.get('filter') else {**s, 'filter': 'trend-200d'})
+        variants += [{**{k: v for k, v in s.items() if k != 'filter'}, **({'filter': f} if f else {})} for f in FILTERS if f != s.get('filter')]
     unique, seen = [], set()
     for v in variants:
         if spec_hash(v) not in seen:

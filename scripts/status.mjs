@@ -7,17 +7,31 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { modelHealthUrl, nextRuns } from './supervisor.mjs';
 import { worldSummary } from './world-news.mjs';
+import { marketRegime } from './daily-digest.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const rupees = p => p === null || p === undefined ? 'n/a' : `Rs ${(Number(p) / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const RULES = ['suspendOnRecommendation', 'acknowledgeWatch', 'raiseBudget', 'approveBirths', 'activateReleases', 'qualifyBots', 'startingBudgetPaise',
   'trialNewReleases', 'promoteCanaries', 'rollbackFailingReleases'];
 
+/** What the desk's own files say, readable with the backend down: the market regime and the world news. */
+function localLines(f) {
+  const out = [];
+  if (f.regime) out.push(`Regime    ${f.regime.risk} on ${f.regime.date} (${f.regime.distributionDays} distribution days; ${f.regime.breadth200d ?? '?'}/${f.regime.shares} above 200-day); advisory ceiling ${f.regime.exposureCeilingPct}%`);
+  if (f.world && !f.world.error) {
+    const w = f.world, s = w.stories;
+    out.push(`World     feeds working in ${w.coverage.countriesCovered.join(', ') || 'no country yet'}`
+      + (s ? `; last ${s.windowHours}h: ${s.stories} stories, ${s.crossBorder} across countries, ${s.reachingShares} reach the shares` : '')
+      + (w.links ? `; links carrying information: ${w.links.carrying.join(', ') || 'none yet'} of ${w.links.drivers}` : ''));
+  }
+  return out;
+}
+
 /** Pure: facts in, the overview lines out. */
 export function render(f) {
   const out = [`Nexus organisation, ${f.at.slice(0, 16).replace('T', ' ')} UTC (paper only)`, ''];
   out.push(`Backend   ${f.backend ? 'up' : 'DOWN (npm start)'}${f.digest?.halted ? '; NEW RISK HALTED' : ''}    Model ${f.model === null ? 'not configured' : f.model ? 'up' : 'down'}`);
-  if (!f.backend) return [...out, '', 'Nothing more can be read while the backend is down.'];
+  if (!f.backend) return [...out, '', 'Nothing more can be read from the backend while it is down.', ...localLines(f)];
   const p = f.autonomy?.policy;
   const on = p ? RULES.filter(r => p.rules[r] && p.rules[r] !== null) : [];
   out.push(`Autonomy  ${p ? `policy ${p.sequence} (set ${p.setAt.slice(0, 10)} by ${p.setBy}): ${on.join(', ') || 'nothing automatic'}` : 'no standing approvals: every decision waits for you (npm run autonomy)'}`);
@@ -38,12 +52,7 @@ export function render(f) {
   out.push(`Cycle     ${f.lastCycle ? `${f.lastCycle.day}: ${f.lastCycle.failed.length ? 'failed ' + f.lastCycle.failed.join(', ') : 'no failed steps'}` : 'none yet'}`);
   out.push(`Next      ${f.next.map(r => `${r.id} ${new Date(r.at + 330 * 60_000).toISOString().slice(5, 16).replace('T', ' ')} IST`).join('; ')}`);
   out.push(`R&D       ${f.ideas} invented idea(s) in the ledger${f.scout ? `; last screen ${f.scout.through}: ${f.scout.passing} passing of ${f.scout.ideasTried}` : ''}`);
-  if (f.world && !f.world.error) {
-    const w = f.world, s = w.stories;
-    out.push(`World     feeds working in ${w.coverage.countriesCovered.join(', ') || 'no country yet'}`
-      + (s ? `; last ${s.windowHours}h: ${s.stories} stories, ${s.crossBorder} across countries, ${s.reachingShares} reach the shares` : '')
-      + (w.links ? `; links carrying information: ${w.links.carrying.join(', ') || 'none yet'} of ${w.links.drivers}` : ''));
-  }
+  out.push(...localLines(f));
   if (f.tradingagents) out.push(`TradingAgents  last decided ${f.tradingagents.day}: ${Object.entries(f.tradingagents.ratings).map(([s, r]) => `${s} ${r ?? '?'}`).join(', ')}`);
   if (f.digest?.needsOwner?.length) out.push('', 'Needs you', ...f.digest.needsOwner.map(n => '  - ' + n));
   return out;
@@ -89,6 +98,7 @@ export async function gather(env = process.env, { fetchImpl = fetch, root = ROOT
   const ta = decided.length ? await json(join(decisions, decided.at(-1))) : null;
   facts.tradingagents = ta ? { day: ta.day, ratings: Object.fromEntries(Object.entries(ta.decisions).map(([s, d]) => [s, d.rating])) } : null;
   facts.world = await worldSummary({ root, now });
+  facts.regime = await marketRegime(root);
   if (facts.world?.coverage?.advice?.length && facts.digest) facts.digest.needsOwner = [...(facts.digest.needsOwner ?? []), ...facts.world.coverage.advice];
   return facts;
 }

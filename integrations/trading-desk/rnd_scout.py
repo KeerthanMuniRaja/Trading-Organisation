@@ -81,12 +81,24 @@ def catalogue():
                                   low_volatility, None)
     out['reversal-1m-bottom3'] = ('The 3 weakest shares over the last month, equal weights, monthly', 'reversal-allocation', 'reversal-1m-bottom3',
                                   reversal, None)
+    # adopted 20 Oct 2026 from claude-trading-skills (MIT): trend template, pullback and the distribution-day regime
+    import market_regime
+    import rnd_ideas
+    for name, spec in ADOPTED_SPECS.items():
+        out[name] = (rnd_ideas.describe(spec), rnd_ideas.SPECIALTY[spec['family']], name, rnd_ideas.rule_of(spec), None)
+    out['equal-weight-distribution'] = ('Equal weights while distribution-day risk is normal or cautious, else cash', 'trend-allocation',
+                                        'equal-weight-distribution-days',
+                                        lambda t, d, i: pd.equal_weight(t, d, i) if market_regime.calm(t, d, i) else {}, None)
     return out
 
 
+ADOPTED_SPECS = {'trend-template-25pct-top3': {'family': 'trend-template', 'nearHighPct': 25, 'keep': 3},
+                 'pullback-rsi40-top3': {'family': 'pullback', 'rsiMax': 40, 'keep': 3},
+                 'momentum-6m-top3-distribution': {'family': 'momentum', 'months': 6, 'keep': 3, 'filter': 'distribution-days'}}
 # The catalogue ideas the idea grammar can express, so an invented duplicate of one is refused (RND-03)
 CATALOGUE_SPECS = {**{f'momentum-{m}m-top{k}': {'family': 'momentum', 'months': m, 'keep': k} for m in (3, 6, 12) for k in (2, 3, 4)},
-                   'low-volatility-top3': {'family': 'low-vol', 'window': 60, 'keep': 3}, 'reversal-1m-bottom3': {'family': 'reversal', 'days': 21, 'keep': 3}}
+                   'low-volatility-top3': {'family': 'low-vol', 'window': 60, 'keep': 3}, 'reversal-1m-bottom3': {'family': 'reversal', 'days': 21, 'keep': 3},
+                   **ADOPTED_SPECS}
 
 
 def entries(ledger_path=None):
@@ -102,8 +114,12 @@ def entries(ledger_path=None):
 
 
 def fingerprint(ledger_path=None):
+    import market_regime
     import rnd_ideas
-    parts = [VERSION, str(ONE_WAY_COST_PCT), str(ALPHA), str(MIN_MONTHS), str(START), inspect.getsource(catalogue)]
+    parts = [VERSION, str(ONE_WAY_COST_PCT), str(ALPHA), str(MIN_MONTHS), str(START), inspect.getsource(catalogue), json.dumps(ADOPTED_SPECS, sort_keys=True)]
+    # the families' builders and the regime are part of what the adopted ideas do
+    parts += [inspect.getsource(f) for f in (rnd_ideas._trend_template, rnd_ideas._pullback, rnd_ideas.rsi, market_regime.distribution_days,
+                                             market_regime.basket, market_regime.calm)]
     parts += [inspect.getsource(f) for f in (pd.top_momentum, pd.inverse_volatility, pd.trend_filtered, low_volatility, reversal)]
     # the invented ideas are part of what was tried: the grammar's code and every idea in the ledger
     parts += [inspect.getsource(rnd_ideas.rule_of), *sorted(i['hash'] for i in rnd_ideas.ledger(ledger_path or rnd_ideas.LEDGER))]

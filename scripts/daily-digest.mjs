@@ -1,7 +1,7 @@
 // Daily owner digest (OBS-01): fetch /v1/owner/digest with the evaluator credential, write a readable Markdown note to
 // .local/digests/<day>.md, and, when ALERT_WEBHOOK_URL is set, post a short summary there too.
 //   node --env-file=.env scripts/daily-digest.mjs
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { settings } from './deliver-alerts.mjs';
@@ -26,7 +26,23 @@ export function worldLines(world) {
       + (world.links.carrying.length ? ` (${world.links.carrying.join(', ')})` : '') + `; ${world.links.verdicts['insufficient-evidence'] ?? 0} need more events`] : []), ''];
 }
 
-export function render(d, world = null) {
+/** REGIME-01: the latest market regime and its study, from the desk's files; null when the cycle has not made them. */
+export async function marketRegime(root = join(dirname(fileURLToPath(import.meta.url)), '..')) {
+  const read = async name => { try { return JSON.parse(await readFile(join(root, '.local', 'trading-desk', 'regime', name), 'utf8')); } catch { return null; } };
+  const now = await read('latest.json');
+  return now ? { ...now, study: await read('study.json') } : null;
+}
+
+export function regimeLine(r) {
+  if (!r) return null;
+  const s = r.study, severe = s?.levels?.SEVERE, normal = s?.levels?.NORMAL;
+  return `${r.risk} on ${r.date}: ${r.distributionDays} distribution day(s) in 25 sessions; ${r.breadth50d ?? '?'}/${r.shares} shares above their 50-day `
+    + `and ${r.breadth200d ?? '?'}/${r.shares} above their 200-day average; basket ${r.aboveTrend200d === false ? 'below' : r.aboveTrend200d ? 'above' : '?'} its 200-day trend. `
+    + `Advisory exposure ceiling ${r.exposureCeilingPct}% (not applied to any limit)`
+    + (s ? `. On our history: ${s.verdict}; falls over 5% within ${s.horizonSessions} sessions followed ${Math.round(100 * (severe?.fallOver5PctShare ?? 0))}% of SEVERE days and ${Math.round(100 * (normal?.fallOver5PctShare ?? 0))}% of NORMAL days` : '');
+}
+
+export function render(d, world = null, regime = null) {
   const t = d.trading, k = d.knowledge, m = d.money;
   const needs = [...d.needsOwner, ...(world?.coverage?.advice ?? [])];
   const lines = [
@@ -38,6 +54,7 @@ export function render(d, world = null) {
     `- Total P&L ${rupees(m.totalPaise)} (realised ${rupees(m.realisedPaise)}, open ${rupees(m.unrealisedPaise)}); realised in window ${rupees(m.realisedInWindowPaise)}`,
     ...m.byBot.map(b => `- ${b.botId}: ${rupees(b.totalPaise)}${b.returnOnBudgetPct !== null ? ` (${b.returnOnBudgetPct}% of budget)` : ''}`),
     ...(m.stalePositions ? [`- ${m.stalePositions} open position(s) without a recent verified price: their value is unreliable`] : []), '',
+    ...(regime ? ['## Market regime (advice)', `- ${regimeLine(regime)}`, ''] : []),
     '## Trading',
     `- ${t.proposed} proposed, ${t.accepted} accepted, ${t.rejected} rejected, ${t.executed} executed, ${t.challenges} challenges`,
     `- ${t.scored} outcomes scored${t.accuracy !== null ? `, ${Math.round(t.accuracy * 100)}% right` : ''}`,
@@ -71,13 +88,13 @@ export function render(d, world = null) {
 }
 
 export async function run(env = process.env, { fetchImpl = fetch, outDir = join(dirname(fileURLToPath(import.meta.url)), '..', '.local', 'digests'),
-  world = worldSummary } = {}) {
+  world = worldSummary, regime = marketRegime } = {}) {
   const s = settings(env);
   const response = await fetchImpl(s.base + '/v1/owner/digest', { method: 'POST', redirect: 'error', body: '{}',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + s.token } });
   if (!response.ok) throw new Error(`digest refused (HTTP ${response.status})`);
   const digest = await response.json();
-  const text = render(digest, world ? await world() : null);
+  const text = render(digest, world ? await world() : null, regime ? await regime() : null);
   await mkdir(outDir, { recursive: true });
   const path = join(outDir, digest.generatedAt.slice(0, 10) + '.md');
   await writeFile(path, text);

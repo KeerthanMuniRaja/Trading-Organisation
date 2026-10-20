@@ -50,6 +50,16 @@ test('the world section: coverage, stories that reach the shares, and a broken f
   assert.doesNotMatch(render(digest), /World news/); // no world data, no section
 });
 
+test('the market regime is shown as advice, with what our history says about it', () => {
+  const regime = { date: '2026-10-19', risk: 'SEVERE', distributionDays: 9, breadth50d: 1, breadth200d: 1, shares: 8, aboveTrend200d: false, exposureCeilingPct: 0,
+    study: { verdict: 'no-clear-warning', horizonSessions: 20, levels: { SEVERE: { fallOver5PctShare: 0.173 }, NORMAL: { fallOver5PctShare: 0.071 } } } };
+  const text = render(digest, null, regime);
+  assert.match(text, /## Market regime \(advice\)\n- SEVERE on 2026-10-19: 9 distribution day\(s\) in 25 sessions; 1\/8 shares above their 50-day and 1\/8 above their 200-day average; basket below its 200-day trend/);
+  assert.match(text, /Advisory exposure ceiling 0% \(not applied to any limit\)\. On our history: no-clear-warning; falls over 5% within 20 sessions followed 17% of SEVERE days and 7% of NORMAL days/);
+  assert.ok(text.indexOf('## Market regime') < text.indexOf('## Trading'));
+  assert.doesNotMatch(render(digest), /Market regime/);
+});
+
 test('the run writes the note locally and sends only a short summary to an optional webhook', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'digest-'));
   try {
@@ -59,7 +69,7 @@ test('the run writes the note locally and sends only a short summary to an optio
       return url.endsWith('/v1/owner/digest') ? { ok: true, json: async () => digest } : { ok: true };
     };
     const env = { PRINCIPALS_JSON: JSON.stringify([{ id: 'e', role: 'evaluator', token: 'eval-token' }]), ALERT_WEBHOOK_URL: 'https://notify.example/t' };
-    const result = await run(env, { fetchImpl, outDir: dir, world: null });
+    const result = await run(env, { fetchImpl, outDir: dir, world: null, regime: null });
     assert.equal(result.webhook, true);
     assert.match(await readFile(join(dir, '2026-10-14.md'), 'utf8'), /Needs you/);
     assert.equal(sent[1].auth, undefined); // the backend credential never goes to the webhook
