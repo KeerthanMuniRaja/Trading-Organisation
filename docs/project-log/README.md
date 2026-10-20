@@ -11,5 +11,6 @@ A dated record of what happened each day, including the days with no code change
 | [17 Oct](2026-10-17.md) | Market closed (Saturday) |
 | [18 Oct](2026-10-18.md) | Market closed (Sunday); plan for the week |
 | [19 Oct](2026-10-19.md) | No cycle ran; the buys are still valid until 23 October |
+| [20 Oct](2026-10-20.md) | Rule bot release v2; the three buys filled at Monday's open; standing approvals built |
 
 For the current status, see the [audit of 14 October](../audit-2026-10-14.md) and the [daily runbook](../live-testing.md).
