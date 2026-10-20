@@ -272,10 +272,40 @@ def eligible_lessons(state, config):
     return out
 
 
+def backend_claim(c, obs):
+    """The claim as the backend's claim record takes it (POST /v1/evidence/claims), or None when the backend could not
+    accept it: its quote must be in the article body (a quote from the headline stays local)."""
+    if c['quote'] not in claims.normalise(obs['content']):
+        return None
+    body = {'evidenceId': c['evidenceId'], 'statement': c['statement'], 'quote': c['quote'],
+            'symbols': sorted({s.removesuffix('.NS') for s in c['symbols']}), 'eventType': c['eventType'], 'direction': c['direction'],
+            'eventDate': c['eventDate'], 'certainty': c['certainty']}
+    if claims.fact_key(c):
+        body.update(metric=c['metric'], period=c['period'])
+        if c.get('reportedChangePct') is not None:
+            body['reportedChangePct'] = c['reportedChangePct']
+    return body
+
+
 def analyst_lessons(api, state, config):
-    """Researcher: propose each eligible claim to each recipient bot, once."""
-    proposals = read(state, 'proposals.json', {})
-    made = 0
+    """Researcher: record each eligible claim in the backend's claim registry, and propose it to each recipient bot, once."""
+    proposals, posted = read(state, 'proposals.json', {}), read(state, 'backend-claims.json', {})
+    made = recorded = refused = 0
+    for c, obs, _ in eligible_lessons(state, config):
+        if c['id'] in posted:
+            continue
+        body = backend_claim(c, obs)
+        if body is None:
+            posted[c['id']] = {'skipped': 'quote-not-in-article-body'}
+        else:
+            try:
+                result = api('POST', '/v1/evidence/claims', body)
+                posted[c['id']] = {'backendId': result['id'], 'evidenceId': c['evidenceId']}
+                recorded += 1
+            except RuntimeError as error:  # recorded and counted, never retried blindly or hidden
+                posted[c['id']] = {'refused': str(error)[:200]}
+                refused += 1
+        write(state, 'backend-claims.json', posted)
     for c, obs, basis in eligible_lessons(state, config):
         for bot in config['recipientBotIds']:
             key = f"{c['id']}:{bot}"
@@ -287,7 +317,7 @@ def analyst_lessons(api, state, config):
                               'content': content, 'basis': basis}
             write(state, 'proposals.json', proposals)
             made += 1
-    return {'proposed': made}
+    return {'proposed': made, 'claimsRecorded': recorded, 'claimsRefused': refused}
 
 
 def factcheck_lessons(api, state, config, now):
@@ -297,7 +327,19 @@ def factcheck_lessons(api, state, config, now):
     reviews, revocations = read(state, 'lesson-reviews.json', {}), read(state, 'revocations.json', {})
     expected = {f"{c['id']}:{bot}": (lesson_text(c, obs, basis), c['evidenceId'])
                 for c, obs, basis in eligible_lessons(state, config) for bot in config['recipientBotIds']}
-    counts = {'verified': 0, 'skipped': 0, 'revoked': 0}
+    counts = {'verified': 0, 'skipped': 0, 'revoked': 0, 'claimsAccepted': 0}
+    # the backend's claim registry: each recorded claim the rules still find eligible is accepted, once, by this
+    # independent reviewer; revoking its evidence later withdraws it there automatically
+    eligible = {c['id'] for c, _, _ in eligible_lessons(state, config)}
+    claim_reviews = read(state, 'backend-claim-reviews.json', {})
+    for claim_id, posted in read(state, 'backend-claims.json', {}).items():
+        if 'backendId' not in posted or claim_id in claim_reviews or claim_id not in eligible:
+            continue
+        api('POST', '/v1/evidence/claims/reviews', {'claimId': posted['backendId'], 'decision': 'accepted',
+            'reason': 'Automatic fact-check: quote re-checked against its own copy of the article; corroborated or from a primary source'})
+        claim_reviews[claim_id] = {'decision': 'accepted', 'at': now.isoformat()}
+        write(state, 'backend-claim-reviews.json', claim_reviews)
+        counts['claimsAccepted'] += 1
 
     def revoke(evidence_id, reason):
         if evidence_id in revocations:

@@ -50,7 +50,7 @@ class FakeBackend:
 
     def __init__(self, ids):
         self.evidence = {i: {**observation(i), 'author': 'collector'} for i in ids}
-        self.lessons, self.done, self.mutations = {}, {}, []
+        self.lessons, self.claims, self.done, self.mutations = {}, {}, {}, []
 
     def add(self, evidence):
         self.evidence[evidence] = {**observation(evidence), 'author': 'collector'}
@@ -98,6 +98,22 @@ class FakeBackend:
                 raise RuntimeError('Stored lesson does not match')
             lesson['status'] = 'verified'
             return {'id': lesson['id'], 'status': 'verified'}
+        if route == '/v1/evidence/claims':
+            # the real route's checks: researcher, live evidence, the quote in the stored article body
+            e = self.evidence[body['evidenceId']]
+            assert role == 'researcher' and e['status'] in ('unverified', 'verified')
+            if body['quote'] not in ' '.join(e['content'].split()):
+                raise RuntimeError('/v1/evidence/claims refused (HTTP 400)')
+            assert all('.' not in s for s in body['symbols']) and (('metric' in body) == ('period' in body))
+            claim_id = f'claim-{len(self.claims) + 1}'
+            self.claims[claim_id] = {**body, 'author': role, 'review': None}
+            return {'id': claim_id, 'status': 'pending', 'duplicate': False}
+        if route == '/v1/evidence/claims/reviews':
+            c = self.claims[body['claimId']]
+            assert role == 'evaluator' and c['author'] != role and c['review'] is None
+            assert body['decision'] != 'accepted' or self.evidence[c['evidenceId']]['status'] == 'verified'
+            c['review'] = body['decision']
+            return {'id': body['claimId'], 'decision': body['decision']}
         if route == '/v1/evidence/revocations':
             assert role == 'evaluator' and body['kind'] == 'evidence'
             self.evidence[body['targetId']]['status'] = 'revoked'
@@ -151,6 +167,10 @@ class AutoLearnTests(unittest.TestCase):
         self.assertEqual(first['evidence'], {'corroborated': 2, 'no-checkable-claims': 1})
         self.assertEqual([backend.evidence[e]['status'] for e in ('e1', 'e2', 'e3')], ['verified', 'verified', 'rejected'])
         self.assertEqual((first['lessons']['proposed'], first['review']['verified'], first['review']['revoked']), (4, 4, 0))
+        # the backend's claim registry holds both verified claims, with their fact keys, accepted by the independent fact-checker
+        self.assertEqual((first['lessons']['claimsRecorded'], first['review']['claimsAccepted']), (2, 2))
+        self.assertEqual(sorted((c['symbols'], c['metric'], c['period'], c['reportedChangePct'], c['review']) for c in backend.claims.values()),
+                         [(['RELIANCE'], 'net profit', 'Q2FY27', 12, 'accepted')] * 2)
         knowledge = backend.knowledge()
         self.assertEqual({k['bot_id'] for k in knowledge}, {'news-desk', 'research-lead'})
         headlines = autolearn.read(self.state, 'verified-headlines.json', None)

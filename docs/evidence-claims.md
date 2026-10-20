@@ -2,7 +2,12 @@
 
 Claims are small, checkable statements drawn from one evidence snapshot, such as "Reliance quarterly profit rose 12%", each with an exact supporting quote. They turn article-sized evidence into units that bots can use and that can be corroborated across sources. This is the backend half of DATA-02 in the [remaining-work assessment](remaining-work-assessment.md). The Python pipeline in [integrations/claims](../integrations/claims/README.md) drafts and pre-checks claims.
 
-**Automated pipeline (updated 20 October 2026).** `autolearn.py` does not yet post its claims to these routes; it keeps them in local files. Since 20 October it applies **the same fact-key rule** as the backend, ported to Python in `integrations/claims/claims.py`:
+**Automated pipeline (updated 20 October 2026).** `autolearn.py` now records every claim it verifies in these routes:
+- **Recording:** the claim analyst proposes the claim with its fact key.
+- **Review:** the fact-checker, a different identity, accepts it here.
+- **Headline quotes:** a claim whose quote comes from the headline rather than the article body stays local, because this route checks the body only.
+
+The checker also applies **the same fact-key rule** as the backend, ported to Python in `integrations/claims/claims.py`:
 - the same canonical keys;
 - the figure required in the quote;
 - one cluster per fact;

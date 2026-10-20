@@ -75,6 +75,7 @@ The backend independently enforces:
 - **Verifies a lesson** only if its text is exactly the template the rules produce. The template is dated and attributed, quotes its source, and states that it is not an instruction or a trading signal.
 - **Reads back** stored lessons, and revokes the evidence if the stored text differs.
 - **Revokes contradicted evidence:** when a later report gives a disagreeing figure for a verified fact, it revokes the evidence, and its lessons disappear from what bots see.
+- **Records claims in the backend:** every verified claim is entered in the backend's claim registry (`/v1/evidence/claims`, with its fact key) by the analyst and accepted there by the fact-checker. Bots and the owner can query and corroborate it there, and revoking the evidence withdraws it automatically. A claim quoted from the headline stays local, since the backend checks the article body.
 - **Survives a model switch:** when the model or the claim contract changes, the old `extracted.json` is kept as `extracted-archive-<n>.json` and still read, so earlier claims stay checkable and contradictable. No new run name or owner step is needed.
 
 `looseCorroborationVerifies` was retired with the old rule (same share and event type within 72 hours), which the October review found unsound. An existing configuration that still has it loads, and the setting changes nothing.
