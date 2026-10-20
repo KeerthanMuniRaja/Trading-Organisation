@@ -45,6 +45,7 @@ The day's work runs **after the close**: decisions use settled daily closes, and
 - **Cycle:** 16:05 IST, with the local model when one is configured and answering.
 - **Backup:** Fridays at 16:45 IST, but only when the backend isn't running. It never stops a backend it didn't start.
 - **Backend:** if it's down for a job, the supervisor starts it directly, with only the `.env` settings, and stops it afterwards. A backend you started is left alone.
+- **Model:** with `MODEL_AUTOSTART=qwen3.5-4b-q4km` in `.env`, the supervisor starts the pinned local model for the cycle if it isn't running, and stops it afterwards. The cycle then runs with the model, so the news fact-checker, learning, R&D invention, the debate desk and the TradingAgents member all work. A model you started yourself is used and left running. Whether the model is up is checked on llama.cpp's public `/health` endpoint.
 - **Log:** every step goes to `.local/supervisor/<day>.jsonl`.
 
 Useful options:

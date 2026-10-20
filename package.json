@@ -37,6 +37,7 @@
     "env:prune": "node scripts/prune-env-backups.mjs",
     "autonomy": "node --env-file=.env scripts/autonomy.mjs",
     "supervisor": "node --env-file-if-exists=.env scripts/supervisor.mjs",
+    "members": "node --env-file=.env scripts/member-setup.mjs",
     "test:cycle": "node --test scripts/organisation-cycle.test.mjs",
     "test:secrets": "node --test scripts/secret-scan.test.mjs",
     "build": "tsc -p backend/tsconfig.json",

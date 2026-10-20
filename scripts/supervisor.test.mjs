@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { childEnv, commands, indiaDay, nextRuns } from './supervisor.mjs';
+import { childEnv, commands, indiaDay, modelHealthUrl, nextRuns } from './supervisor.mjs';
 
 const ist = s => Date.parse(s + '+05:30');
 
@@ -27,6 +27,19 @@ test('each job starts the backend only when it is down, uses the model only when
   assert.deepEqual([start.cmd, start.args[0], start.background], [process.execPath, '--env-file=.env', true]); // its real pid, no shell
   assert.deepEqual(ids('readiness', { backendUp: false, modelUp: false }), ['start-backend', 'readiness', 'stop-backend']);
   assert.throws(() => commands('trade', { backendUp: true }), /Unknown job/);
+});
+
+test('the model is started for a cycle only when the owner named one, and stopped afterwards; health is the public endpoint', () => {
+  const ids = s => commands('cycle', s).map(c => c.id);
+  assert.deepEqual(ids({ backendUp: true, modelUp: false, modelAuto: 'qwen3.5-4b' }), ['start-model', 'cycle', 'stop-model']);
+  assert.deepEqual(commands('cycle', { backendUp: true, modelUp: false, modelAuto: 'qwen3.5-4b' })[1].args, ['run', 'cycle', '--', '--with-model']);
+  assert.deepEqual(commands('cycle', { backendUp: true, modelUp: false, modelAuto: 'qwen3.5-4b' })[0].args.slice(-2), ['serve', 'qwen3.5-4b']);
+  assert.deepEqual(ids({ backendUp: true, modelUp: true, modelAuto: 'qwen3.5-4b' }), ['cycle']); // already running: used, not restarted or stopped
+  assert.deepEqual(ids({ backendUp: true, modelUp: false }), ['cycle']); // not named: no model, no model steps
+  assert.deepEqual(ids({ backendUp: false, modelUp: false, modelAuto: 'm' }), ['start-backend', 'start-model', 'cycle', 'stop-model', 'stop-backend']);
+  assert.equal(modelHealthUrl('http://127.0.0.1:8080/v1'), 'http://127.0.0.1:8080/health');
+  assert.equal(modelHealthUrl('http://127.0.0.1:8080/v1/'), 'http://127.0.0.1:8080/health');
+  assert.equal(modelHealthUrl(undefined), null);
 });
 
 test('children never inherit settings that would override .env', () => {

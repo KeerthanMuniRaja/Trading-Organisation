@@ -42,14 +42,22 @@ export function nextRuns(now, holidays = new Set(), jobs = JOBS) {
   return out.sort((a, b) => a.at - b.at);
 }
 
-/** The commands for a job, given whether the backend answered and whether the model did. Pure, so it is tested. */
-export function commands(job, { backendUp, modelUp }) {
+/** The commands for a job, given whether the backend and the model answered, and which model (if any) the supervisor may
+ *  start itself (MODEL_AUTOSTART). Pure, so it is tested. */
+export function commands(job, { backendUp, modelUp, modelAuto = null }) {
   const npm = s => ({ cmd: process.platform === 'win32' ? 'npm.cmd' : 'npm', args: ['run', ...s] });
   // the backend is started directly (no shell), so the supervisor holds its real process and can stop exactly it
   const start = backendUp ? [] : [{ cmd: process.execPath, args: ['--env-file=.env', join('backend', 'dist', 'src', 'main.js')], background: true, id: 'start-backend' }];
   const stop = backendUp ? [] : [{ id: 'stop-backend', stop: true }];
   if (job === 'readiness') return [...start, { ...npm(['readiness']), id: 'readiness' }, ...stop];
-  if (job === 'cycle') return [...start, { ...npm(modelUp ? ['cycle', '--', '--with-model'] : ['cycle']), id: 'cycle' }, ...stop];
+  if (job === 'cycle') {
+    // the model is started for the cycle only when the owner named one to start, and stopped again afterwards
+    const startModel = !modelUp && modelAuto ? [{ cmd: process.execPath, args: ['--env-file=.env', join('scripts', 'local-model.mjs'), 'serve', modelAuto],
+      model: true, id: 'start-model' }] : [];
+    const withModel = modelUp || !!startModel.length;
+    return [...start, ...startModel, { ...npm(withModel ? ['cycle', '--', '--with-model'] : ['cycle']), id: 'cycle' },
+      ...(startModel.length ? [{ id: 'stop-model', stopModel: true }] : []), ...stop];
+  }
   // a backup needs the database closed; a backend someone else started is never stopped by the supervisor
   if (job === 'backup') return backendUp ? [{ id: 'backup', skip: 'the backend is running and was not started by the supervisor; stop it to let the weekly backup run' }]
     : [{ ...npm(['backup', '--', 'create']), id: 'backup' }];
@@ -99,15 +107,47 @@ async function waitFor(url, up, ms = 60_000) {
   return false;
 }
 
+/** llama.cpp's public health endpoint for an OpenAI-compatible base URL (its /v1/models needs the API key). */
+export function modelHealthUrl(base) {
+  return base ? base.replace(/\/+$/, '').replace(/\/v1$/, '') + '/health' : null;
+}
+
+/** Starts the pinned local model server (scripts/local-model.mjs serve) and returns the pids to stop later. */
+function startModel(step, env) {
+  return new Promise(done => {
+    const child = spawn(step.cmd, step.args, { cwd: ROOT, env, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'], detached: true });
+    let buffer = '';
+    const timer = setTimeout(() => done({ wrapper: child.pid, server: null }), 30_000);
+    child.stdout.on('data', chunk => {
+      buffer += chunk;
+      try { const line = JSON.parse(buffer.split('\n')[0]); clearTimeout(timer); child.unref(); done({ wrapper: child.pid, server: line.pid ?? null }); } catch { /* wait for the line */ }
+    });
+    child.on('error', () => { clearTimeout(timer); done({ wrapper: null, server: null }); });
+  });
+}
+
 /** Runs one job end to end and logs each step. Returns true when every step succeeded. */
 export async function runJob(job, env = process.env) {
   const api = (env.API_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
   const backendUp = await reachable(api + '/v1/health');
-  const modelUrl = env.HERMES_MODEL_BASE_URL ? env.HERMES_MODEL_BASE_URL.replace(/\/$/, '') + '/models' : null;
-  const modelUp = !!modelUrl && await reachable(modelUrl);
-  let started = null, ok = true;
-  for (const step of commands(job, { backendUp, modelUp })) {
+  const health = modelHealthUrl(env.HERMES_MODEL_BASE_URL);
+  const modelUp = !!health && await reachable(health);
+  const modelAuto = health && /^[A-Za-z0-9._-]{1,80}$/.test(env.MODEL_AUTOSTART ?? '') ? env.MODEL_AUTOSTART : null;
+  let started = null, model = null, ok = true;
+  for (const step of commands(job, { backendUp, modelUp, modelAuto })) {
     if (step.skip) { await log({ job, step: step.id, ok: true, skipped: step.skip }); continue; }
+    if (step.model) {
+      model = await startModel(step, childEnv(env));
+      const up = await waitFor(health, true, 10 * 60_000); // loading the weights takes a while on a laptop
+      await log({ job, step: step.id, ok: up });
+      if (!up) { ok = false; break; }
+      continue;
+    }
+    if (step.stopModel) {
+      for (const pid of [model?.server, model?.wrapper]) if (pid) { try { process.kill(pid); } catch { /* already gone */ } }
+      await log({ job, step: step.id, ok: await waitFor(health, false, 30_000) });
+      continue;
+    }
     if (step.stop) {
       // only the backend this job started is ever stopped
       if (started) { try { process.kill(started); } catch { /* already gone */ } }
@@ -128,6 +168,8 @@ export async function runJob(job, env = process.env) {
     if (r.code !== 0 && step.id !== 'readiness' && step.id !== 'cycle') { ok = false; break; } // a NO-GO or a failed step is logged, not fatal
     if (r.code !== 0) ok = false;
   }
+  // a model this job started is never left running, whatever happened in between
+  if (model) for (const pid of [model.server, model.wrapper]) if (pid) { try { process.kill(pid); } catch { /* already gone */ } }
   return ok;
 }
 
