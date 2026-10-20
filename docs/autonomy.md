@@ -36,6 +36,7 @@ The organisation's agents make and carry out decisions themselves; the owner app
 | `activateReleases` | Activate a release whose newest evaluation, under 180 days old, allows it |
 | `qualifyBots` | Qualify a bot for paper trading on its active, freshly evaluated release |
 | `startingBudgetPaise` | Give a qualified bot with no budget this amount, capped by the department ceiling. It counts toward the monthly total, so it needs `raiseBudget` |
+| `trialNewReleases` | **Self-repair:** start a newly registered, freshly evaluated release of a bot that already trades as a canary, next to the active one |
 | `promoteCanaries` | **Self-improvement:** promote a trial (canary) release whose own live paper calls beat holding cash significantly. The trial's live results decide; backtest evidence alone never does |
 | `rollbackFailingReleases` | **Self-correction:** when an active release's own live calls lose to cash significantly, return to the previous good release, or suspend the bot if there is none |
 | `maxActionsPerRun` | At most this many automatic decisions per cycle |
@@ -44,6 +45,14 @@ The organisation's agents make and carry out decisions themselves; the owner app
 1. **Trial:** a new version of a bot (a new R&D idea, model or prompt, always as a release) runs as a canary next to the active one.
 2. **Judge:** live fitness judges each release on its own paper calls every day (`scripts/live-fitness.mjs`).
 3. **Keep or revert:** with these two rules on, the better version is promoted and a version that turns bad is rolled back, with no owner step. The release gate guarantees only authorised code ever trades.
+
+**Self-repair after a code update** (`scripts/release-renewal.mjs`, cycle steps `release-renewal` and `release-trial`):
+1. **Detect:** when the rule bot's code changes but its rule does not (same model and rule version, a new code fingerprint), the release check refuses the old release.
+2. **Prepare:** the researcher registers a release of the current code. The evaluator files the same study evidence and evaluates it.
+3. **Trial:** with `trialNewReleases` on, the release starts as a canary straight away, so the bot keeps trading.
+4. **Keep or drop:** its live calls are credited to the new release (the newest one matching), and the rules above keep or drop it.
+
+A changed rule is never renewed this way: it is a new idea and goes through R&D.
 
 Every rule is off unless set. With all of them on, an idea that R&D proves goes, without the owner, from birth to release, qualification, a starting budget and trading. The owner reads about it in the digest and can always step in.
 

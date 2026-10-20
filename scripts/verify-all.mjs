@@ -33,7 +33,7 @@ export function suites({ quick = false } = {}) {
     { id: 'script-tests', cmd: NODE, args: ['--test', 'scripts/backup.test.mjs', 'scripts/deliver-alerts.test.mjs', 'scripts/secret-scan.test.mjs',
       'scripts/organisation-cycle.test.mjs', 'scripts/verify-all.test.mjs', 'scripts/signal-loop.test.mjs', 'scripts/daily-digest.test.mjs', 'scripts/eod-loop.test.mjs',
       'scripts/rule-bot-loop.test.mjs', 'scripts/activate-rule-bot.test.mjs', 'scripts/readiness.test.mjs',
-      'scripts/live-fitness.test.mjs', 'scripts/model-allocator-loop.test.mjs', 'scripts/agenda.test.mjs', 'scripts/bot-credential.test.mjs', 'scripts/learning-cycle.test.mjs', 'scripts/prune-env-backups.test.mjs', 'scripts/autonomy.test.mjs'] },
+      'scripts/live-fitness.test.mjs', 'scripts/model-allocator-loop.test.mjs', 'scripts/agenda.test.mjs', 'scripts/bot-credential.test.mjs', 'scripts/learning-cycle.test.mjs', 'scripts/prune-env-backups.test.mjs', 'scripts/autonomy.test.mjs', 'scripts/release-renewal.test.mjs'] },
     { id: 'trading-desk', cmd: REPLAY, args: ['-m', 'unittest', ...DESK_TESTS], cwd: join(ROOT, 'integrations', 'trading-desk'), requires: REPLAY },
     { id: 'quant-advisor', cmd: SKFOLIO, args: ['-m', 'unittest', 'test_quant_advisor'], cwd: join(ROOT, 'integrations', 'trading-desk'), requires: SKFOLIO },
     { id: 'claims', cmd: REPLAY, args: ['-m', 'unittest', 'test_claims', 'test_http_security', 'test_autolearn', 'test_refresh_headlines'],

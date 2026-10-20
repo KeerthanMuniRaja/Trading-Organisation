@@ -33,6 +33,9 @@ const rulesSchema = z.object({
   /** Give a qualified bot with no budget this starting budget (within the department ceiling); counts toward the
    *  monthly total of raiseBudget, so it needs raiseBudget too. */
   startingBudgetPaise: money.nullable().default(null),
+  /** AUTO-05: start a newly registered release of a bot that already trades as a canary, once its fresh evaluation
+   *  allows a trial (it then runs alongside the active one and is judged on its own live calls). */
+  trialNewReleases: z.boolean().default(false),
   /** AUTO-04, self-improvement: promote a canary whose own live paper calls beat holding cash significantly. */
   promoteCanaries: z.boolean().default(false),
   /** AUTO-04: when an active release's own live calls lose to cash significantly, return to the previous good release,
@@ -141,6 +144,15 @@ export class Autonomy {
           WHERE b.state<>'retired' AND e.active_eligible AND e.created_at >= now()-($1::int * interval '1 day') ORDER BY r.bot_id,r.version`,
           [EVALUATION_VALID_DAYS])).rows.filter(x => x.stage !== 'active' && x.stage !== 'revoked'))
         await attempt('release', rel.bot_id, null, () => applyStage(tx, AGENT, { releaseId: String(rel.id), stage: 'active', reason: note }));
+      // 3b. a new, never-staged release of a bot that already has an active one starts on trial (applyStage re-checks it)
+      if (r.trialNewReleases) for (const rel of (await tx.query(`SELECT r.id,r.bot_id,r.version FROM bot_releases r JOIN bots b ON b.id=r.bot_id
+          JOIN LATERAL (SELECT canary_eligible,created_at FROM bot_release_evaluations WHERE release_id=r.id ORDER BY created_at DESC,id DESC LIMIT 1) e ON true
+          WHERE b.state<>'retired' AND e.canary_eligible AND e.created_at >= now()-($1::int * interval '1 day')
+            AND NOT EXISTS (SELECT 1 FROM bot_release_stages s WHERE s.release_id=r.id)
+            AND EXISTS (SELECT 1 FROM bot_release_stages s WHERE s.bot_id=r.bot_id AND s.stage='active')
+          ORDER BY r.bot_id,r.version`, [EVALUATION_VALID_DAYS])).rows)
+        await attempt('trial', rel.bot_id, null, () => applyStage(tx, AGENT, { releaseId: String(rel.id), stage: 'canary',
+          reason: `${note}: release v${rel.version} starts on trial next to the active release` }));
       // 4. qualification on the active release (applyQualify re-checks it)
       if (r.qualifyBots) for (const b of (await tx.query(`SELECT id FROM bots WHERE state IN ('school','college') AND lifecycle_managed=false ORDER BY id`)).rows) {
         const live = (await tx.query("SELECT 1 FROM bot_release_stages WHERE bot_id=$1 AND stage='active' LIMIT 1", [b.id])).rows.length;

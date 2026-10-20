@@ -56,6 +56,12 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
       ? ['--propose', '--source', process.env.RND_SOURCE, '--department', process.env.RND_DEPARTMENT || 'desk'] : [])], timeoutMs: 300_000 },
     // the model-free rule bot proposes once a month, before the end-of-day trader reviews; it runs only once the owner
     // has created and qualified it and named it here (RULE_BOT_ID), with a trader credential bound to it
+    // AUTO-05 self-repair: a code fix under the same rule is prepared as a release by the agents, and the standing
+    // approvals (if the owner allows trials) start it as a canary right away, so the rule bot is not blocked by it
+    ...(process.env.RULE_BOT_ID ? [
+      { id: 'release-renewal', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'release-renewal.mjs')], timeoutMs: 120_000 },
+      { id: 'release-trial', kind: 'http', method: 'POST', path: '/v1/autonomy/apply', role: 'evaluator' },
+    ] : []),
     // RELEASE-01: it runs only while its exact code is the authorised release (a changed file needs a new release first)
     process.env.RULE_BOT_ID
       ? { id: 'rule-bot', cmd: PY, args: [desk('rule_bot.py'), '--bot', process.env.RULE_BOT_ID, '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000,

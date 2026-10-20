@@ -172,7 +172,10 @@ export class TradeSignals {
       if (input.action === 'enter-long') requireThat(!(await isSuspended(tx, input.botId)), 'The bot is suspended: only exits and no-action calls are accepted', 403);
       // release control (RELEASE-01): once a bot has releases, only its active release or a canary may propose
       const { registered, releases } = await liveReleases(tx, input.botId);
-      const release = releases.find(r => r.model === input.model && r.prompt_version === input.promptVersion);
+      // a code fix under the same rule shares model and prompt version with the release it replaces; only the newest code
+      // can run (the cycle's release gate checks the fingerprint), so the call belongs to the newest matching release
+      const release = releases.filter(r => r.model === input.model && r.prompt_version === input.promptVersion)
+        .sort((a, b) => Number(b.version) - Number(a.version))[0];
       if (registered) requireThat(release, 'This model and prompt version is not an authorised release of the bot', 403);
       const verified = await verifiedEvidenceIds(tx, input.evidenceIds);
       requireThat(verified.length === input.evidenceIds.length, 'Every cited evidence must be verified and from an approved source');

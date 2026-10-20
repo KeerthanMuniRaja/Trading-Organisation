@@ -134,6 +134,31 @@ test('self-improvement: a better canary is promoted on live results, and a relea
   } finally { await f.db.close(); }
 });
 
+test('a code fix under the same rule starts on trial by itself, and its live calls are counted as its own', async () => {
+  const f = await setup(); try {
+    const e = await f.evidence();
+    const study = await f.fitness.report(evaluator, key(), { botId: 'bot-one', role: 'allocator', baseline: 'equal-weight-basket', testName: 'study',
+      periodFrom: '2026-01-01', periodTo: today, judged: 30, wins: 22, losses: 8, model: 'rules:x' });
+    const v1 = await f.releases.create(researcher, key(), { botId: 'bot-one', model: 'rules:x', promptVersion: 'same-rule', codeFingerprint: 'e'.repeat(16), notes: 'Original code' });
+    await f.releases.evaluate(evaluator, key(), { releaseId: v1.id, fitnessReportId: study.id });
+    await f.releases.stage(owner, key(), { releaseId: v1.id, stage: 'active', reason: 'Original' });
+    // the renewal step (researcher + evaluator) prepared a release of the fixed code, same rule
+    const v2 = await f.releases.create(researcher, key(), { botId: 'bot-one', model: 'rules:x', promptVersion: 'same-rule', codeFingerprint: 'f'.repeat(16), notes: 'Code fix' });
+    await f.releases.evaluate(evaluator, key(), { releaseId: v2.id, fitnessReportId: study.id });
+    assert.deepEqual((await f.autonomy.apply(evaluator, key())).actions, []); // not without the owner's approval
+    await f.autonomy.setPolicy(owner, key(), { rules: { ...OFF, trialNewReleases: true }, reason: 'Trial code fixes by themselves' });
+    assert.deepEqual((await f.autonomy.apply(evaluator, key())).actions, [{ kind: 'trial', target: 'bot-one' }]);
+    assert.equal((await f.releases.view(owner, { botId: 'bot-one' })).canary, v2.id);
+    const { TradeSignals } = await import('../src/trade-signals.js');
+    const signal = await new TradeSignals(f.db, f.cfg).propose({ id: 'trader', role: 'trader', botId: 'bot-one' }, key(), { botId: 'bot-one', symbol: 'DEMO',
+      action: 'enter-long', horizonDays: 20, conviction: 'medium', thesis: 'Fixed code at work', invalidation: 'Fixture',
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(), evidenceIds: [e.evidenceId], model: 'rules:x', promptVersion: 'same-rule' });
+    const row = (await f.db.transaction(tx => tx.query('SELECT release_id FROM trade_signals WHERE id=$1', [signal.id]))).rows[0]!;
+    assert.equal(String(row.release_id), v2.id); // the newest matching release: the only code the release gate lets run
+    assert.deepEqual((await f.autonomy.apply(evaluator, key())).actions, []); // already on trial
+  } finally { await f.db.close(); }
+});
+
 test('autonomy routes are guarded by role', async () => {
   const { cfg } = config(), db = await Database.open(), app = await createApp(cfg, db, true);
   try {
