@@ -18,7 +18,9 @@ Families (all monthly, long-only, equal weight over the chosen shares, the desk'
                (a dip in an uptrend; adapted from the dividend-growth pullback screener)
   Filters: `trend-200d` (cash when the universe is below its 200-day average) or `distribution-days` (cash when the
   market regime's distribution-day risk is HIGH or SEVERE; market_regime.py).
-  The two newer families and the distribution-day filter adapt methods from claude-trading-skills (MIT).
+  combo        the `keep` best shares on three equal ranks: `months` momentum, `window`-day calm (low volatility) and
+               consistency (rising months in the last year): weak signals combined, as factor funds do
+  The trend-template and pullback families and the distribution-day filter adapt methods from claude-trading-skills (MIT).
   A family that finds fewer qualifying shares than `keep` holds only those, the rest in cash.
 Proposals are bounded: at most MAX_NEW_PER_MONTH new ideas a calendar month, and duplicates (same canonical spec as
 anything in the catalogue or the ledger) are refused.
@@ -45,10 +47,11 @@ GRAMMAR = {
     'reversal': {'days': (5, 63), 'keep': (1, 5)},
     'trend-template': {'nearHighPct': (5, 40), 'keep': (1, 5)},
     'pullback': {'rsiMax': (20, 50), 'keep': (1, 5)},
+    'combo': {'months': (3, 12), 'window': (20, 120), 'keep': (1, 5)},
 }
 FILTERS = (None, 'trend-200d', 'distribution-days')
 SPECIALTY = {'momentum': 'momentum-allocation', 'low-vol': 'risk-allocation', 'reversal': 'reversal-allocation',
-             'trend-template': 'trend-allocation', 'pullback': 'pullback-allocation'}
+             'trend-template': 'trend-allocation', 'pullback': 'pullback-allocation', 'combo': 'multi-factor-allocation'}
 SUFFIX = {'trend-200d': '-trend', 'distribution-days': '-dd'}
 
 
@@ -80,7 +83,8 @@ def name_of(spec):
     body = {'momentum': f"momentum-{s.get('months')}m-top{s.get('keep')}", 'low-vol': f"lowvol-{s.get('window')}d-top{s.get('keep')}",
             'reversal': f"reversal-{s.get('days')}d-bottom{s.get('keep')}",
             'trend-template': f"trendtemplate-{s.get('nearHighPct')}pct-top{s.get('keep')}",
-            'pullback': f"pullback-rsi{s.get('rsiMax')}-top{s.get('keep')}"}[s['family']]
+            'pullback': f"pullback-rsi{s.get('rsiMax')}-top{s.get('keep')}",
+            'combo': f"combo-{s.get('months')}m-{s.get('window')}d-top{s.get('keep')}"}[s['family']]
     return 'idea-' + body + SUFFIX.get(s.get('filter'), '')
 
 
@@ -90,7 +94,9 @@ def describe(spec):
             'low-vol': f"The {s.get('keep')} calmest shares by {s.get('window')}-day volatility",
             'reversal': f"The {s.get('keep')} weakest shares over the last {s.get('days')} days",
             'trend-template': f"Up to {s.get('keep')} shares in a Minervini-style uptrend within {s.get('nearHighPct')}% of their 52-week high, strongest first",
-            'pullback': f"Up to {s.get('keep')} shares above their 200-day average with a 14-day RSI of at most {s.get('rsiMax')}, most oversold first"}[s['family']]
+            'pullback': f"Up to {s.get('keep')} shares above their 200-day average with a 14-day RSI of at most {s.get('rsiMax')}, most oversold first",
+            'combo': (f"The {s.get('keep')} best shares on three equal ranks: {s.get('months')}-month momentum, {s.get('window')}-day calm "
+                      f"(low volatility) and consistency (share of rising months in the last year)")}[s['family']]
     tail = {'trend-200d': ', in cash while the universe is below its 200-day average',
             'distribution-days': ', in cash while distribution-day risk is high'}.get(s.get('filter'), '')
     return text + ', equal weights, monthly' + tail
@@ -153,6 +159,28 @@ def _weakest(table, dates, i, days, keep):
     return {symbol: 1 / keep for symbol in ranked[:keep]}
 
 
+def _combo(table, dates, i, months, window, keep):
+    """Average of three ranks (1 = best): momentum over `months`, calm over `window` days, and consistency (rising months
+    out of the last 12). Combining weak signals is steadier than any one; ties break by symbol."""
+    days = 21 * months
+    if i < max(days, window, 252):
+        return {}
+    names = sorted(table)
+    momentum = {s: table[s][dates[i]]['closePaise'] / table[s][dates[i - days]]['closePaise'] for s in names}
+    calm = {}
+    for s in names:
+        c = pd.closes(table, s, dates, i, window + 1)
+        calm[s] = statistics.pstdev([math.log(c[k] / c[k - 1]) for k in range(1, len(c))])
+    steady = {s: sum(table[s][dates[i - 21 * m]]['closePaise'] > table[s][dates[i - 21 * (m + 1)]]['closePaise'] for m in range(12)) for s in names}
+
+    def ranks(values, best_high):
+        order = sorted(names, key=lambda s: (-values[s] if best_high else values[s], s))
+        return {s: k for k, s in enumerate(order, 1)}
+    r = [ranks(momentum, True), ranks(calm, False), ranks(steady, True)]
+    score = {s: sum(x[s] for x in r) / 3 for s in names}
+    return {s: 1 / keep for s in sorted(names, key=lambda s: (score[s], s))[:keep]}
+
+
 def rule_of(spec):
     """The audited rule for a valid spec: weights(table, dates, i) from completed days only."""
     s = canonical(spec)
@@ -164,6 +192,8 @@ def rule_of(spec):
         base = lambda t, d, i: _weakest(t, d, i, s['days'], s['keep'])  # noqa: E731
     elif s['family'] == 'trend-template':
         base = lambda t, d, i: _trend_template(t, d, i, s['nearHighPct'], s['keep'])  # noqa: E731
+    elif s['family'] == 'combo':
+        base = lambda t, d, i: _combo(t, d, i, s['months'], s['window'], s['keep'])  # noqa: E731
     else:
         base = lambda t, d, i: _pullback(t, d, i, s['rsiMax'], s['keep'])  # noqa: E731
     if not s.get('filter'):

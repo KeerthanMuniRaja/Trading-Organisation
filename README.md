@@ -178,6 +178,7 @@ In the full run on 20 October 2026, 636 of 637 tests passed. The one failure was
 | [Trade signals](docs/trade-signals.md), [bot control](docs/bot-control.md), [releases](docs/releases.md) | Proposals, review, owner controls and release management |
 | [Paper performance](docs/paper-performance.md), [corporate actions](docs/corporate-actions.md) | P&L, the basket benchmark, splits and dividends |
 | [R&D scout](docs/rnd-scout.md), [research methods](docs/research-methods.md), [market regime](docs/market-regime.md) | How ideas are tested, what 10 years said, the knowledge base and the problem playbook |
+| [Roadmap to proven skill](docs/skill-roadmap.md) | Why skill cannot be proven on 8 shares (proof time, tax) and the plan: a broad point-in-time universe, slower tax-aware rules, better data |
 | [World news](docs/world-news.md), [scenario panel](docs/scenario-panel.md) | Sources by country, stories, world drivers and the persona panel |
 | [Intraday monitor](docs/intraday-monitor.md) | Real-time testing: live mark-to-market, crash brake, replay of recorded days; what a live feed still needs |
 | [Vision and principles](docs/knowledge-base/01-vision-and-principles.md), [bot lifecycle](docs/knowledge-base/11-research-development-and-bot-lifecycle.md) | The organisation we are building |

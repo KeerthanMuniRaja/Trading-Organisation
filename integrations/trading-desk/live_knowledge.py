@@ -25,7 +25,7 @@ import daily  # noqa: E402
 DESK = daily.ROOT / '.local' / 'trading-desk'
 OUT = DESK / 'knowledge' / 'live.json'
 CARDS = Path(__file__).resolve().parent / 'knowledge' / 'methods.json'
-DECISION_LESSONS = ('transaction-costs', 'momentum', 'trend-filter', 'distribution-days', 'walk-forward', 'survivorship-bias')
+DECISION_LESSONS = ('transaction-costs', 'tax-and-turnover', 'momentum', 'trend-filter', 'distribution-days', 'walk-forward', 'survivorship-bias')
 
 
 def _read(path):
@@ -47,11 +47,15 @@ def scout_summary(report):
     with_stats = [x for x in c if x.get('stats')]
     safest = min(with_stats, key=lambda x: -x['stats']['maxDrawdownPct'], default=None)
     pick = lambda x: {k: x.get(k) for k in ('name', 'ahead', 'behind', 'averageExcessPct', 'pValue', 'beatsRandomPct')} | (  # noqa: E731
-        {'sharpe': x['stats']['sharpe'], 'maxDrawdownPct': x['stats']['maxDrawdownPct']} if x.get('stats') else {})
+        {'sharpe': x['stats']['sharpe'], 'maxDrawdownPct': x['stats']['maxDrawdownPct']} if x.get('stats') else {}) | (
+        {'yearsToProve': x['proof']['yearsToProve'], 'afterTaxCagrPct': x['proof']['afterTaxCagrPct']} if x.get('proof') else {})
+    taxed = [x for x in c if (x.get('proof') or {}).get('afterTaxCagrPct') is not None]
+    best_after_tax = max(taxed, key=lambda x: x['proof']['afterTaxCagrPct'], default=None)
     wf = report.get('walkForward')
     return {'from': report['from'], 'through': report['through'], 'ideasTried': report['ideasTried'], 'bar': report['bonferroniThreshold'],
             'passing': [x['name'] for x in c if x['passes']], 'best': [pick(x) for x in c[:3]], 'lowestRisk': pick(safest) if safest else None,
-            'basket': {k: (report.get('basketStats') or {}).get(k) for k in ('cagrPct', 'sharpe', 'maxDrawdownPct')},
+            'basket': {k: (report.get('basketStats') or {}).get(k) for k in ('cagrPct', 'sharpe', 'maxDrawdownPct', 'afterTaxCagrPct')},
+            'bestAfterTax': pick(best_after_tax) if best_after_tax else None,
             'randomMedianExcessPct': (report.get('randomBaseline') or {}).get('medianExcessPct'),
             'walkForward': {k: wf[k] for k in ('outOfSampleMonths', 'ahead', 'behind', 'averageExcessPct')} if wf else None,
             **({'warning': report['warning']} if report.get('warning') else {})}

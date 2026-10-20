@@ -55,7 +55,9 @@ export function researchLines(k) {
     `- ${r.ideasTried} ideas tried on ${r.from}..${r.through}; passing: ${r.passing.join(', ') || 'none'} (bar ${r.bar})`,
     ...r.best.slice(0, 2).map(b => `- ${b.name}: ${b.ahead}/${b.behind} months vs the basket, ${b.averageExcessPct}% a month, beats ${b.beatsRandomPct ?? '?'}% of random pickers`),
     ...(safe ? [`- Lowest risk: ${safe.name}, worst fall ${safe.maxDrawdownPct}% (basket ${r.basket.maxDrawdownPct}%), Sharpe ${safe.sharpe} (basket ${r.basket.sharpe})`] : []),
-    ...(wf ? [`- Choosing the best past idea each year (walk-forward): ${wf.ahead}/${wf.behind} months, ${wf.averageExcessPct}% a month`] : []), ''];
+    ...(wf ? [`- Choosing the best past idea each year (walk-forward): ${wf.ahead}/${wf.behind} months, ${wf.averageExcessPct}% a month`] : []),
+    ...(r.bestAfterTax && r.basket?.afterTaxCagrPct !== undefined ? [`- After an approximate capital-gains tax: best idea ${r.bestAfterTax.name} `
+      + `${r.bestAfterTax.afterTaxCagrPct}% a year, holding the basket ${r.basket.afterTaxCagrPct}% a year`] : []), ''];
 }
 
 export function regimeLine(r) {

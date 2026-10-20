@@ -94,7 +94,9 @@ def catalogue():
 
 ADOPTED_SPECS = {'trend-template-25pct-top3': {'family': 'trend-template', 'nearHighPct': 25, 'keep': 3},
                  'pullback-rsi40-top3': {'family': 'pullback', 'rsiMax': 40, 'keep': 3},
-                 'momentum-6m-top3-distribution': {'family': 'momentum', 'months': 6, 'keep': 3, 'filter': 'distribution-days'}}
+                 'momentum-6m-top3-distribution': {'family': 'momentum', 'months': 6, 'keep': 3, 'filter': 'distribution-days'},
+                 # added 20 Oct 2026: weak signals combined (momentum, calm, consistency), as factor funds do
+                 'combo-6m-60d-top3': {'family': 'combo', 'months': 6, 'window': 60, 'keep': 3}}
 # The catalogue ideas the idea grammar can express, so an invented duplicate of one is refused (RND-03)
 CATALOGUE_SPECS = {**{f'momentum-{m}m-top{k}': {'family': 'momentum', 'months': m, 'keep': k} for m in (3, 6, 12) for k in (2, 3, 4)},
                    'low-volatility-top3': {'family': 'low-vol', 'window': 60, 'keep': 3}, 'reversal-1m-bottom3': {'family': 'reversal', 'days': 21, 'keep': 3},
@@ -118,7 +120,7 @@ def fingerprint(ledger_path=None):
     import rnd_ideas
     parts = [VERSION, str(ONE_WAY_COST_PCT), str(ALPHA), str(MIN_MONTHS), str(START), inspect.getsource(catalogue), json.dumps(ADOPTED_SPECS, sort_keys=True)]
     # the families' builders and the regime are part of what the adopted ideas do
-    parts += [inspect.getsource(f) for f in (rnd_ideas._trend_template, rnd_ideas._pullback, rnd_ideas.rsi, market_regime.distribution_days,
+    parts += [inspect.getsource(f) for f in (rnd_ideas._trend_template, rnd_ideas._pullback, rnd_ideas.rsi, rnd_ideas._combo, market_regime.distribution_days,
                                              market_regime.basket, market_regime.calm)]
     parts += [inspect.getsource(f) for f in (pd.top_momentum, pd.inverse_volatility, pd.trend_filtered, low_volatility, reversal)]
     # the invented ideas are part of what was tried: the grammar's code and every idea in the ledger
@@ -140,13 +142,14 @@ def monthly(table, dates, rules, through=None):
     rows, held = [], {name: {} for name in rules}
     for a, b in zip(starts, starts[1:]):
         ret = {s: table[s][dates[b]]['closePaise'] / table[s][dates[a]]['closePaise'] - 1 for s in table}
-        row = {'month': dates[a][:7], 'basketPct': 100 * sum(ret.values()) / len(ret), 'rules': {}, 'cash': {}}
+        row = {'month': dates[a][:7], 'basketPct': 100 * sum(ret.values()) / len(ret), 'rules': {}, 'cash': {}, 'turnover': {}}
         for name, rule in rules.items():
             weights = rule(table, dates, a)
             turnover = sum(abs(weights.get(s, 0) - held[name].get(s, 0)) for s in table)
             held[name] = weights
             row['rules'][name] = 100 * sum(w * ret[s] for s, w in weights.items()) - ONE_WAY_COST_PCT * turnover
             row['cash'][name] = max(0.0, 1 - sum(weights.values()))  # the uninvested share, which earns nothing here
+            row['turnover'][name] = turnover
         rows.append(row)
     return [r for r in rows if through is None or r['month'] <= through]
 
@@ -209,10 +212,17 @@ def scout(through=None, cache=daily.DAILY, ledger_path=None, universe='desk', ra
                      'averageCashPct': round(100 * statistics.fmean(cash), 1),
                      'atAssumedCashYield': {'yieldPct': CASH_YIELD_PCT, 'cagrPct': at_yield['cagrPct'], 'sharpe': at_yield['sharpe']},
                      'wouldPassRiskBar': bool(sharpe and sharpe['p'] < threshold and mine['maxDrawdownPct'] > basket_stats['maxDrawdownPct'])}
+        # PROOF AND REAL COST: how long a record like this would take to prove at the bar, how much it trades, and what
+        # it would keep after an approximate capital-gains tax
+        turns = [r['turnover'][name] for r in rows]
+        needed = rc.months_to_prove(excess, threshold)
+        proof = {'monthsToProve': needed, 'yearsToProve': round(needed / 12, 1) if needed else None,
+                 'turnoverPctPerMonth': round(100 * statistics.fmean(turns[1:] or turns), 1),
+                 'afterTaxCagrPct': rc.after_tax_cagr(rule_pct, turns)}
         out.append({'name': name, 'description': description, 'specialty': specialty, 'method': method, 'alreadyServedBy': served,
                     'months': len(rows), 'ahead': ahead, 'behind': behind, 'averageExcessPct': round(average, 3),
                     'pValue': round(p, 6), 'halves': halves, 'passes': not reasons, 'reasons': reasons, 'spec': spec, 'source': source,
-                    'stats': mine, 'riskLens': risk_lens,
+                    'stats': mine, 'riskLens': risk_lens, 'proof': proof,
                     'beatsRandomPct': rc.percentile(average, random_avg), 'warmupSensitive': bool(checks[name]['warmup'])})
     out.sort(key=lambda c: (c['pValue'], c['name']))
     last = rows[-1]['month']
@@ -221,7 +231,8 @@ def scout(through=None, cache=daily.DAILY, ledger_path=None, universe='desk', ra
     report = {'version': VERSION, 'fingerprint': fingerprint(ledger_path), 'dataFingerprint': data, 'from': rows[0]['month'], 'through': last,
               'ideasTried': len(tried), 'bonferroniThreshold': round(threshold, 6), 'oneWayCostPct': ONE_WAY_COST_PCT,
               'publishedAt': f'{last}-28T10:30:00+00:00', 'candidates': out,
-              'basketStats': rc.stats([r['basketPct'] for r in rows], [0.0] * len(rows)),
+              'basketStats': {**rc.stats([r['basketPct'] for r in rows], [0.0] * len(rows)),
+                              'afterTaxCagrPct': rc.after_tax_cagr([r['basketPct'] for r in rows])},
               'randomBaseline': {'rules': len(random_avg), 'keep': 3, 'medianExcessPct': round(statistics.median(random_avg), 3) if random_avg else None,
                                  'p90ExcessPct': round(random_avg[int(0.9 * (len(random_avg) - 1))], 3) if random_avg else None},
               'walkForward': wf,

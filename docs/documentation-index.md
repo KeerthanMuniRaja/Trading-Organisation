@@ -36,6 +36,7 @@ The preferred experimental model is constrained Qwen3.5-4B Q4_K_M on the direct 
 - [Management review and the owner agenda](management.md)
 - [Standing approvals (autonomy)](autonomy.md)
 - [R&D scout and its 10-year result](rnd-scout.md)
+- [Roadmap to proven skill: proof time, tax and what data would help](skill-roadmap.md)
 - [Research methods, knowledge base and problem playbook](research-methods.md)
 - [Market regime and adopted trading-skill methods](market-regime.md)
 - [World news](world-news.md)

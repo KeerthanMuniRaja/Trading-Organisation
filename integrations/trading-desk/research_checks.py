@@ -17,6 +17,10 @@ Methods adopted from open-source trading frameworks (ideas only; their code is n
   risk lens   a circular block bootstrap of the paired monthly returns: how often the rule's Sharpe stays above the
               basket's; plus the worst fall, the average cash share and the result if cash earned an ASSUMED yield.
               Report only: whether risk may ever pass an idea is the owner's decision.
+  proof time  how many months of a record like this one it would take to prove the edge at the scout's bar (80% power).
+  tax         an approximate after-tax yearly growth: what a rule sells each year pays short-term tax on that year's gain,
+              what it keeps (and the buy-and-hold basket) pays long-term tax once at the end; with the monthly turnover,
+              it shows what trading really costs.
 """
 from __future__ import annotations
 
@@ -157,6 +161,47 @@ def sharpe_test(rule_pct, basket_pct, samples=1000, block=6, seed=0):
 def with_cash_yield(rule_pct, cash_share, yearly_pct):
     """Monthly returns if the uninvested share earned `yearly_pct` a year (an ASSUMPTION; backtests otherwise earn 0%)."""
     return [r + c * yearly_pct / 12 for r, c in zip(rule_pct, cash_share)]
+
+
+def months_to_prove(excess_pct, alpha, power=0.8):
+    """How many months of this record it would take to prove the edge at `alpha` (one-sided) with `power`: the normal
+    approximation n = ((z_alpha + z_power) * sd / mean)^2 on the monthly excess. None when there is no edge to prove."""
+    n = len(excess_pct)
+    if n < 2:
+        return None
+    mean = sum(excess_pct) / n
+    sd = math.sqrt(sum((x - mean) ** 2 for x in excess_pct) / (n - 1))
+    if mean <= 0 or sd == 0:
+        return None
+    z = statistics.NormalDist().inv_cdf(1 - alpha) + statistics.NormalDist().inv_cdf(power)
+    return math.ceil((z * sd / mean) ** 2)
+
+
+STCG_PCT, LTCG_PCT = 20.0, 12.5   # Indian equity: short-term (held under a year) and long-term capital gains tax, from 23 Jul 2024
+
+
+def after_tax_cagr(monthly_pct, monthly_turnover=None, months_per_year=12):
+    """An APPROXIMATE after-tax yearly growth. Each year the share of the portfolio that was sold (half the year's
+    turnover, at most all of it) realises that year's gain at the short-term rate (a loss is offset within the year, no
+    carry-forward); the unsold share's gain is deferred and taxed once at the end at the long-term rate. With no turnover
+    given (buy and hold), everything is deferred. Ignores the Rs 1.25 lakh long-term exemption, cess and the exact
+    holding period of each lot."""
+    turnover = monthly_turnover or [0.0] * len(monthly_pct)
+    value, deferred = 1.0, 0.0
+    for i in range(0, len(monthly_pct), months_per_year):
+        growth = 1.0
+        for r in monthly_pct[i:i + months_per_year]:
+            growth *= 1 + r / 100
+        gain = value * (growth - 1)
+        sold = min(1.0, sum(turnover[i:i + months_per_year]) / 2)
+        realised, kept = gain * sold, gain * (1 - sold)
+        value += realised * (1 - STCG_PCT / 100) if realised > 0 else realised
+        value += kept
+        deferred += kept
+    if deferred > 0:
+        value -= deferred * LTCG_PCT / 100
+    span = len(monthly_pct) / months_per_year
+    return round(100 * (value ** (1 / span) - 1), 2) if value > 0 and span else None
 
 
 def walk_forward(rows, names, train=36, test=12):

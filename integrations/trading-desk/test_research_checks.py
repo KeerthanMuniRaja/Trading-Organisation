@@ -76,6 +76,33 @@ class StatsTests(unittest.TestCase):
         self.assertIsNone(rc.sharpe_test([1.0] * 5, [1.0] * 5))
         self.assertEqual(rc.with_cash_yield([0.0, 1.0], [1.0, 0.5], 6.0), [0.5, 1.25])
 
+    def test_proof_time_grows_with_noise_and_vanishes_without_an_edge(self):
+        steady = [0.3 + (0.5 if k % 2 else -0.5) for k in range(100)]   # +0.3% a month, little noise
+        noisy = [0.3 + (3.0 if k % 2 else -3.0) for k in range(100)]    # +0.3% a month, 3% noise
+        quick, slow = rc.months_to_prove(steady, 0.0029), rc.months_to_prove(noisy, 0.0029)
+        self.assertLess(quick, 50)
+        self.assertGreater(slow, 500)  # the honest arithmetic: a small edge in a noisy record takes decades to prove
+        self.assertIsNone(rc.months_to_prove([-0.1, 0.1, -0.2], 0.0029))
+
+    def test_after_tax_growth_charges_short_term_tax_on_what_was_sold(self):
+        flat = [1.0] * 24   # 1% a month for two years
+        held = rc.after_tax_cagr(flat)                       # never sold: long-term tax once at the end
+        traded = rc.after_tax_cagr(flat, [2.0] * 24)         # sold everything every year: short-term tax each year
+        gross = round(100 * (1.01 ** 12 - 1), 2)
+        self.assertLess(traded, held)
+        self.assertLess(held, gross)
+        self.assertAlmostEqual(traded, round(100 * (1 + (1.01 ** 12 - 1) * 0.8) - 100, 2), places=1)
+
+    def test_the_combo_family_ranks_momentum_calm_and_consistency(self):
+        import rnd_ideas
+        dates, table = table_of()
+        spec = {'family': 'combo', 'months': 6, 'window': 60, 'keep': 3}
+        self.assertEqual(rnd_ideas.canonical(spec), spec)
+        self.assertEqual(rnd_ideas.name_of(spec), 'idea-combo-6m-60d-top3')
+        weights = rnd_ideas.rule_of(spec)(table, dates, len(dates) - 1)
+        self.assertEqual(len(weights), 3)
+        self.assertEqual(rnd_ideas.rule_of(spec)(table, dates, 100), {})  # not enough history for a year of consistency
+
     def test_walk_forward_holds_the_best_of_the_past_window_out_of_sample(self):
         rows = [{'month': f'2020-{k:02d}', 'basketPct': 0.0, 'rules': {'a': 1.0 if k <= 6 else -1.0, 'b': 0.5 if k <= 6 else 2.0}} for k in range(1, 13)]
         wf = rc.walk_forward(rows, ['a', 'b'], train=6, test=6)
