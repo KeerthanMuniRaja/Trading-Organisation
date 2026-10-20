@@ -39,6 +39,7 @@
     "supervisor": "node --env-file-if-exists=.env scripts/supervisor.mjs",
     "members": "node --env-file=.env scripts/member-setup.mjs",
     "status": "node --env-file=.env scripts/status.mjs",
+    "world": "node --env-file-if-exists=.env scripts/world-news.mjs",
     "test:cycle": "node --test scripts/organisation-cycle.test.mjs",
     "test:secrets": "node --test scripts/secret-scan.test.mjs",
     "build": "tsc -p backend/tsconfig.json",

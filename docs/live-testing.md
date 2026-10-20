@@ -26,7 +26,10 @@ The day's work runs **after the close**: decisions use settled daily closes, and
    { "source": "NSE circular <number and date>", "years": [2026], "days": ["YYYY-MM-DD", "..."] }
    ```
    Readiness then skips holidays when it works out the latest session, and says so on a holiday. Without the file, holidays stay unknown and readiness only warns. A malformed file, or one that doesn't cover the current year, is reported and never trusted. Nobody types these dates from memory: they must come from the circular.
-5. **Optional: let R&D propose new bots.** Register and approve a research source once (`POST /v1/sources`, for example id `desk-research`). Then set `RND_SOURCE=desk-research` in `.env` ([R&D scout](rnd-scout.md)).
+5. **Optional: read the world's news.** Central banks, regulators and publishers in the US, Europe, the UK and China are in a catalogue ([world news](world-news.md)). With the backend running:
+   - `npm.cmd run world -- probe --all` reads each feed once with the cycle's own reader;
+   - `npm.cmd run world -- enable <id...> --yes` registers and approves the sources that passed, and the cycle collects them from then on.
+6. **Optional: let R&D propose new bots.** Register and approve a research source once (`POST /v1/sources`, for example id `desk-research`). Then set `RND_SOURCE=desk-research` in `.env` ([R&D scout](rnd-scout.md)).
 
 ## Every trading day
 

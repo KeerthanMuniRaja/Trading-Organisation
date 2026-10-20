@@ -37,6 +37,21 @@ class ExpandTests(unittest.TestCase):
         self.assertNotIn('HDFCBANK.NS', deposit['symbols'])  # already named directly, so not repeated as an inference
         desk.validate_headlines(out)  # the desk's news analyst accepts the output unchanged
 
+    def test_world_drivers_reach_the_shares_labelled_with_their_region(self):
+        links = chains.load_links()
+        self.assertTrue({'US', 'CN', 'WORLD'} <= {link.get('region', 'IN') for link in links})
+        out = chains.expand([headline('Federal Reserve signals a pause as Treasury yields climb'),
+                             headline('OPEC+ extends supply cuts; Brent rises')], links)
+        fed = [h for h in out if 'us-fed-rates' in h['title']][0]
+        self.assertIn('INFY.NS', fed['symbols'])
+        self.assertTrue({h['title'].split(']')[0] for h in out if 'Brent' in h['title']}
+                        >= {'[inferred link: crude-oil', '[inferred link: energy-geopolitics'})
+        with tempfile.TemporaryDirectory() as tmp:
+            bad = Path(tmp) / 'links.json'
+            bad.write_text(json.dumps({'links': [{'driver': 'x', 'region': 'MARS', 'keywords': ['x'], 'symbols': ['INFY.NS'], 'basis': 'b'}]}))
+            with self.assertRaises(ValueError):
+                chains.load_links(bad)
+
     def test_keywords_match_whole_words_only(self):
         self.assertTrue(chains.matches('FII selling continues', ['fii']))
         self.assertFalse(chains.matches('Fiinancial wrap', ['fii']))

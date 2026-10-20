@@ -16,6 +16,14 @@ test('fixed rules decide relevance: tracked shares by name, market-wide drivers,
   assert.equal(classify('Infosys\nwins a deal').matched[0], 'INFY');
 });
 
+test('scope-v2: news from abroad that reaches the shares through a world driver is in scope', () => {
+  assert.deepEqual(classify('The Federal Reserve holds rates as Treasury yields climb'), { decision: 'in-scope', matched: ['world:Federal Reserve', 'world:Treasury yields'] });
+  assert.deepEqual(classify('OPEC agrees a supply cut; Brent jumps'), { decision: 'in-scope', matched: ['world:OPEC', 'world:Brent'] });
+  assert.deepEqual(classify('Infosys falls as the Nasdaq slides').matched, ['INFY', 'world:Nasdaq']);
+  assert.equal(classify('the ecb of the story').decision, 'out-of-scope'); // acronyms in capitals only
+  assert.equal(classify('A football club signs a new striker').decision, 'out-of-scope');
+});
+
 test('triage sets out-of-scope items aside from the queue, backlog and digest, without rejecting them, once', async () => {
   const f = await fixture(); try {
     await f.org.sources(owner, key(), { id: 'wire', name: 'Wire', url: 'https://wire.example.org/feed', approved: true });

@@ -30,6 +30,8 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
       join('.local', f), join('.local', 'feeds', f.slice(5, -5))], timeoutMs: 120_000, okCodes: [0], retries: 2, verify: verifyFeed })),
     // KNOW-02: fixed backend rules set aside news about nothing the organisation tracks, before anyone reviews it
     { id: 'news-triage', kind: 'http', method: 'POST', path: '/v1/evidence/triage', role: 'evaluator', freshKey: true },
+    // NEWS-02: the collected items of every country grouped into stories and linked to the shares (no network, no model)
+    { id: 'world-stories', cmd: NODE, args: [join(root, 'scripts', 'world-news.mjs'), 'stories'], timeoutMs: 120_000 },
     withModel
       ? { id: 'claims-and-fact-check', cmd: PY, args: [join(root, 'integrations', 'claims', 'autolearn.py'), 'run', '--config', join('.local', 'claims', 'autolearn.json'),
           '--cycles', '1'], timeoutMs: 3_600_000, requires: join(root, '.local', 'claims', 'autolearn.json') }

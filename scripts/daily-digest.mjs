@@ -5,19 +5,33 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { settings } from './deliver-alerts.mjs';
+import { describeStory, worldSummary } from './world-news.mjs';
 
 const rupees = paise => {
   const n = Number(BigInt(paise)) / 100;
   return (n < 0 ? '−₹' : '₹') + Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 };
 
-export function render(d) {
+/** NEWS-02: the world section, from the feeds' coverage and the latest story groups (unverified press). */
+export function worldLines(world) {
+  if (!world || world.error) return world?.error ? ['## World news', `- Not available: ${world.error}`, ''] : [];
+  const c = world.coverage, s = world.stories;
+  const working = c.sources.filter(r => r.state === 'working').length, enabled = c.sources.filter(r => r.state !== 'off').length;
+  return ['## World news (unverified press; links are inferred)',
+    `- Feeds working: ${working} of ${enabled} enabled; countries covered: ${c.countriesCovered.join(', ') || 'none yet'}`,
+    ...(s ? [`- Last ${s.windowHours} hours: ${s.items} items in ${s.stories} stories; ${s.crossBorder} across countries, ${s.reachingShares} reach the shares`,
+      ...s.top.filter(x => x.directShares.length || x.drivers.length).slice(0, 8).map(x => `- ${describeStory(x)}`)]
+      : ['- No stories grouped yet (cycle step world-stories).']), ''];
+}
+
+export function render(d, world = null) {
   const t = d.trading, k = d.knowledge, m = d.money;
+  const needs = [...d.needsOwner, ...(world?.coverage?.advice ?? [])];
   const lines = [
     `# Organisation digest — ${d.generatedAt.slice(0, 10)}`, '',
     `Window: last ${d.windowHours} hours · mode: ${d.mode}${d.halted ? ' · **NEW RISK HALTED**' : ''}`, '',
     '## Needs you',
-    ...(d.needsOwner.length ? d.needsOwner.map(n => `- ${n}`) : ['- Nothing right now.']), '',
+    ...(needs.length ? needs.map(n => `- ${n}`) : ['- Nothing right now.']), '',
     '## Money (paper)',
     `- Total P&L ${rupees(m.totalPaise)} (realised ${rupees(m.realisedPaise)}, open ${rupees(m.unrealisedPaise)}); realised in window ${rupees(m.realisedInWindowPaise)}`,
     ...m.byBot.map(b => `- ${b.botId}: ${rupees(b.totalPaise)}${b.returnOnBudgetPct !== null ? ` (${b.returnOnBudgetPct}% of budget)` : ''}`),
@@ -45,6 +59,7 @@ export function render(d) {
     '## Knowledge',
     `- ${k.received} items received, ${k.verified} verified, ${k.rejected} rejected; ${k.backlog} waiting for review`
       + (k.setAside ? ` (${k.setAside} more set aside as out of scope)` : ''), '',
+    ...worldLines(world),
     '## Bots (90-day scored accuracy, 5+ calls)',
     ...(d.bots.best.length ? d.bots.best.map(b => `- best: ${b.botId} ${Math.round(b.accuracy * 100)}% of ${b.scored}`) : ['- No bot has 5 scored calls yet.']),
     ...d.bots.weakest.map(b => `- weakest: ${b.botId} ${Math.round(b.accuracy * 100)}% of ${b.scored}`), '',
@@ -53,13 +68,14 @@ export function render(d) {
   return lines.join('\n');
 }
 
-export async function run(env = process.env, { fetchImpl = fetch, outDir = join(dirname(fileURLToPath(import.meta.url)), '..', '.local', 'digests') } = {}) {
+export async function run(env = process.env, { fetchImpl = fetch, outDir = join(dirname(fileURLToPath(import.meta.url)), '..', '.local', 'digests'),
+  world = worldSummary } = {}) {
   const s = settings(env);
   const response = await fetchImpl(s.base + '/v1/owner/digest', { method: 'POST', redirect: 'error', body: '{}',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + s.token } });
   if (!response.ok) throw new Error(`digest refused (HTTP ${response.status})`);
   const digest = await response.json();
-  const text = render(digest);
+  const text = render(digest, world ? await world() : null);
   await mkdir(outDir, { recursive: true });
   const path = join(outDir, digest.generatedAt.slice(0, 10) + '.md');
   await writeFile(path, text);

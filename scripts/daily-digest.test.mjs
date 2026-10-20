@@ -33,6 +33,21 @@ test('the digest renders as a readable note with what needs the owner first', ()
   assert.match(render({ ...digest, liveFitness: undefined }), /No bot has scored live calls yet/); // older backends
 });
 
+test('the world section: coverage, stories that reach the shares, and a broken feed under Needs you', () => {
+  const world = { coverage: { countriesCovered: ['CN', 'IN', 'US'], advice: ['World news: SCMP business is failing (FEED_HTTP_ERROR ×2); enable its backup: npm run world -- enable cn-scmp-china --yes'],
+    sources: [{ state: 'working' }, { state: 'working' }, { state: 'failing' }, { state: 'off' }] },
+  stories: { windowHours: 48, items: 40, stories: 31, crossBorder: 2, reachingShares: 1, top: [
+    { title: 'Fed holds rates', countries: ['IN', 'US'], publishers: 2, directShares: [], drivers: [{ driver: 'us-fed-rates', region: 'US', shares: ['HDFCBANK', 'INFY'] }] },
+    { title: 'A football final', countries: ['WORLD'], publishers: 1, directShares: [], drivers: [] }] } };
+  const text = render(digest, world);
+  assert.match(text, /Feeds working: 2 of 3 enabled; countries covered: CN, IN, US/);
+  assert.match(text, /40 items in 31 stories; 2 across countries, 1 reach the shares/);
+  assert.match(text, /\[IN, US\] Fed holds rates — 2 publishers; inferred: us-fed-rates → HDFCBANK, INFY/);
+  assert.doesNotMatch(text, /football/); // stories that reach no share stay in the file, not the digest
+  assert.ok(text.indexOf('enable cn-scmp-china') < text.indexOf('## Money'));
+  assert.doesNotMatch(render(digest), /World news/); // no world data, no section
+});
+
 test('the run writes the note locally and sends only a short summary to an optional webhook', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'digest-'));
   try {
@@ -42,7 +57,7 @@ test('the run writes the note locally and sends only a short summary to an optio
       return url.endsWith('/v1/owner/digest') ? { ok: true, json: async () => digest } : { ok: true };
     };
     const env = { PRINCIPALS_JSON: JSON.stringify([{ id: 'e', role: 'evaluator', token: 'eval-token' }]), ALERT_WEBHOOK_URL: 'https://notify.example/t' };
-    const result = await run(env, { fetchImpl, outDir: dir });
+    const result = await run(env, { fetchImpl, outDir: dir, world: null });
     assert.equal(result.webhook, true);
     assert.match(await readFile(join(dir, '2026-10-14.md'), 'utf8'), /Needs you/);
     assert.equal(sent[1].auth, undefined); // the backend credential never goes to the webhook
