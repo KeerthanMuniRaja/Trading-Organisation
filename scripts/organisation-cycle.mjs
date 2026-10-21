@@ -318,6 +318,19 @@ export async function dataManifest({ root = ROOT } = {}) {
 }
 
 export const ESCALATE_AFTER = 3;          // consecutive failed cycles before a step becomes an incident
+// OPS-04 circuit breaker for model agents (from FinceptTerminal's agent runner): a model step that failed CIRCUIT_AFTER
+// cycles in a row rests for CIRCUIT_REST_MS instead of failing (and spending model time) every day, then tries once again;
+// one success closes the circuit. The escalation above still tells the owner.
+export const CIRCUIT_AFTER = 3, CIRCUIT_REST_MS = 2 * 86_400_000;
+export const MODEL_STEPS = new Set(['scenario-panel', 'claims-and-fact-check', 'learning-workflows', 'model-allocator-decide', 'tradingagents-decide',
+  'debate', 'playbook-drafts']);
+
+/** Why a model step's circuit is open now (it rests), or null. */
+export function circuitOpen(id, streak, now) {
+  if (!MODEL_STEPS.has(id) || !streak || streak.failures < CIRCUIT_AFTER || !streak.openedAt) return null;
+  const until = Date.parse(streak.openedAt) + CIRCUIT_REST_MS;
+  return now < until ? `circuit open after ${streak.failures} failed runs in a row; resting until ${new Date(until).toISOString().slice(0, 16)} UTC, then one try` : null;
+}
 export const BACKOFF_MS = [30_000, 90_000]; // waits between retries of a transient step
 
 /** Runbook for one step: bounded retries with back-off, then the step's postcondition decides the outcome. */
@@ -378,7 +391,9 @@ export async function runCycle({ steps, journalPath, streaksPath = join(dirname(
     const previous = journal.steps[step.id];
     if (!force && previous?.status === 'done' && !step.critical) { results.push({ id: step.id, status: 'done', resumed: true }); continue; }
     let outcome;
+    const resting = step.skip ? null : circuitOpen(step.id, streaks[step.id], now().getTime());
     if (step.skip) outcome = { status: 'skipped', reason: step.skip };
+    else if (resting) outcome = { status: 'skipped', reason: resting };
     else if (step.requires && !existsSync(step.requires)) outcome = { status: 'skipped', reason: 'missing ' + step.requires.split(/[\\/]/).slice(-2).join('/') };
     else {
       // a release-controlled bot whose code is not the authorised release does not run at all (it would be refused anyway)
@@ -398,7 +413,9 @@ export async function runCycle({ steps, journalPath, streaksPath = join(dirname(
     }
     if (outcome.status === 'failed') {
       const streak = (streaks[step.id]?.failures ?? 0) + 1;
-      streaks[step.id] = { failures: streak, escalated: streaks[step.id]?.escalated ?? false };
+      streaks[step.id] = { failures: streak, escalated: streaks[step.id]?.escalated ?? false,
+        // a model step's circuit opens at the threshold, and again after each failed try once it is open
+        ...(MODEL_STEPS.has(step.id) && streak >= CIRCUIT_AFTER ? { openedAt: now().toISOString() } : {}) };
       if (streak >= ESCALATE_AFTER && !streaks[step.id].escalated) {
         outcome.escalated = await escalateStep(step, streak, outcome.summary + (outcome.playbook ? ` | Known problem ${outcome.playbook.id} (${outcome.playbook.decidedBy}): ${outcome.playbook.fix}` : ''));
         streaks[step.id].escalated = true;

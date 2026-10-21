@@ -87,6 +87,7 @@ A same-day rerun repeated nothing.
 | --- | --- |
 | **Runbook retries** | Network steps (market data, news feeds) retry twice, waiting 30 s and then 90 s. Other steps do not retry. |
 | **Postconditions** | A step counts as done only if its own report says so. `market-data` is **degraded** when the data steward kept previous data for any share. A feed is **failed** when it reports a fetch or parse failure, even if the process exited cleanly. |
+| **Circuit breaker for model agents** (21 Oct 2026, from FinceptTerminal) | A model step (debate, scenario panel, claims, learning, allocator, TradingAgents, playbook drafts) that failed 3 cycles in a row **rests for 2 days**: it is skipped with the reason, and no model time is spent. Then it tries once. A success closes the circuit; a failure opens it again. Other steps are unaffected, and the escalation below still tells you |
 | **Failure streaks** | `.local/cycles/streaks.json` counts consecutive failed cycles per step. A success or a degraded run resets the count. |
 | **Escalation** | On the **3rd consecutive failure**, the step is reported once as a **warning** incident (`POST /v1/incidents`, evaluator credential). That raises the `incident-open` alert. It is never critical, because a critical incident would halt new risk. If the backend itself is down, the escalation goes to `.local/alerts/outbox.jsonl` instead. A new streak after a recovery can escalate again. |
 

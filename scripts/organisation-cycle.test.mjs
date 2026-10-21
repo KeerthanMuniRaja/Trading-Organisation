@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { planSteps, runCycle, runHttp, escalate, releaseCheck, computeCheck, taSteps, verifyMarketData, verifyFeed, ESCALATE_AFTER,
-  runManifest, dataManifest, fingerprint } from './organisation-cycle.mjs';
+  runManifest, dataManifest, fingerprint, circuitOpen, CIRCUIT_AFTER, CIRCUIT_REST_MS } from './organisation-cycle.mjs';
 
 test('TradingAgents decides only weekly with the model and its own environment; its member proposes every cycle', () => {
   const friday = Date.parse('2026-10-23T11:00:00Z'), tuesday = Date.parse('2026-10-20T11:00:00Z');
@@ -82,6 +82,33 @@ test('every run keeps a manifest: the code and switches it started with and the 
     assert.deepEqual([runs[0].code, runs[0].data, typeof runs[0].finishedAt], [{ fingerprint: 'f' }, { newestLastSession: 'd' }, 'string']);
     assert.equal(runs[1].error, 'unreadable');
   } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('a model step that keeps failing rests behind an open circuit, tries again later, and one success closes it', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'circuit-'));
+  try {
+    let clock = Date.parse('2026-10-10T12:00:00Z'), ok = false;
+    const ran = [];
+    const steps = [{ id: 'debate', cmd: 'x' }, { id: 'market-data', cmd: 'x' }];
+    const day = n => runCycle({ steps, journalPath: join(dir, `${n}.json`), now: () => new Date(clock), escalateStep: async () => 'incident',
+      run: async s => { ran.push(s.id); return { code: ok || s.id !== 'debate' ? 0 : 1, tail: 'MODEL_TIMEOUT' }; } });
+    for (let n = 1; n <= CIRCUIT_AFTER; n++) { await day(n); clock += 86_400_000; }  // three failed days: the circuit opens
+    ran.length = 0;
+    const resting = await day(4);
+    assert.equal(resting.find(r => r.id === 'debate').status, 'skipped');
+    assert.match(resting.find(r => r.id === 'debate').reason, /circuit open after 3 failed runs/);
+    assert.deepEqual(ran, ['market-data']);                          // other steps are unaffected; the model is not called
+    clock += CIRCUIT_REST_MS;                                          // the rest is over: one try, which fails and re-opens
+    await day(5);
+    clock += 86_400_000;
+    assert.equal((await day(6)).find(r => r.id === 'debate').status, 'skipped');
+    clock += CIRCUIT_REST_MS; ok = true;                               // the next try succeeds and closes the circuit
+    assert.equal((await day(7)).find(r => r.id === 'debate').status, 'done');
+    clock += 86_400_000; ok = false;
+    assert.equal((await day(8)).find(r => r.id === 'debate').status, 'failed'); // closed again: a single failure just fails
+    // a step that is not a model agent never rests
+    assert.equal(circuitOpen('market-data', { failures: 9, openedAt: new Date(clock).toISOString() }, clock), null);
+  } finally { await rm(dir, { recursive: true, force: true }); }
 });
 
 test('runbooks: transient failures retry with back-off; postconditions can degrade or fail a "successful" run', async () => {
