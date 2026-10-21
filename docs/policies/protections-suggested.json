@@ -1,0 +1,10 @@
+{
+  "note": "Suggested starting thresholds for the founder (founderReview.md B3). Nothing is paused until the owner sets a policy: npm run protections -- set docs/policies/protections-suggested.json --reason \"...\". Losses are realised paper P&L (including fees) as a share of each bot's budget, over rolling calendar days. Pauses hold new buys only and lift by themselves.",
+  "rules": {
+    "dailyLossPct": 2,
+    "weeklyLossPct": 5,
+    "monthlyLossPct": 8,
+    "losingExits": { "inARow": 2, "pauseDays": 1 },
+    "shareCooldownDays": null
+  }
+}

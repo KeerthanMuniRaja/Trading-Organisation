@@ -36,6 +36,7 @@
     "bot-credential": "node scripts/bot-credential.mjs",
     "env:prune": "node scripts/prune-env-backups.mjs",
     "autonomy": "node --env-file=.env scripts/autonomy.mjs",
+    "protections": "node --env-file=.env scripts/protections.mjs",
     "supervisor": "node --env-file-if-exists=.env scripts/supervisor.mjs",
     "members": "node --env-file=.env scripts/member-setup.mjs",
     "status": "node --env-file=.env scripts/status.mjs",

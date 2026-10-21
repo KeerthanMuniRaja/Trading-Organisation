@@ -212,7 +212,11 @@ export function render(d, world = null, regime = null, known = null, trust = nul
     `- Suspended bots: ${(d.organisation?.suspendedBots ?? []).join(', ') || 'none'}`,
     ...(d.organisation ? [`- Departments: ${d.organisation.departmentsActive} active, ${d.organisation.departmentsClosed} closed; `
       + `hackathons: ${d.organisation.hackathonsOpen} open, ${d.organisation.hackathonsJudging} being judged`] : []),
-    ...(d.organisation?.automaticDecisions ? [`- Decisions the agents carried out under your standing approvals: ${d.organisation.automaticDecisions} (npm run autonomy)`] : []), '',
+    ...(d.organisation?.automaticDecisions ? [`- Decisions the agents carried out under your standing approvals: ${d.organisation.automaticDecisions} (npm run autonomy)`] : []),
+    ...(d.protections ? [d.protections.policySet
+      ? `- Loss brakes: ${d.protections.paused.length ? d.protections.paused.map(b => `${b.botId} paused (${b.pauses.map(x => x.code.replace(/^protection-/, '')
+        + (x.until ? ` until ${x.until.slice(0, 16).replace('T', ' ')} UTC` : '')).join(', ')})`).join('; ') + '; new buys only, each lifts by itself' : 'set; nothing paused'}`
+      : '- Loss brakes: not set, so losses never pause a bot (founderReview B3; npm run protections)'] : []), '',
     '## Live fitness (paper calls on new days)',
     ...((d.liveFitness ?? []).length ? d.liveFitness.map(f => `- ${f.botId} (${f.scope}): ${f.verdict}, ${f.right} of ${f.judged} right`)
       : ['- No bot has scored live calls yet.']), '',

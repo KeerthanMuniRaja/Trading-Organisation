@@ -20,9 +20,11 @@ answering in a session ("decision 3: yes"). This file is updated as items close.
 | # | Step | Command | Why |
 | --- | --- | --- | --- |
 | A1 | **Check everything** | `npm run preflight` | Read-only. It says READY or NOT READY and gives the command for every gap |
-| A2 | **Backup first** (backend stopped) | `npm run backup -- create` | Migration 052 (standing approvals) applies on the next start; a backup makes it reversible |
+| A2 | **Backup first** (backend stopped) | `npm run backup -- create` | Migrations 052 (standing approvals), 053 (refused orders) and 054 (loss brakes) apply on the next start. A backup makes them reversible, and the preflight wants a backup newer than 054 |
 | A3 | **Start the backend** | `npm start` | Nothing runs while it is down |
 | A4 | **Apply the starter policy** | `npm run autonomy -- set docs/policies/autonomy-starter.json --reason "Starter: protect, repair, roll back"` | The agents may suspend losing bots, roll back failing releases and trial same-rule fixes by themselves. No money moves by itself ([autonomy](docs/autonomy.md#the-starter-policy)) |
+| A4b | **Set the loss brakes** (decision B3) | `npm run protections -- set docs/policies/protections-suggested.json --reason "Founder thresholds"` | Built and switched off. Until you set them, losses never pause a bot. Suggested: 2% of budget in a day, 5% in a week, 8% in a month, and a 1-day pause after 2 losing exits. Only new buys pause, each pause lifts by itself, and exits stay allowed ([protections](docs/protections.md)) |
+| A4c | **Check the limits banner** | Read "Can you trust this digest?" in the first digest | It shows the limits the running backend actually loaded, and says by name when a setting differs (the stale `MAX_ORDER` problem) |
 | A5 | **Turn on the model** | Add `MODEL_AUTOSTART=qwen3.5-4b-q4km` to `.env` | Switches on the claim analyst, learning, R&D invention, the debate desk, the scenario panel, TradingAgents and playbook drafts |
 | A6 | **Set up the model members** (after A5) | `npm run members -- apply tradingagents --yes` and `npm run members -- apply debaters --yes`, then restart the backend | Gives TradingAgents and the bull/bear debaters their identities and credentials. They start in shadow |
 | A7 | **Keep the organisation running** | `npm run supervisor`, or once: `pwsh -File scripts\install-supervisor-task.ps1` | Readiness at 09:00 IST, the cycle at 16:05 IST and a Friday backup, with catch-up if the laptop slept. **Check your IT policy before registering a scheduled task on the office laptop** |
@@ -45,7 +47,7 @@ with `npm run agenda`.
 | --- | --- | --- | --- | --- |
 | B1 | **The live momentum bot** | (a) keep it monthly on ₹5,000; (b) make a yearly-rebalanced release; (c) stop it | **(b), or (a) as a pure experiment.** After tax over 10 years: monthly 9.8%, yearly 11.2%, basket 12.55%. Neither beats holding | [roadmap](docs/skill-roadmap.md) |
 | B2 | **The basket as the default home for money** | Bots get budget only by beating holding the 8 shares after tax on their live record | **Yes.** It is the honest benchmark, and no strategy beats it yet | [roadmap](docs/skill-roadmap.md) |
-| B3 | **Self-expiring loss brakes** | Pause a bot after a daily, weekly or monthly loss or a losing streak; the pause lifts by itself; exits stay allowed | **Yes.** Top-ranked gap. Suggested starting thresholds: pause at 2% of budget lost in a day, 5% in a week or 8% in a month, and for one session after 2 losing exits in a row | [gap analysis A1](docs/research-notes/README.md) |
+| B3 | **Self-expiring loss brakes: the thresholds** | The mechanism is **built and off** (21 Oct, migration 054). You choose the numbers, or `{}` for none, with one command (step A4b) | **Yes, the suggested file:** pause at 2% of budget lost in a day, 5% in a week or 8% in a month, and for a day after 2 losing exits in a row. Optional: a per-share cooldown after an exit | [protections](docs/protections.md) |
 | B4 | **Unrealised-loss protection and horizon exits** | A portfolio drawdown halt on marked value; optional trailing stops; close or renew a position when its horizon passes | **Yes to the drawdown halt and horizon renewal;** stops optional | [gap analysis A2](docs/research-notes/README.md) |
 | B5 | **The regime as a sizing input** | Today the regime is advice only. Option: size new buys down at HIGH or SEVERE | **Not yet.** Regime v2 (closer to the original specification) was tested on 21 Oct: it warns of falls less sharply than v1 and calls SEVERE on 42% of days. A re-entry signal is still untested | [market regime](docs/market-regime.md) |
 
@@ -122,9 +124,21 @@ These are fixes from the gap analysis that need no decision.
 - **The review scorecard:** whether the risk review turns down worse calls than it takes, by reason and by regime. It
   needs live calls to say anything.
 
-**Still to do:**
-- recording refused orders (a new backend table);
-- a limits banner in the digest (needs the backend's digest to report the limits).
+**Done later on 21 Oct:**
+- **Refused orders** are recorded (migration 053). A refused reserve or fill is kept after its rollback, once per
+  request, and the digest counts them.
+- **Limits banner:** the digest shows the limits the running backend loaded, and warns by name when a setting differs.
+- **More self-checks:** the digest checks its own arithmetic and flags cycle runs that never finished.
+- **Review scorecard:** it now also shows the regime when each call ended, and the worst and best price while each buy
+  was held.
+- **Loss brakes:** the mechanism is built and switched off; only the thresholds wait on you (B3, step A4b). The review
+  rules are now `signal-risk-v3`, which is identical to v2 until brakes are set.
+
+**Still to do, no decision needed:**
+- the research guards still missing: the plateau report (only useful once an idea passes) and a shuffled-history
+  null. The expanding walk-forward and the warm-up sweep were added: still no edge, and every idea is stable from 300
+  sessions;
+- the replay clock for the whole backend. The brakes already take an injectable clock.
 
 ## Part D: things you should know
 

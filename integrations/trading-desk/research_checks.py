@@ -32,6 +32,7 @@ import random
 import statistics
 
 WARMUP_SESSIONS = 300
+WARMUP_SWEEP = (300, 600, 1200)  # freqtrade's recursive-analysis idea: how much history until a decision stops changing
 
 
 def truncated(table, dates, i, start=0):
@@ -53,14 +54,14 @@ def decision_days(dates, first, count=6):
     return [starts[round(k * step)] for k in range(count)]
 
 
-def check_rules(rules, table, dates, days):
-    """name -> {'lookahead': [dates that changed], 'warmup': [dates that changed]} for every rule, sharing the cut tables."""
-    out = {name: {'lookahead': [], 'warmup': []} for name in rules}
+def check_rules(rules, table, dates, days, sweep=WARMUP_SWEEP):
+    """name -> {'lookahead': [dates that changed], 'warmup': [dates that changed with only the last WARMUP_SESSIONS],
+    'warmupSweep': {sessions: changed, checked}, 'stableFromSessions': the shortest swept history whose decisions all
+    matched (None if none did, or too few days could be checked)} for every rule, sharing the cut tables."""
+    out = {name: {'lookahead': [], 'warmup': [], 'warmupSweep': {n: {'changed': 0, 'checked': 0} for n in sweep}} for name in rules}
     for i in days:
         past_dates, past = truncated(table, dates, i)
-        recent = None
-        if i - WARMUP_SESSIONS > 0:
-            recent = truncated(table, dates, i, i - WARMUP_SESSIONS)
+        recent = {n: truncated(table, dates, i, i - n) for n in sweep if i - n > 0}
         for name, rule in rules.items():
             full = rule(table, dates, i)
             try:
@@ -69,14 +70,20 @@ def check_rules(rules, table, dates, days):
                 cut = None  # it reached for a day that had not happened yet
             if cut is None or not same(full, cut):
                 out[name]['lookahead'].append(dates[i])
-            if recent is not None:
-                r_dates, r_table = recent
+            for n, (r_dates, r_table) in recent.items():
                 try:
                     short = rule(r_table, r_dates, len(r_dates) - 1)
                 except (IndexError, KeyError):
                     short = None
-                if short is None or not same(full, short):
+                changed = short is None or not same(full, short)
+                out[name]['warmupSweep'][n]['checked'] += 1
+                out[name]['warmupSweep'][n]['changed'] += changed
+                if changed and n == WARMUP_SESSIONS:
                     out[name]['warmup'].append(dates[i])
+    for o in out.values():
+        # a length counts as stable only with at least 3 checked days: too few samples prove nothing
+        stable = [n for n in sorted(o['warmupSweep']) if o['warmupSweep'][n]['checked'] >= 3 and not o['warmupSweep'][n]['changed']]
+        o['stableFromSessions'] = stable[0] if stable else None
     return out
 
 
@@ -288,16 +295,17 @@ def robustness(months, excess_pct, turnover, one_way_cost_pct):
             'averageExcessPctAt2xCosts': round(statistics.fmean(excess_pct) - extra, 3), 'stressExcessPct': stress}
 
 
-def walk_forward(rows, names, train=36, test=12):
-    """Each step: the idea with the best average monthly excess over `train` months, held for the next `test` months."""
+def walk_forward(rows, names, train=36, test=12, expanding=False):
+    """Each step: the idea with the best average monthly excess over `train` months (with `expanding`, over every month so
+    far, at least `train`), held for the next `test` months (vectorbt's rolling and expanding splits)."""
     picks, excess = [], []
     for start in range(train, len(rows) - 0, test):
-        window, ahead = rows[start - train:start], rows[start:start + test]
+        window, ahead = rows[0 if expanding else start - train:start], rows[start:start + test]
         if not ahead:
             break
         best = max(sorted(names), key=lambda n: statistics.fmean(r['rules'][n] - r['basketPct'] for r in window))
         picks.append({'from': ahead[0]['month'], 'to': ahead[-1]['month'], 'chosen': best})
         excess += [r['rules'][best] - r['basketPct'] for r in ahead]
     ahead_n, behind_n = sum(e > 0 for e in excess), sum(e < 0 for e in excess)
-    return {'trainMonths': train, 'testMonths': test, 'outOfSampleMonths': len(excess), 'ahead': ahead_n, 'behind': behind_n,
+    return {'trainMonths': train, 'testMonths': test, 'window': 'expanding' if expanding else 'rolling', 'outOfSampleMonths': len(excess), 'ahead': ahead_n, 'behind': behind_n,
             'averageExcessPct': round(statistics.fmean(excess), 3) if excess else None, 'picks': picks}

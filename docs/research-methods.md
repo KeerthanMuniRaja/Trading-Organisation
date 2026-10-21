@@ -58,6 +58,17 @@ is our own code, with no new dependencies.
   - **NIFTY 50:** reversal reaches 0.31. It is ahead in 7 of 9 years and still ahead at twice the costs. This is the one
     candidate worth re-testing on point-in-time membership.
 
+- **Expanding walk-forward and a warm-up sweep** (added later on 21 Oct).
+  - **Expanding walk-forward:** the yearly choice of the best idea is also made on all the history so far, not just the
+    last 3 years.
+  - **Warm-up sweep:** each idea's decisions are compared on 300, 600 and 1,200 sessions of history.
+    `stableFromSessions` is the shortest length that never changed a decision, with at least 3 days checked.
+
+  **Result on the 8 shares:**
+  - expanding walk-forward: 34 months ahead and 36 behind, +0.01% a month, p 1. That is no better than holding the
+    basket; the rolling version gives −0.12% a month;
+  - every idea is stable from 300 sessions.
+
 ## The NIFTY 50 research universe
 
 `datasets.NIFTY50` holds the members after the reconstitution effective 30 Sep 2026, taken from Wikipedia's NIFTY 50 page.

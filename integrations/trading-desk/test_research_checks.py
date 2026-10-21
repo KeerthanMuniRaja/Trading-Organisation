@@ -36,7 +36,7 @@ class BiasCheckTests(unittest.TestCase):
         self.assertEqual(len(days), 6)
         found = rc.check_rules({'peeking': peeking, 'honest': honest}, table, dates, days)
         self.assertEqual(len(found['peeking']['lookahead']), 6)
-        self.assertEqual(found['honest'], {'lookahead': [], 'warmup': []})
+        self.assertEqual((found['honest']['lookahead'], found['honest']['warmup'], found['honest']['stableFromSessions']), ([], [], 300))
 
     def test_a_rule_that_depends_on_where_the_data_starts_is_reported(self):
         dates, table = table_of()
@@ -168,6 +168,29 @@ class StatsTests(unittest.TestCase):
         wf = rc.walk_forward(rows, ['a', 'b'], train=6, test=6)
         self.assertEqual(wf['picks'], [{'from': '2020-07', 'to': '2020-12', 'chosen': 'a'}])  # best in training, worst after
         self.assertEqual((wf['ahead'], wf['behind'], wf['averageExcessPct']), (0, 6, -1.0))
+
+    def test_an_expanding_walk_forward_chooses_on_all_the_history_so_far(self):
+        # a is best over the first 6 months, b over the next 6; at month 13 the rolling 6-month window picks b, the
+        # expanding window (all 12 months) still picks a
+        rows = [{'month': f'2020-{k:02d}', 'basketPct': 0.0, 'rules': {'a': 3.0 if k <= 6 else -0.5, 'b': -1.0 if k <= 6 else 1.0}} for k in range(1, 13)]
+        rows += [{'month': f'2021-{k:02d}', 'basketPct': 0.0, 'rules': {'a': 0.0, 'b': 0.0}} for k in range(1, 7)]
+        rolling, expanding = rc.walk_forward(rows, ['a', 'b'], train=6, test=6), rc.walk_forward(rows, ['a', 'b'], train=6, test=6, expanding=True)
+        self.assertEqual([p['chosen'] for p in rolling['picks']], ['a', 'b'])
+        self.assertEqual([p['chosen'] for p in expanding['picks']], ['a', 'a'])
+        self.assertEqual((rolling['window'], expanding['window']), ('rolling', 'expanding'))
+
+    def test_the_warmup_sweep_finds_how_much_history_a_rule_needs(self):
+        dates, table = table_of(years=6)
+        days = rc.decision_days(dates, 1250, count=4)
+
+        def slow(t, d, i):  # needs about 900 sessions of history: its answer changes with less
+            first = d[max(0, i - 900)]
+            return {s: 1 / len(t) for s in sorted(t)[:2]} if first in t[sorted(t)[0]] and i >= 900 else {}
+        checks = rc.check_rules({'slow': slow, 'fast': lambda t, d, i: {sorted(t)[0]: 1.0}}, table, dates, days)
+        self.assertEqual(checks['fast']['stableFromSessions'], 300)
+        self.assertEqual(checks['slow']['stableFromSessions'], 1200)
+        self.assertEqual(checks['slow']['warmupSweep'][300]['changed'], len(days))
+        self.assertTrue(checks['slow']['warmup'])  # still reported as warm-up sensitive at the usual 300 sessions
 
 
 class KnowledgeTests(unittest.TestCase):

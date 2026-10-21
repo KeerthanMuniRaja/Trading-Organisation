@@ -8,6 +8,7 @@ import { available, balance, journal, tradingLoss } from './treasury.js';
 import { verifiedPrice } from './price-evidence.js';
 import { liveReleases } from './bot-releases.js';
 import { isSuspended } from './bot-control.js';
+import { activePauses } from './protections.js';
 
 const priceEvidence=z.object({evidenceId:z.uuid(),pricePaise:z.string().regex(/^[1-9][0-9]{0,13}$/),observedAt:timestamp}).strict();
 /** Set only by TradeSignals.execute (never from a request body): the reviewed proposal this order carries out. */
@@ -50,9 +51,11 @@ export class PaperTrading {
     requireThat(quote&&Math.abs(Date.now()-new Date(quote.observed_at).getTime())<=60000,'Fresh approved quote required');
     return side==='buy'?BigInt(quote.a)+ceilBps(BigInt(quote.a),this.config.slippageBps):BigInt(quote.b)*(10000n-BigInt(this.config.slippageBps))/10000n;
   }
-  private async permitNewRisk(tx:Sql,botId:string) {
+  private async permitNewRisk(tx:Sql,botId:string,symbol:string) {
     requireThat(!(await tx.query('SELECT halted FROM system_lock WHERE id=1')).rows[0]!.halted,'New risk is halted');
     requireThat(await tradingLoss(tx) < this.config.maxLoss,'Realised loss limit reached');
+    const pauses=await activePauses(tx,botId,symbol);
+    requireThat(!pauses.length,`New buys are paused by protection (${pauses.map(p=>p.code).join(', ')}); exits stay allowed and the pause lifts by itself`);
     const invalidLessons=await tx.query("SELECT c.lesson_id FROM bot_curriculum c JOIN lessons l ON l.id=c.lesson_id JOIN evidence e ON e.id=l.evidence_id JOIN sources s ON s.id=e.source_id WHERE c.bot_id=$1 AND (l.status<>'verified' OR e.status<>'verified' OR s.approved=false)",[botId]);
     const invalidEvaluation=await tx.query("SELECT x.id FROM experiments x JOIN datasets d ON d.id=x.dataset_id JOIN evidence e ON e.id=d.evidence_id JOIN sources s ON s.id=e.source_id WHERE x.bot_id=$1 AND x.state='passed' AND (e.status<>'verified' OR s.approved=false)",[botId]);
     requireThat(!invalidLessons.rows.length&&!invalidEvaluation.rows.length,'Qualification evidence has been revoked');
@@ -95,7 +98,7 @@ export class PaperTrading {
       const price=await this.price(tx,input.symbol,input.side,input.priceEvidence,link?.signalId??null);
       let quantity=BigInt(input.quantity),reserved=0n;
       if(input.side==='buy') {
-        await this.permitNewRisk(tx,bot.id);
+        await this.permitNewRisk(tx,bot.id,input.symbol);
         requireThat(!(await isSuspended(tx,bot.id)),'The bot is suspended: it may only reduce risk',403);
         const allReserved=BigInt((await tx.query("SELECT COALESCE(SUM(reserved_paise),0)::text AS value FROM orders WHERE status='reserved'")).rows[0]!.value);
         const ownCost=BigInt((await tx.query('SELECT COALESCE(SUM(cost_paise),0)::text AS value FROM positions WHERE bot_id=$1',[bot.id])).rows[0]!.value);
@@ -129,7 +132,7 @@ export class PaperTrading {
       const position=(await tx.query('SELECT quantity::text,cost_paise::text FROM positions WHERE bot_id=$1 AND symbol=$2',[order.bot_id,order.symbol])).rows[0];
       let positionQty=BigInt(position?.quantity??0),positionCost=BigInt(position?.cost_paise??0),journalId:string;
       if(order.side==='buy') {
-        await this.permitNewRisk(tx,bot.id);requireThat(!(await isSuspended(tx,bot.id)),'The bot is suspended: it may only reduce risk',403);
+        await this.permitNewRisk(tx,bot.id,order.symbol);requireThat(!(await isSuspended(tx,bot.id)),'The bot is suspended: it may only reduce risk',403);
         requireThat(gross+fee<=BigInt(order.reserved),'Price moved beyond reservation; cancel and re-propose');
         requireThat(gross+fee<=this.config.maxOrder,'Order exceeds current configured limit');
         const allReserved=BigInt((await tx.query("SELECT COALESCE(SUM(reserved_paise),0)::text AS value FROM orders WHERE status='reserved'")).rows[0]!.value);

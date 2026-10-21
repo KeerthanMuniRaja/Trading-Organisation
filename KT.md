@@ -41,13 +41,13 @@ The organisation now manages itself like a firm, with the owner as CEO:
   - risk metrics (volatility, Sharpe, VaR) in the benchmark and digest.
 
   No code was copied from either project.
-- **On the next backend start:** migration 052 applies. Take a backup first.
+- **On the next backend start:** migrations 052, 053 (refused orders) and 054 (loss brakes) apply. Take a backup first.
 - **Owner's direction:** agents decide and act, and the system develops itself; the owner approves and oversees. Build towards this.
 
 ### Added on 21 October 2026 (read first)
 
 - **Founder review** ([founderReview.md](founderReview.md)): the switch-on checklist (planned for Sat 24 Oct) and all 23 pending decisions. Keep it up to date as items close.
-- **Live operations are paused until Saturday.** The backend has been stopped since 20 Oct. Migration 052 applies on the next start, so take a backup first.
+- **Live operations are paused until Saturday.** The backend has been stopped since 20 Oct. Migrations 052–054 apply on the next start, so take a backup first.
 - **Autonomy:**
   - **Rehearsal:** `backend/test/rehearsal.test.ts` checks the invariants over 8 rounds, with injected failures.
   - **Starter policy:** `docs/policies/autonomy-starter.json` is protective only.
@@ -84,7 +84,15 @@ The organisation now manages itself like a firm, with the owner as CEO:
     - the digest's "Can you trust this digest?" section;
     - `review_scorecard.py` (cycle step `review-scorecard`), comparing calls the review took with calls it turned
       down.
-  - **Still open (backend):** recording refused orders, and a limits banner in the digest.
+  - **Refused orders** (migration 053, `order_refusals`, `POST /v1/paper/refusals/query`): every 403, 404 or 409 refusal
+    of a reserve or fill is kept after its rollback, once per request; the caller's error is unchanged.
+  - **Digest:** a limits banner (what the running backend loaded, with a name-only warning when settings differ),
+    arithmetic checks, crashed runs, refused-order counts and the loss-brake state.
+  - **Loss brakes** (migration 054, `protections.ts`, `npm run protections`, [protections](docs/protections.md)):
+    - daily, weekly and monthly realised-loss pauses, a losing-streak pause and a per-share cooldown;
+    - they pause new buys only and lift by themselves;
+    - they are set by the owner only, and are off until then (founder review B3);
+    - the review rules are now `signal-risk-v3`, identical to v2 with no policy.
 
 ### Added in the evening of 20 October 2026
 

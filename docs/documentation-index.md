@@ -30,6 +30,7 @@ The preferred experimental model is constrained Qwen3.5-4B Q4_K_M on the direct 
 - [Model evaluation suite and training data](model-eval.md)
 - [Knowledge index: stored, connected, searchable, point-in-time](knowledge-index.md)
 - [The organisation cycle, run manifests, the digest self-check and the review scorecard](operations-cycle.md)
+- [Self-expiring loss brakes (protections)](protections.md)
 - [Roadmap to proven skill](skill-roadmap.md)
 - [Starter policy for standing approvals](policies/autonomy-starter.json)
 - [Live paper testing: the daily runbook](live-testing.md)

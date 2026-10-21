@@ -108,7 +108,12 @@ test('the limits banner shows what the backend loaded and flags settings that di
   const stale = render(d, null, null, null, { ...trust, env: { MAX_ORDER_PAISE: '100000', PAPER_SLIPPAGE_BPS: '5' } });
   assert.match(stale, /Check first: the running backend loaded different limits from this digest's settings \(MAX_ORDER_PAISE\)/);
   assert.doesNotMatch(stale, /100000/); // names only, never the value it expected
-  assert.doesNotMatch(render(digest), /order\(s\) refused|Limits the backend/);
+  assert.doesNotMatch(render(digest), /order\(s\) refused|Limits the backend|Loss brakes/);
+  assert.match(render({ ...digest, protections: { policySet: false, paused: [] } }), /- Loss brakes: not set, so losses never pause a bot \(founderReview B3/);
+  assert.match(render({ ...digest, protections: { policySet: true, paused: [] } }), /- Loss brakes: set; nothing paused/);
+  assert.match(render({ ...digest, protections: { policySet: true, paused: [{ botId: 'momentum-rules', pauses: [{ code: 'protection-daily-loss', until: null },
+    { code: 'protection-losing-streak', until: '2026-10-15T10:30:00.000Z' }] }] } }),
+  /- Loss brakes: momentum-rules paused \(daily-loss, losing-streak until 2026-10-15 10:30 UTC\); new buys only, each lifts by itself/);
 });
 
 test('the review scorecard shows how taken and turned-down calls went', () => {

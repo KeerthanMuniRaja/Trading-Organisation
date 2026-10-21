@@ -63,26 +63,30 @@ Fixed on 21 Oct 2026 (commit 761572b):
 > **Status, 21 Oct 2026.** Built without an owner decision (see the [project log](../project-log/2026-10-21.md)):
 >
 > **Done:**
+> - **1:** self-expiring loss brakes ([protections](../protections.md)). They are built and switched off until the owner
+>   sets the thresholds (B3).
+> - **5:** refused orders are recorded (migration 053).
 > - **16:** a real debate.
 > - **17:** debaters see the bot's own record.
 > - **18:** data-status markers and a share identity.
+> - **24:** the regime at entry and exit, and the worst and best price while held (MAE/MFE).
+> - **27:** a limits banner in the digest.
 >
 > **Partly done:**
 > - **13:** deflated and probabilistic Sharpe, a turnover-matched random baseline, years ahead, twice the costs and
->   India's 2018, 2020 and 2022 stress windows. Still open: the plateau report, an expanding walk-forward, a shuffled
->   null and a lookahead sweep.
+>   India's 2018, 2020 and 2022 stress windows, plus an expanding walk-forward and a warm-up sweep. Still open: the
+>   plateau report and a shuffled null.
 > - **15:** regime v2 without stalling days. It warns less sharply than v1, so v1 stays.
 > - **23:** a review scorecard covering declined and lapsed calls.
-> - **24:** the regime at entry. Still open: the regime at exit, and the worst and best move during each holding
->   (MAE/MFE).
 > - **25:** baseline regression, pinned judges and KTO rows. Still open: a measured noise floor.
-> - **26:** run manifests for cycles, holding code, switches and price hashes. Still open: backtests, seeds and
->   flagging crashed runs.
-> - **29:** a freshness self-check. Still open: arithmetic checks.
+> - **26:** run manifests for cycles, holding code, switches and price hashes, with crashed runs flagged. Still open:
+>   backtests and seeds.
+> - **28:** an injectable clock for the brakes. Still open: the whole backend.
+> - **29:** freshness and arithmetic self-checks. Still open: weekday checks.
 >
 > **New, not on this list:** a point-in-time knowledge index.
 >
-> **Still open:** everything else, including the top-ranked A1 (self-expiring loss brakes), which needs the owner.
+> **Still open:** everything else. A2, the drawdown halt and horizon exits, needs the owner (B4).
 
 ### A. Risk brakes that work by themselves (highest value for autonomy)
 

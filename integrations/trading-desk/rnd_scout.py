@@ -259,11 +259,15 @@ def scout(through=None, cache=daily.DAILY, ledger_path=None, universe='desk', ra
                     'robustness': rc.robustness(months, excess, turns, ONE_WAY_COST_PCT),
                     'beatsMatchedRandomPct': (lambda m: rc.percentile(average, m['averages']) if m else None)(
                         min(matched.values(), key=lambda m: abs(m['turnoverPct'] - proof['turnoverPctPerMonth'])) if matched else None),
-                    'beatsRandomPct': rc.percentile(average, random_avg), 'warmupSensitive': bool(checks[name]['warmup'])})
+                    'beatsRandomPct': rc.percentile(average, random_avg), 'warmupSensitive': bool(checks[name]['warmup']),
+                    'stableFromSessions': checks[name].get('stableFromSessions')})
     out.sort(key=lambda c: (c['pValue'], c['name']))
     last = rows[-1]['month']
     wf = rc.walk_forward(rows, list(tried))
     wf['pValue'] = round(sign_p(wf['ahead'], wf['behind']), 6)
+    # the same choice made on all the history so far (expanding), so a bad result is not just a short window's fault
+    wfx = rc.walk_forward(rows, list(tried), expanding=True)
+    wfx['pValue'] = round(sign_p(wfx['ahead'], wfx['behind']), 6)
     report = {'version': VERSION, 'fingerprint': fingerprint(ledger_path), 'dataFingerprint': data, 'from': rows[0]['month'], 'through': last,
               'ideasTried': len(tried), 'bonferroniThreshold': round(threshold, 6), 'oneWayCostPct': ONE_WAY_COST_PCT,
               'publishedAt': f'{last}-28T10:30:00+00:00', 'candidates': out,
@@ -274,7 +278,7 @@ def scout(through=None, cache=daily.DAILY, ledger_path=None, universe='desk', ra
                                  'matchedByTurnover': {f'every{k}m': {'turnoverPctPerMonth': round(m['turnoverPct'], 1),
                                                                      'medianExcessPct': round(statistics.median(m['averages']), 3)}
                                                        for k, m in sorted(matched.items())}},
-              'walkForward': wf,
+              'walkForward': wf, 'walkForwardExpanding': wfx,
               'note': 'Seen history, net of costs, against the equal-weight basket; a screen for ideas, not proof. Live paper fitness decides.'}
     if universe != 'desk':
         report.update({'universe': universe, 'shares': sorted(table), 'leftOut': excluded,
