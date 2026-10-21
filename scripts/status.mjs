@@ -23,6 +23,8 @@ function localLines(f) {
     + `${f.knowledge.unknown?.length ? `; ${f.knowledge.unknown.length} unknown cycle problem(s)` : ''}`);
   if (f.intraday) out.push(`Intraday  ${f.intraday.mode} ${f.intraday.day}: basket ${f.intraday.final.basketMovePct}%, positions ${f.intraday.final.lossPct}%; `
     + `events: ${f.intraday.events.map(e => e.rule + ':' + e.subject).join(', ') || 'none'}`);
+  if (f.index) out.push(`Knowledge ${f.index.nodes} connected records (${Object.entries(f.index.byKind ?? {}).map(([k, n]) => `${n} ${k}`).join(', ')}), `
+    + `${f.index.edges} links; built ${String(f.index.builtAt).slice(0, 16).replace('T', ' ')} UTC (npm run knowledge -- about <SHARE>)`);
   if (f.regime) out.push(`Regime    ${f.regime.state && f.regime.state !== 'fresh' ? f.regime.state.toUpperCase() + ' ' : ''}${f.regime.risk} on ${f.regime.date} (${f.regime.distributionDays} distribution days; ${f.regime.breadth200d ?? '?'}/${f.regime.shares} above 200-day); advisory ceiling ${f.regime.exposureCeilingPct}%`);
   if (f.world && !f.world.error) {
     const w = f.world, s = w.stories;
@@ -110,6 +112,7 @@ export async function gather(env = process.env, { fetchImpl = fetch, root = ROOT
   facts.knowledge = await knowledgeSummary(root, now);
   facts.intraday = await json(join(root, '.local', 'intraday', 'latest.json'));
   facts.supervisor = await heartbeat(root, now);
+  facts.index = await json(join(root, '.local', 'knowledge', 'index-meta.json'));
   if (facts.world?.coverage?.advice?.length && facts.digest) facts.digest.needsOwner = [...(facts.digest.needsOwner ?? []), ...facts.world.coverage.advice];
   return facts;
 }

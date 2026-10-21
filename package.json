@@ -42,6 +42,7 @@
     "world": "node --env-file-if-exists=.env scripts/world-news.mjs",
     "intraday": "node --env-file-if-exists=.env scripts/intraday-monitor.mjs",
     "preflight": "node --env-file-if-exists=.env scripts/preflight.mjs",
+    "knowledge": ".local\\replay-venv\\Scripts\\python.exe integrations/trading-desk/knowledge_index.py",
     "test:cycle": "node --test scripts/organisation-cycle.test.mjs",
     "test:secrets": "node --test scripts/secret-scan.test.mjs",
     "build": "tsc -p backend/tsconfig.json",

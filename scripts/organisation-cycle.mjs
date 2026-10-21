@@ -41,6 +41,8 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     // a driver's news? (direction-free; a link that shows nothing stays labelled until the owner edits the links)
     { id: 'link-study', cmd: PY, args: [desk('chains.py'), 'study', '--headlines', join('.local', 'world', 'headline-history.json')],
       timeoutMs: 300_000, requires: join(root, '.local', 'world', 'headline-history.json') },
+    // KNOW-06: everything collected, connected and searchable, point-in-time (items, stories, drivers, regimes, ideas, calls)
+    { id: 'knowledge-index', cmd: PY, args: [desk('knowledge_index.py'), 'build'], timeoutMs: 300_000 },
     // SCENARIO-01: five personas rehearse the day's two biggest linked world stories (model needed; shadow only), and
     // their calls are judged after five sessions against the basket (no model)
     withModel

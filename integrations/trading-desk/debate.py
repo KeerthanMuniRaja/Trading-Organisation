@@ -35,8 +35,9 @@ SYSTEM = ('You are the {side} researcher on the debate desk of a paper-trading o
           'You may cite at most one piece of evidence, and only by an id from the verified list given; cite none if none applies. '
           "organisationKnowledge is the organisation's own research (today's market regime and lessons from testing methods on "
           'its history): use it as background, never as evidence to cite. botRecord is how this bot\'s scored calls turned out. '
-          'dataStatus says what is missing: never treat missing data as good or bad news. If opposingArgument is given, answer '
-          'it directly. You have no tools and no authority: the review decides.')
+          'dataStatus says what is missing: never treat missing data as good or bad news. pressDossier is UNVERIFIED press the '
+          'organisation collected about the share (named directly, or reaching it through an economic driver): background only, '
+          'never cite it. If opposingArgument is given, answer it directly. You have no tools and no authority: the review decides.')
 
 
 def schema(evidence_ids):
@@ -66,7 +67,19 @@ def published_before(published, as_of):
         return False
 
 
-def context(signal, cache, headlines, knowledge=None, record=None, news_status='ok'):
+def press_dossier(symbol, as_of, index=None):
+    """The knowledge index's point-in-time dossier on the share, cut to what a small model can read; None if no index."""
+    import knowledge_index
+    try:
+        d = knowledge_index.dossier(symbol, as_of, **({'db': index} if index else {}))
+    except (ValueError, OSError, Exception):  # noqa: BLE001 - a missing or locked index means 'unavailable', never a failure
+        return None
+    return {'named': [f"{x['publishedAt'][:10]} {x['title']}" for x in d['namedInPress'][:5]],
+            'throughDrivers': [f"{x['publishedAt'][:10]} [{', '.join(y['driver'] for y in x['drivers'])}] {x['title']}" for x in d['reachedThroughDrivers'][:3]],
+            'stories': [f"{x['firstSeen'][:10]} ({', '.join(x['countries'])}) {x['title']}" for x in d['stories'][:3]]}
+
+
+def context(signal, cache, headlines, knowledge=None, record=None, news_status='ok', press='unset'):
     """What a debater sees. Everything is as of the proposal: no headline published after it was made (so a replay of a
     past day never sees the future), and dataStatus says plainly what is missing (TradingAgents' 'no data' vs
     'unavailable' markers)."""
@@ -78,13 +91,15 @@ def context(signal, cache, headlines, knowledge=None, record=None, news_status='
             and (not as_of or published_before(h.get('publishedAt'), as_of))][-10:]
     status = {'verifiedNews': 'available' if news else ('feeds or fact-checker not available' if news_status != 'ok'
                                                          else 'none published about this share before the proposal'),
-              'recentCloses': 'available' if closes else 'unavailable'}
+              'recentCloses': 'available' if closes else 'unavailable',
+              **({} if press == 'unset' else {'pressDossier': 'available' if press else 'knowledge index unavailable'})}
     # the fact-checker's verified headlines are context; citations are limited to the proposal's own verified evidence
     return {'share': {'symbol': signal['symbol'], 'name': daily.datasets.UNIVERSE.get(signal['symbol'] + '.NS', signal['symbol']), 'exchange': 'NSE'},
             'proposal': {k: signal.get(k) for k in ('symbol', 'action', 'conviction', 'horizonDays', 'targetWeightPct', 'thesis', 'invalidation')},
             'recentCloses': closes, 'verifiedNews': [{k: h.get(k) for k in ('publishedAt', 'source', 'title')} for h in news],
             'verifiedEvidenceIds': sorted(set(signal.get('evidenceIds', []))), 'dataStatus': status,
             **({'botRecord': record} if record is not None else {}),
+            **({'pressDossier': press} if press not in ('unset', None) else {}),
             **({'organisationKnowledge': knowledge} if knowledge else {})}
 
 
@@ -101,7 +116,7 @@ def argue(llm, side, signal, ctx, opposing=None):
     return {'signalId': signal['id'], 'stance': stance, 'argument': argument, **({'evidenceId': cited} if cited else {})}, meta
 
 
-def run(llm, env=os.environ, cache=daily.DAILY, opener=None, headlines_path=HEADLINES, limit=20):
+def run(llm, env=os.environ, cache=daily.DAILY, opener=None, headlines_path=HEADLINES, limit=20, index=None):
     from urllib import request as urlrequest
     opener = opener or urlrequest.urlopen
     bots = {'bull': env.get('DEBATE_BULL_BOT'), 'bear': env.get('DEBATE_BEAR_BOT')}
@@ -124,7 +139,8 @@ def run(llm, env=os.environ, cache=daily.DAILY, opener=None, headlines_path=HEAD
     for signal in [s for s in pending if s['botId'] not in bots.values()][:limit]:
         argued = {c['challengerBotId']: c for c in signal.get('challenges', [])}
         record = bot_record(scored, signal['botId'], signal['symbol']) if scored is not None else None
-        ctx = context(signal, cache, headlines, knowledge, record, news_status)
+        press = press_dossier(signal['symbol'], signal.get('createdAt'), index)  # KNOW-06: as of the proposal
+        ctx = context(signal, cache, headlines, knowledge, record, news_status, press)
         # a real debate: the bear argues first and the bull answers the bear's case (same two calls as before)
         bear_case = (argued.get(bots['bear']) or {}).get('argument')
         for side in ('bear', 'bull'):

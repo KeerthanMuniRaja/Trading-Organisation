@@ -115,6 +115,12 @@ def study(table, dates, start=200, horizon=HORIZON):
             'note': 'Seen history, overlapping windows: describes how the regime and later falls went together; it is not proof.'}
 
 
+def history(table, dates, start=200):
+    """The regime of every session from `start` (completed days only, the same rules as `regime`), so any past day's
+    regime can be looked up point-in-time (the knowledge index loads it)."""
+    return [{k: v for k, v in regime(table, dates, i).items() if k != 'distributionDates'} for i in range(start, len(dates))]
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('command', nargs='?', choices=['now', 'study'], default='now')
@@ -130,6 +136,7 @@ def main(argv=None):
         return
     report = study(table, dates)
     batch.save(OUT / 'study.json', report)
+    batch.save(OUT / 'history.json', {'note': 'The regime of every session, computed with completed days only.', 'days': history(table, dates)})
     for name, row in report['levels'].items():
         print(f"  {name:8s} days {row['days']:>5}  next {HORIZON} sessions: return {row['averageReturnPct']}%  worst fall {row['averageWorstFallPct']}%"
               f"  falls over 5%: {row['fallOver5PctShare']}")
