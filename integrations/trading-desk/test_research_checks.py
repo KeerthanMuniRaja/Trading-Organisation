@@ -131,6 +131,38 @@ class StatsTests(unittest.TestCase):
         found = rc.check_rules({'yearly': rules['yearly']}, table, dates, rc.decision_days(dates, 300))
         self.assertEqual(found['yearly']['lookahead'], [])
 
+    def test_luck_checks_deflate_a_sharpe_by_the_number_of_ideas_tried(self):
+        import random
+        rng = random.Random(3)
+        edge = [1.2 + rng.gauss(0, 2) for _ in range(120)]      # a real, strong edge (Sharpe about 0.6 a month)
+        noise = [rng.gauss(0, 2) for _ in range(120)]           # none
+        self.assertGreater(rc.probabilistic_sharpe(edge), 0.99)
+        self.assertLess(rc.probabilistic_sharpe(noise), 0.95)
+        lucky_trials = [rc.per_period_sharpe([rng.gauss(0, 2) for _ in range(120)]) for _ in range(50)]
+        # against the best of 50 tried ideas, the strong edge still holds; a merely lucky-looking one does not
+        self.assertGreater(rc.deflated_sharpe(edge, lucky_trials), 0.95)
+        modest = [0.4 + rng.gauss(0, 2) for _ in range(120)]
+        self.assertLess(rc.deflated_sharpe(modest, lucky_trials), rc.probabilistic_sharpe(modest))  # deflation always lowers it
+        best_noise = max(([rng.gauss(0, 2) for _ in range(120)] for _ in range(50)), key=rc.per_period_sharpe)
+        self.assertLess(rc.deflated_sharpe(best_noise, lucky_trials), rc.probabilistic_sharpe(best_noise))
+        self.assertIsNone(rc.deflated_sharpe(edge, [0.1]))
+
+    def test_robustness_years_double_costs_and_stress_windows(self):
+        months = [f'{y}-{m:02d}' for y in (2018, 2019, 2020) for m in range(1, 13)]
+        excess = [0.5 if m.startswith('2019') else -0.2 for m in months]
+        r = rc.robustness(months, excess, [1.0] + [0.5] * 35, 0.15)
+        self.assertEqual((r['yearsAheadOfBasket'], r['years']), (1, 3))
+        self.assertAlmostEqual(r['averageExcessPctAt2xCosts'], round(sum(excess) / 36 - 0.15 * 0.5, 3), places=3)
+        self.assertEqual(set(r['stressExcessPct']), {'ilfs-2018', 'covid-2020'})
+
+    def test_slow_random_pickers_hold_between_repicks(self):
+        dates, table = table_of()
+        yearly = rc.random_rule(1, 3, every=12)
+        self.assertTrue(yearly.holdsBetween)
+        jan = next(i for i in range(300, len(dates)) if dates[i][5:7] == '01')
+        jun = next(i for i in range(jan, len(dates)) if dates[i][5:7] == '06' and dates[i][:4] == dates[jan][:4])
+        self.assertEqual(yearly(table, dates, jan), yearly(table, dates, jun))
+
     def test_walk_forward_holds_the_best_of_the_past_window_out_of_sample(self):
         rows = [{'month': f'2020-{k:02d}', 'basketPct': 0.0, 'rules': {'a': 1.0 if k <= 6 else -1.0, 'b': 0.5 if k <= 6 else 2.0}} for k in range(1, 13)]
         wf = rc.walk_forward(rows, ['a', 'b'], train=6, test=6)
@@ -177,6 +209,10 @@ class ScoutIntegrationTests(unittest.TestCase):
             best = next(c for c in r['candidates'] if c['name'] == 'momentum-6m-top2')
             self.assertEqual(best['beatsRandomPct'], 100.0)  # two persistent winners: momentum beats every random picker
             self.assertIn('sharpe', best['stats'])
+            self.assertEqual(set(best['luck']), {'probabilisticSharpe', 'deflatedSharpe'})
+            self.assertIn('yearsAheadOfBasket', best['robustness'])
+            self.assertIsNotNone(best['beatsMatchedRandomPct'])
+            self.assertEqual(set(r['randomBaseline']['matchedByTurnover']), {'every1m', 'every3m', 'every6m', 'every12m'})
             lens = best['riskLens']
             self.assertEqual(set(lens), {'sharpeTest', 'worstFallPct', 'basketWorstFallPct', 'averageCashPct', 'atAssumedCashYield', 'wouldPassRiskBar'})
             trend = next(c for c in r['candidates'] if c['name'] == 'trend-filter-200d')

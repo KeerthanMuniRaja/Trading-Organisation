@@ -9,8 +9,18 @@
 > - **trend template:** ours uses 4 of their 7 criteria;
 > - **pullback:** theirs is mostly a dividend-growth fundamentals screen.
 >
-> The negative results below test our variants, not their methods. A "regime v2" matching their full specification is
-> proposed in the gap analysis.
+> The negative results below test our variants, not their methods.
+>
+> **Regime v2, tested 21 Oct 2026.** It follows their specification as far as their source showed:
+> - SEVERE at 6 distribution days, or 4 within 15 sessions, or 5 within 25 while the basket is below its 21-day EMA or
+>   50-day average;
+> - HIGH at 2 within 5 sessions or 3 within 15;
+> - volume as traded value;
+> - the unlevered exposure table (`market_regime.risk_v2`).
+>
+> It also warns of falls, but less sharply than v1. After SEVERE days the average worst fall was −3.05%, against −2.14%
+> after NORMAL days (v1: −3.58% against −2.04%). v2 also calls SEVERE on 42% of days. On our basket, v1 stays. Both
+> appear in `regime/study.json`.
 
 On 20 October 2026 the owner asked to replicate a new Claude trading tool and train the system on it. We found two candidates:
 

@@ -204,9 +204,21 @@ def scout(through=None, cache=daily.DAILY, ledger_path=None, universe='desk', ra
     pickers = {f'random-{k}': rc.random_rule(k, 3) for k in range(randoms)}
     random_rows = monthly(table, dates, pickers, through) if randoms else []
     random_avg = sorted(statistics.fmean(r['rules'][n] - r['basketPct'] for r in random_rows) for n in pickers) if randoms else []
+    # random pickers that re-pick every 3, 6 or 12 months: a slow rule is compared with equally slow luck (vectorbt review)
+    matched = {}
+    if randoms:
+        per = max(10, randoms // 4)
+        for every in (3, 6, 12):
+            slow = {f'random-{every}-{k}': rc.random_rule(k, 3, every) for k in range(per)}
+            slow_rows = monthly(table, dates, slow, through)
+            matched[every] = {'turnoverPct': 100 * statistics.fmean(r['turnover'][n] for r in slow_rows[1:] for n in slow),
+                              'averages': sorted(statistics.fmean(r['rules'][n] - r['basketPct'] for r in slow_rows) for n in slow)}
+        matched[1] = {'turnoverPct': 100 * statistics.fmean(r['turnover'][n] for r in random_rows[1:] for n in pickers), 'averages': random_avg}
     data = hashlib.sha256(json.dumps([[r['month'], round(r['basketPct'], 6)] for r in rows]).encode()).hexdigest()[:16]
     threshold = ALPHA / len(tried)  # every idea ever tried, invented ones included
     half = len(rows) // 2
+    months = [r['month'] for r in rows]
+    trial_srs = [rc.per_period_sharpe([r['rules'][n] - r['basketPct'] for r in rows]) for n in tried]  # for the deflated Sharpe
     out = []
     for name, (description, specialty, method, _, served, spec, source) in tried.items():
         excess = [r['rules'][name] - r['basketPct'] for r in rows]
@@ -242,6 +254,11 @@ def scout(through=None, cache=daily.DAILY, ledger_path=None, universe='desk', ra
                     'months': len(rows), 'ahead': ahead, 'behind': behind, 'averageExcessPct': round(average, 3),
                     'pValue': round(p, 6), 'halves': halves, 'passes': not reasons, 'reasons': reasons, 'spec': spec, 'source': source,
                     'stats': mine, 'riskLens': risk_lens, 'proof': proof,
+                    # LUCK: is the excess Sharpe real, and better than the best that selection among all ideas would give?
+                    'luck': {'probabilisticSharpe': rc.probabilistic_sharpe(excess), 'deflatedSharpe': rc.deflated_sharpe(excess, trial_srs)},
+                    'robustness': rc.robustness(months, excess, turns, ONE_WAY_COST_PCT),
+                    'beatsMatchedRandomPct': (lambda m: rc.percentile(average, m['averages']) if m else None)(
+                        min(matched.values(), key=lambda m: abs(m['turnoverPct'] - proof['turnoverPctPerMonth'])) if matched else None),
                     'beatsRandomPct': rc.percentile(average, random_avg), 'warmupSensitive': bool(checks[name]['warmup'])})
     out.sort(key=lambda c: (c['pValue'], c['name']))
     last = rows[-1]['month']
@@ -253,7 +270,10 @@ def scout(through=None, cache=daily.DAILY, ledger_path=None, universe='desk', ra
               'basketStats': {**rc.stats([r['basketPct'] for r in rows], [0.0] * len(rows)),
                               'afterTaxCagrPct': rc.after_tax_cagr([r['basketPct'] for r in rows])},
               'randomBaseline': {'rules': len(random_avg), 'keep': 3, 'medianExcessPct': round(statistics.median(random_avg), 3) if random_avg else None,
-                                 'p90ExcessPct': round(random_avg[int(0.9 * (len(random_avg) - 1))], 3) if random_avg else None},
+                                 'p90ExcessPct': round(random_avg[int(0.9 * (len(random_avg) - 1))], 3) if random_avg else None,
+                                 'matchedByTurnover': {f'every{k}m': {'turnoverPctPerMonth': round(m['turnoverPct'], 1),
+                                                                     'medianExcessPct': round(statistics.median(m['averages']), 3)}
+                                                       for k, m in sorted(matched.items())}},
               'walkForward': wf,
               'note': 'Seen history, net of costs, against the equal-weight basket; a screen for ideas, not proof. Live paper fitness decides.'}
     if universe != 'desk':

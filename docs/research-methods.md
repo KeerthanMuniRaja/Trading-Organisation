@@ -45,6 +45,19 @@ is our own code, with no new dependencies.
   basket, better in 63% of samples (p 0.37), worst fall −12.7% against −35%. At an assumed 6% on cash it would earn
   14.2% a year against the basket's 13.6%. Its smaller fall comes mostly from one episode, the 2020 crash.
 
+- **Luck and robustness** (added 21 Oct 2026, from the vectorbt, Lean and trading-skills review). Every idea gets:
+  - **luck:** its probabilistic Sharpe ratio, and its **deflated Sharpe ratio** against the best Sharpe luck alone would
+    give among all ideas tried;
+  - **robustness:** years ahead of the basket, the result at twice the costs, and India's stress windows (2018 IL&FS,
+    2020 COVID, 2022 rates and war);
+  - **beatsMatchedRandomPct:** a random baseline matched to the idea's turnover (random pickers that re-pick every 1, 3,
+    6 or 12 months).
+
+  **Result:**
+  - **8 shares:** the best deflated Sharpe is 0.22, against the usual bar of 0.95.
+  - **NIFTY 50:** reversal reaches 0.31. It is ahead in 7 of 9 years and still ahead at twice the costs. This is the one
+    candidate worth re-testing on point-in-time membership.
+
 ## The NIFTY 50 research universe
 
 `datasets.NIFTY50` holds the members after the reconstitution effective 30 Sep 2026, taken from Wikipedia's NIFTY 50 page.

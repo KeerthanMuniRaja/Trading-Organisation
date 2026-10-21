@@ -69,6 +69,24 @@ class DistributionDayTests(unittest.TestCase):
         self.assertEqual(report['verdict'], 'insufficient-evidence')  # never stressed: nothing to compare
 
 
+class RegimeV2Tests(unittest.TestCase):
+    def test_v2_escalates_on_clusters_and_uses_traded_value(self):
+        moves, volumes = [0.1] * 250, [1000] * 250
+        for k in (246, 248):   # two distribution days within 5 sessions: a cluster
+            moves[k], volumes[k] = -0.5, 2000
+        dates, table = market(moves, volumes)
+        i = len(dates) - 1
+        self.assertEqual(mr.risk_of(len(mr.distribution_days(table, dates, i))), 'NORMAL')  # v1 counts only the 25-session total
+        self.assertEqual(mr.risk_v2(table, dates, i), 'HIGH')                                 # v2 sees the cluster
+        quiet = market([0.1] * 240 + [-0.5], [1000] * 240 + [500])
+        self.assertEqual(mr.distribution_ages_v2(quiet[1], quiet[0], len(quiet[0]) - 1), [])  # a fall on lower traded value is not one
+
+    def test_the_study_reports_both_versions(self):
+        dates, table = market([0.1] * 300)
+        v2 = mr.study(table, dates, risk_at=mr.risk_v2)
+        self.assertEqual(set(v2['levels']), {'NORMAL', 'CAUTION', 'HIGH', 'SEVERE'})
+
+
 class AdoptedFamilyTests(unittest.TestCase):
     def test_the_new_families_are_valid_ideas_with_bounds(self):
         for spec in ({'family': 'trend-template', 'nearHighPct': 25, 'keep': 3}, {'family': 'pullback', 'rsiMax': 40, 'keep': 3},

@@ -90,17 +90,63 @@ def regime(table, dates, i):
             'inputsComplete': len(table) == len(daily.datasets.UNIVERSE)}
 
 
+CEILING_V2 = {'NORMAL': 100, 'CAUTION': 100, 'HIGH': 75, 'SEVERE': 50}  # their unlevered row for HIGH/SEVERE; CAUTION assumed
+
+
+def distribution_ages_v2(table, dates, i):
+    """REGIME v2 (closer to the cited specification): a distribution day is a basket fall of at least 0.2% on higher
+    TRADED VALUE (sum of volume x close over the shares) than the day before; same 25-session expiry and 5% removal.
+    Returns the ages (sessions ago) of the active ones. Stalling days are not counted (their exact rule was not confirmed)."""
+    start = max(0, i - EXPIRY - 1)
+    if i - start < 2:
+        return []
+    level, ret, _ = basket(table, dates, start, i)
+    value = [sum(table[s][dates[k]]['volume'] * table[s][dates[k]]['closePaise'] for s in table) for k in range(start, i + 1)]
+    ages = []
+    for j in range(1, len(level)):
+        k = start + j
+        if i - k >= EXPIRY or ret[j] > DROP_PCT or value[j] <= value[j - 1]:
+            continue
+        if max(level[j + 1:], default=0) >= level[j] * (1 + INVALIDATE_PCT / 100):
+            continue
+        ages.append(i - k)
+    return ages
+
+
+def below_short_trend(table, dates, i):
+    """The basket below its 21-day EMA or its 50-day average (completed days only)."""
+    if i < 50:
+        return False
+    level, _, _ = basket(table, dates, i - 60, i)
+    ema = level[0]
+    for x in level[1:]:
+        ema += (x - ema) * 2 / 22
+    return level[-1] < ema or level[-1] < sum(level[-50:]) / 50
+
+
+def risk_v2(table, dates, i):
+    ages = distribution_ages_v2(table, dates, i)
+    d5, d15, d25 = (sum(a < n for a in ages) for n in (5, 15, 25))
+    if d25 >= 6 or d15 >= 4 or (d25 >= 5 and below_short_trend(table, dates, i)):
+        return 'SEVERE'
+    if d25 >= 5 or d5 >= 2 or d15 >= 3:
+        return 'HIGH'
+    return 'CAUTION' if d25 >= 3 else 'NORMAL'
+
+
 def calm(table, dates, i):
     """The R&D filter: true unless distribution risk is HIGH or SEVERE."""
     return risk_of(len(distribution_days(table, dates, i))) in ('NORMAL', 'CAUTION')
 
 
-def study(table, dates, start=200, horizon=HORIZON):
-    """Per risk level: how often it occurred and the basket's next-`horizon`-session return and worst fall."""
+def study(table, dates, start=200, horizon=HORIZON, risk_at=None):
+    """Per risk level: how often it occurred and the basket's next-`horizon`-session return and worst fall. `risk_at`
+    chooses the regime version (default v1)."""
+    risk_at = risk_at or (lambda t, d, i: risk_of(len(distribution_days(t, d, i))))
     level, _, _ = basket(table, dates, 0, len(dates) - 1)
     by = {name: [] for _, name in LEVELS}
     for i in range(start, len(dates) - horizon):
-        risk = risk_of(len(distribution_days(table, dates, i)))
+        risk = risk_at(table, dates, i)
         ahead = level[i + 1:i + horizon + 1]
         by[risk].append((100 * (ahead[-1] / level[i] - 1), 100 * (min(ahead) / level[i] - 1)))
     rows = {}
@@ -135,12 +181,16 @@ def main(argv=None):
         print(json.dumps({k: r[k] for k in ('date', 'risk', 'distributionDays', 'breadth50d', 'breadth200d', 'aboveTrend200d', 'exposureCeilingPct')}))
         return
     report = study(table, dates)
+    # v2 is studied on the same days, side by side, so the better-evidenced version can be chosen (owner decision)
+    report['v2'] = {**study(table, dates, risk_at=risk_v2), 'rules': 'SEVERE at 6, 5- and 15-session clusters, below the 21-day EMA or '
+                    '50-day average, traded-value volume; no stalling days', 'ceiling': CEILING_V2}
     batch.save(OUT / 'study.json', report)
     batch.save(OUT / 'history.json', {'note': 'The regime of every session, computed with completed days only.', 'days': history(table, dates)})
-    for name, row in report['levels'].items():
-        print(f"  {name:8s} days {row['days']:>5}  next {HORIZON} sessions: return {row['averageReturnPct']}%  worst fall {row['averageWorstFallPct']}%"
-              f"  falls over 5%: {row['fallOver5PctShare']}")
-    print(json.dumps({'verdict': report['verdict'], 'from': report['from'], 'through': report['through']}))
+    for version, r in (('v1', report), ('v2', report['v2'])):
+        for name, row in r['levels'].items():
+            print(f"  {version} {name:8s} days {row['days']:>5}  next {HORIZON} sessions: return {row['averageReturnPct']}%  worst fall {row['averageWorstFallPct']}%"
+                  f"  falls over 5%: {row['fallOver5PctShare']}")
+    print(json.dumps({'verdict': report['verdict'], 'verdictV2': report['v2']['verdict'], 'from': report['from'], 'through': report['through']}))
 
 
 if __name__ == '__main__':

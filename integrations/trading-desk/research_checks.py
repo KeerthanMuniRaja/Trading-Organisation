@@ -18,6 +18,9 @@ Methods adopted from open-source trading frameworks (ideas only; their code is n
               basket's; plus the worst fall, the average cash share and the result if cash earned an ASSUMED yield.
               Report only: whether risk may ever pass an idea is the owner's decision.
   proof time  how many months of a record like this one it would take to prove the edge at the scout's bar (80% power).
+  luck        the probabilistic Sharpe ratio of the excess over the basket, and the DEFLATED Sharpe ratio against the best
+              Sharpe expected by luck among all ideas tried (Bailey and Lopez de Prado; vectorbt and Lean review)
+  robustness  years ahead of the basket, the result at twice the costs, and India's stress windows
   tax         an approximate after-tax yearly growth: what a rule sells each year pays short-term tax on that year's gain,
               what it keeps (and the buy-and-hold basket) pays long-term tax once at the end; with the monthly turnover,
               it shows what trading really costs.
@@ -117,11 +120,15 @@ def stats(returns_pct, excess_pct):
             'sqn': round(math.sqrt(n) * statistics.fmean(excess_pct) / sd, 2) if sd else None}
 
 
-def random_rule(seed, keep):
+def random_rule(seed, keep, every=1):
+    """A random picker of `keep` shares that re-picks every `every` months (so its turnover can be matched to a rule's);
+    reproducible from the seed and the calendar month."""
     def rule(table, dates, i):
         names = sorted(table)
-        picks = random.Random(f'{seed}:{dates[i]}').sample(names, min(keep, len(names)))
+        block = (int(dates[i][:4]) * 12 + int(dates[i][5:7]) - 1) // every
+        picks = random.Random(f'{seed}:{every}:{block}').sample(names, min(keep, len(names)))
         return {s: 1 / keep for s in picks}
+    rule.holdsBetween = every > 1  # between re-picks it holds and drifts, like a slow rule
     return rule
 
 
@@ -213,6 +220,72 @@ def after_tax_cagr(monthly_pct, monthly_turnover=None, months_per_year=12, long_
         value -= deferred * LTCG_PCT / 100
     span = len(monthly_pct) / months_per_year
     return round(100 * (value ** (1 / span) - 1), 2) if value > 0 and span else None
+
+
+EULER_GAMMA = 0.5772156649015329
+# Periods of market stress in India inside our history, for a "how did it hold up" view (owner-editable; months inclusive)
+STRESS_WINDOWS = {'ilfs-2018': ('2018-09', '2018-10'), 'covid-2020': ('2020-02', '2020-04'), 'rates-and-war-2022': ('2022-01', '2022-06')}
+
+
+def _moments(xs):
+    n = len(xs)
+    mean = sum(xs) / n
+    var = sum((x - mean) ** 2 for x in xs) / n
+    sd = math.sqrt(var)
+    if sd == 0:
+        return mean, 0.0, 0.0, 3.0
+    skew = sum((x - mean) ** 3 for x in xs) / n / sd ** 3
+    kurt = sum((x - mean) ** 4 for x in xs) / n / sd ** 4
+    return mean, sd, skew, kurt
+
+
+def probabilistic_sharpe(excess_pct, benchmark_sr=0.0):
+    """Bailey and Lopez de Prado's probabilistic Sharpe ratio: the probability that the TRUE per-period Sharpe of the
+    excess series is above `benchmark_sr`, allowing for the record's length, skew and fat tails."""
+    n = len(excess_pct)
+    if n < 3:
+        return None
+    mean, sd, skew, kurt = _moments(excess_pct)
+    if sd == 0:
+        return None
+    sr = mean / sd
+    denom = 1 - skew * sr + (kurt - 1) / 4 * sr * sr
+    if denom <= 0:
+        return None
+    return round(statistics.NormalDist().cdf((sr - benchmark_sr) * math.sqrt(n - 1) / math.sqrt(denom)), 4)
+
+
+def deflated_sharpe(excess_pct, trial_srs):
+    """The deflated Sharpe ratio: the probabilistic Sharpe against the best Sharpe expected by LUCK among all the ideas
+    tried (`trial_srs`, their per-period Sharpes). Below 0.95 the record does not beat what selection alone would give."""
+    k = len(trial_srs)
+    if k < 2:
+        return None
+    spread = statistics.pstdev(trial_srs)
+    z = statistics.NormalDist()
+    expected_max = spread * ((1 - EULER_GAMMA) * z.inv_cdf(1 - 1 / k) + EULER_GAMMA * z.inv_cdf(1 - 1 / (k * math.e)))
+    return probabilistic_sharpe(excess_pct, expected_max)
+
+
+def per_period_sharpe(xs):
+    mean, sd, _, _ = _moments(xs)
+    return mean / sd if sd else 0.0
+
+
+def robustness(months, excess_pct, turnover, one_way_cost_pct):
+    """Cheap checks a real edge survives: positive in most years, still ahead at twice the costs, and the stress windows."""
+    years = {}
+    for month, e in zip(months, excess_pct):
+        years.setdefault(month[:4], []).append(e)
+    complete = {y: sum(v) for y, v in years.items() if len(v) >= 6}
+    stress = {}
+    for name, (start, end) in STRESS_WINDOWS.items():
+        picked = [e for m, e in zip(months, excess_pct) if start <= m <= end]
+        if picked:
+            stress[name] = round(sum(picked), 2)
+    extra = one_way_cost_pct * (sum(turnover[1:]) / max(1, len(turnover) - 1))
+    return {'yearsAheadOfBasket': sum(v > 0 for v in complete.values()), 'years': len(complete),
+            'averageExcessPctAt2xCosts': round(statistics.fmean(excess_pct) - extra, 3), 'stressExcessPct': stress}
 
 
 def walk_forward(rows, names, train=36, test=12):
