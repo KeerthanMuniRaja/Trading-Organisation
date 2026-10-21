@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { planSteps, runCycle, runHttp, escalate, releaseCheck, computeCheck, taSteps, verifyMarketData, verifyFeed, ESCALATE_AFTER } from './organisation-cycle.mjs';
+import { planSteps, runCycle, runHttp, escalate, releaseCheck, computeCheck, taSteps, verifyMarketData, verifyFeed, ESCALATE_AFTER,
+  runManifest, dataManifest, fingerprint } from './organisation-cycle.mjs';
 
 test('TradingAgents decides only weekly with the model and its own environment; its member proposes every cycle', () => {
   const friday = Date.parse('2026-10-23T11:00:00Z'), tuesday = Date.parse('2026-10-20T11:00:00Z');
@@ -46,6 +47,41 @@ test('a cycle runs each step once a day, resumes after failures and skips what i
     await runCycle({ steps, journalPath, run, http, force: true });
     assert.equal(calls.filter(c => c === 'market-data').length, 2); // --force reruns everything
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('every run keeps a manifest: the code and switches it started with and the prices it left', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'manifest-'));
+  try {
+    const put = async (path, text) => { await mkdir(join(root, ...path.slice(0, -1)), { recursive: true }); await writeFile(join(root, ...path), text); };
+    await put(['scripts', 'a.mjs'], 'one\r\ntwo\r\n');
+    await put(['integrations', 'desk', 'b.py'], 'x = 1\n');
+    await put(['integrations', 'desk', '__pycache__', 'b.pyc.json'], 'ignored');
+    await put(['.git', 'HEAD'], 'ref: refs/heads/dev\n');
+    await put(['.git', 'refs', 'heads', 'dev'], '0123456789abcdef0123\n');
+    await put(['.local', 'trading-desk', 'daily', 'A.NS-1d.json'], JSON.stringify({ symbol: 'A.NS', retrievedAt: 'r', bars: [{ date: '2026-10-13' }, { date: '2026-10-14' }] }));
+    await put(['.local', 'trading-desk', 'daily', 'B.NS-1d.json'], JSON.stringify({ symbol: 'B.NS', bars: [{ date: '2026-10-12' }] }));
+    const env = { RULE_BOT_ID: 'momentum-rules', PRINCIPALS_JSON: '[{"token":"secret"}]', HERMES_MODEL: 'qwen' };
+    const m = await runManifest({ root, env, withModel: true, now: new Date('2026-10-14T12:00:00Z') });
+    assert.deepEqual({ ...m, code: { ...m.code, fingerprint: typeof m.code.fingerprint } }, { startedAt: '2026-10-14T12:00:00.000Z', withModel: true, force: false,
+      code: { commit: '0123456789ab', fingerprint: 'string', files: 2 }, switches: { RULE_BOT_ID: 'momentum-rules', HERMES_MODEL: 'qwen' } }); // never a credential
+    // the same code gives the same fingerprint whatever the line ends
+    await put(['scripts', 'a.mjs'], 'one\ntwo\n');
+    assert.equal((await runManifest({ root, env })).code.fingerprint, m.code.fingerprint);
+    await put(['scripts', 'a.mjs'], 'one\ntwo changed\n');
+    assert.notEqual((await runManifest({ root, env })).code.fingerprint, m.code.fingerprint);
+    const d = await dataManifest({ root });
+    assert.deepEqual({ ...d, fingerprint: d.fingerprint.length }, { prices: { 'A.NS': { bars: 2, lastSession: '2026-10-14', retrievedAt: 'r' },
+      'B.NS': { bars: 1, lastSession: '2026-10-12', retrievedAt: null } }, oldestLastSession: '2026-10-12', newestLastSession: '2026-10-14', fingerprint: 16 });
+    assert.equal(await fingerprint([], root), (await fingerprint([], root))); // stable on nothing
+    // the cycle appends one manifest per run, completed with the data at the end; a failing description never stops it
+    const journalPath = join(root, 'day.json'), steps = [{ id: 'one', cmd: 'x' }];
+    await runCycle({ steps, journalPath, run: async () => ({ code: 0 }), manifest: async () => ({ code: { fingerprint: 'f' } }), data: async () => ({ newestLastSession: 'd' }) });
+    await runCycle({ steps, journalPath, run: async () => ({ code: 0 }), manifest: async () => { throw new Error('unreadable'); } });
+    const runs = JSON.parse(await readFile(journalPath, 'utf8')).runs;
+    assert.equal(runs.length, 2);
+    assert.deepEqual([runs[0].code, runs[0].data, typeof runs[0].finishedAt], [{ fingerprint: 'f' }, { newestLastSession: 'd' }, 'string']);
+    assert.equal(runs[1].error, 'unreadable');
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test('runbooks: transient failures retry with back-off; postconditions can degrade or fail a "successful" run', async () => {

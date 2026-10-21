@@ -1,10 +1,11 @@
 // Daily owner digest (OBS-01): fetch /v1/owner/digest with the evaluator credential, write a readable Markdown note to
 // .local/digests/<day>.md, and, when ALERT_WEBHOOK_URL is set, post a short summary there too.
 //   node --env-file=.env scripts/daily-digest.mjs
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { settings } from './deliver-alerts.mjs';
+import { dataManifest } from './organisation-cycle.mjs';
 import { describeStory, worldSummary } from './world-news.mjs';
 
 const rupees = paise => {
@@ -47,9 +48,69 @@ export async function knowledgeSummary(root = join(dirname(fileURLToPath(import.
     unknown = (await readFile(join(root, '.local', 'cycles', 'unknown-problems.jsonl'), 'utf8')).split('\n').filter(l => l.trim()).map(l => JSON.parse(l))
       .filter(u => now - Date.parse(u.at) < 7 * 86_400_000);
   } catch { /* none */ }
-  let drafts = 0;
+  let drafts = 0, review = null;
   try { drafts = JSON.parse(await readFile(join(root, '.local', 'trading-desk', 'knowledge', 'playbook-drafts.json'), 'utf8')).drafts.length; } catch { /* none */ }
-  return live || unknown.length || drafts ? { live, unknown, drafts } : null;
+  try { review = JSON.parse(await readFile(join(root, '.local', 'trading-desk', 'review-scorecard.json'), 'utf8')); } catch { /* not made yet */ }
+  return live || unknown.length || drafts || review ? { live, unknown, drafts, review } : null;
+}
+
+/** TRUST-02: how the calls the risk review took and turned down went (the backend's own scores). */
+export function reviewLines(card) {
+  if (!card?.calls) return [];
+  const pct = t => (t.rightPct === null ? 'none scored' : `${t.right} of ${t.scored} right (${t.rightPct}%)`);
+  const reasons = Object.entries(card.byRejectionReason ?? {}).slice(0, 3).map(([r, t]) => `${r} ${t.right}/${t.scored}`);
+  const regimes = Object.entries(card.byRegimeAtCall ?? {}).map(([r, t]) => `${r} ${t.right}/${t.scored}`);
+  return ['## Review scorecard (scored calls)',
+    `- Taken: ${pct(card.accepted)}; turned down: ${pct(card.rejected)} — ${card.verdict}`,
+    ...(reasons.length ? [`- Turned down, by reason (right/scored): ${reasons.join(', ')}`] : []),
+    ...(regimes.length ? [`- By the regime when the call was made: ${regimes.join(', ')}`] : []), ''];
+}
+
+const PRICES_STALE_DAYS = 5, KNOWLEDGE_STALE_DAYS = 2;
+const ageDays = (iso, now) => (iso ? (now - Date.parse(iso.length === 10 ? iso + 'T00:00:00Z' : iso)) / 86_400_000 : null);
+
+/** TRUST-01: what today's digest rests on — today's cycle journal, the prices, the knowledge files and the code each
+ *  run used (the run manifests) — so the owner can see whether to trust it. Read-only. */
+export async function trustCheck(root = join(dirname(fileURLToPath(import.meta.url)), '..'), now = Date.now(), prices = dataManifest) {
+  const read = async p => { try { return JSON.parse(await readFile(p, 'utf8')); } catch { return null; } };
+  const cycles = join(root, '.local', 'cycles'), day = new Date(now).toISOString().slice(0, 10);
+  let journals = [];
+  try { journals = (await readdir(cycles)).filter(n => /^\d{4}-\d{2}-\d{2}\.json$/.test(n)).sort(); } catch { /* no cycle yet */ }
+  const today = journals.includes(day + '.json') ? await read(join(cycles, day + '.json')) : null;
+  const runs = [];
+  for (const name of journals.slice(-2)) runs.push(...((await read(join(cycles, name)))?.runs ?? []).filter(r => r.code));
+  const [before, latest] = runs.slice(-2).length === 2 ? runs.slice(-2) : [null, runs.at(-1) ?? null];
+  const steps = Object.entries(today?.steps ?? {});
+  const p = await prices({ root }).catch(() => null);
+  return {
+    day,
+    cycle: today ? { failed: steps.filter(([, s]) => s.status === 'failed').map(([id]) => id), degraded: steps.filter(([, s]) => s.status === 'degraded').map(([id]) => id),
+      done: steps.filter(([, s]) => s.status === 'done').length } : null,
+    prices: p ? { newest: p.newestLastSession, ageDays: ageDays(p.newestLastSession, now), behind: Object.entries(p.prices).filter(([, s]) => s.lastSession && s.lastSession < p.newestLastSession).map(([sym]) => sym) } : null,
+    liveAgeDays: ageDays((await read(join(root, '.local', 'trading-desk', 'knowledge', 'live.json')))?.generatedAt, now),
+    indexAgeDays: ageDays((await read(join(root, '.local', 'knowledge', 'index-meta.json')))?.builtAt, now),
+    code: latest ? { commit: latest.code.commit, fingerprint: latest.code.fingerprint,
+      changedFrom: before && before.code.fingerprint !== latest.code.fingerprint ? before.code.commit ?? before.code.fingerprint : null } : null,
+  };
+}
+
+export function trustLines(t, regime = null) {
+  if (!t) return [];
+  const problems = [
+    ...(!t.cycle ? [`no organisation cycle has run today (${t.day})`] : []),
+    ...(t.cycle?.failed.length ? [`cycle steps failed: ${t.cycle.failed.join(', ')}`] : []),
+    ...(t.cycle?.degraded.length ? [`cycle steps degraded: ${t.cycle.degraded.join(', ')}`] : []),
+    ...(!t.prices?.newest ? ['no price data found'] : t.prices.ageDays > PRICES_STALE_DAYS ? [`prices are stale: last session ${t.prices.newest}`] : []),
+    ...(t.prices?.behind.length ? [`prices behind the others for ${t.prices.behind.join(', ')}`] : []),
+    ...(regime && regime.state !== 'fresh' ? [`the market regime is ${regime.state}`] : []),
+    ...(t.liveAgeDays === null ? ['no live knowledge yet'] : t.liveAgeDays > KNOWLEDGE_STALE_DAYS ? [`live knowledge is ${Math.floor(t.liveAgeDays)} days old`] : []),
+    ...(t.indexAgeDays === null ? ['no knowledge index yet'] : t.indexAgeDays > KNOWLEDGE_STALE_DAYS ? [`the knowledge index is ${Math.floor(t.indexAgeDays)} days old`] : []),
+  ];
+  return ['## Can you trust this digest?',
+    ...(problems.length ? problems.map(x => `- Check first: ${x}`)
+      : [`- Yes: today's cycle has ${t.cycle.done} step(s) done and none failed; prices to ${t.prices.newest}; knowledge rebuilt within ${KNOWLEDGE_STALE_DAYS} days.`]),
+    ...(t.code ? [`- Code: commit ${t.code.commit ?? 'unknown'} (fingerprint ${t.code.fingerprint})`
+      + (t.code.changedFrom ? `; changed since the previous run (${t.code.changedFrom}), so results before and after come from different code` : '')] : []), ''];
 }
 
 export function researchLines(k) {
@@ -73,7 +134,7 @@ export function regimeLine(r) {
     + (s ? `. On our history: ${s.verdict}; falls over 5% within ${s.horizonSessions} sessions followed ${Math.round(100 * (severe?.fallOver5PctShare ?? 0))}% of SEVERE days and ${Math.round(100 * (normal?.fallOver5PctShare ?? 0))}% of NORMAL days` : '');
 }
 
-export function render(d, world = null, regime = null, known = null) {
+export function render(d, world = null, regime = null, known = null, trust = null) {
   const t = d.trading, k = d.knowledge, m = d.money;
   const unknown = known?.unknown ?? [];
   const needs = [...d.needsOwner, ...(world?.coverage?.advice ?? []),
@@ -86,6 +147,7 @@ export function render(d, world = null, regime = null, known = null) {
     `Window: last ${d.windowHours} hours · mode: ${d.mode}${d.halted ? ' · **NEW RISK HALTED**' : ''}`, '',
     '## Needs you',
     ...(needs.length ? needs.map(n => `- ${n}`) : ['- Nothing right now.']), '',
+    ...trustLines(trust, regime),
     '## Money (paper)',
     `- Total P&L ${rupees(m.totalPaise)} (realised ${rupees(m.realisedPaise)}, open ${rupees(m.unrealisedPaise)}); realised in window ${rupees(m.realisedInWindowPaise)}`,
     ...m.byBot.map(b => `- ${b.botId}: ${rupees(b.totalPaise)}${b.returnOnBudgetPct !== null ? ` (${b.returnOnBudgetPct}% of budget)` : ''}`),
@@ -111,6 +173,7 @@ export function render(d, world = null, regime = null, known = null) {
     '## Live fitness (paper calls on new days)',
     ...((d.liveFitness ?? []).length ? d.liveFitness.map(f => `- ${f.botId} (${f.scope}): ${f.verdict}, ${f.right} of ${f.judged} right`)
       : ['- No bot has scored live calls yet.']), '',
+    ...reviewLines(known?.review),
     '## Knowledge',
     `- ${k.received} items received, ${k.verified} verified, ${k.rejected} rejected; ${k.backlog} waiting for review`
       + (k.setAside ? ` (${k.setAside} more set aside as out of scope)` : ''), '',
@@ -125,13 +188,13 @@ export function render(d, world = null, regime = null, known = null) {
 }
 
 export async function run(env = process.env, { fetchImpl = fetch, outDir = join(dirname(fileURLToPath(import.meta.url)), '..', '.local', 'digests'),
-  world = worldSummary, regime = marketRegime, knowledge = knowledgeSummary } = {}) {
+  world = worldSummary, regime = marketRegime, knowledge = knowledgeSummary, trust = trustCheck } = {}) {
   const s = settings(env);
   const response = await fetchImpl(s.base + '/v1/owner/digest', { method: 'POST', redirect: 'error', body: '{}',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + s.token } });
   if (!response.ok) throw new Error(`digest refused (HTTP ${response.status})`);
   const digest = await response.json();
-  const text = render(digest, world ? await world() : null, regime ? await regime() : null, knowledge ? await knowledge() : null);
+  const text = render(digest, world ? await world() : null, regime ? await regime() : null, knowledge ? await knowledge() : null, trust ? await trust() : null);
   await mkdir(outDir, { recursive: true });
   const path = join(outDir, digest.generatedAt.slice(0, 10) + '.md');
   await writeFile(path, text);

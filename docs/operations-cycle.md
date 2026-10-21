@@ -20,12 +20,41 @@ Three pieces that make the organisation run on its own and stay auditable. They 
 | `model-allocator-propose` | Turns a current decided month into proposals, citing the facts the model saw, recomputed and verified by the evaluator ([trade signals](trade-signals.md#the-model-allocator-in-the-daily-cycle)) | `MODEL_ALLOCATOR_RUN` and `MODEL_ALLOCATOR_BOT` set; no model needed |
 | `eod-trading` | Reviews waiting proposals at the verified close, executes accepted ones at the verified next open | backend, daily data |
 | `score-signals` | Scores proposals whose horizon has passed | backend, daily data |
+| `review-scorecard` | Read-only. Shows how the calls the risk review took and turned down went: by fate, by rejection reason and by the regime when each call was made. Writes `.local/trading-desk/review-scorecard.json` | backend (evaluator credential) |
 | `live-fitness` | Files each bot's fitness report from its scored paper calls; once there is a verdict, re-evaluates its active release with it | backend |
 | `paper-snapshot` | Records today's per-bot P&L mark (evaluator credential) | backend |
 | `alerts` | Evaluates alert rules and delivers new alerts | backend |
 | `owner-digest` | Writes the day's summary to `.local/digests/<day>.md` | backend |
 
 **Resuming:** a daily journal (`.local/cycles/<day>.json`) makes reruns resume. Finished steps are skipped, and only failed or skipped ones run again. `--force` reruns everything.
+
+**Run manifests (TRUST-01, 21 Oct 2026).** Every run adds an entry to `runs` in the day's journal, so any later result
+can be traced to what produced it:
+- **code:** the commit and a content fingerprint of `integrations/`, `scripts/` and `backend/src/`. The fingerprint is
+  the same on Windows and Linux, and it changes with any uncommitted edit;
+- **switches:** the settings that change what a cycle does (bot IDs, sources, the model name). Never a credential or a
+  limit;
+- **data:** at the end of the run, each share's bar count and last session, with one fingerprint of the price files.
+
+A failure to describe a run is recorded and never stops the run.
+
+**The digest checks itself.** "Can you trust this digest?" comes straight after "Needs you". It lists what to check
+first:
+- no cycle today, or failed or degraded steps;
+- stale prices, or a share behind the others;
+- a regime that is not fresh;
+- live knowledge or the knowledge index more than 2 days old.
+
+It also shows the code commit, and says when the code changed since the previous run, so results before and after come
+from different code.
+
+**Review scorecard (TRUST-02).** A verdict needs 20 or more scored calls on each side and a gap of at least 10 points in
+the share right:
+- `review-turns-down-worse-calls`: the review is helping;
+- `review-turns-down-better-calls`: the review blocks winners, so the owner should look at the reasons;
+- `no-clear-difference` or `insufficient-evidence`.
+
+It changes nothing: the review rules and limits stay the owner's.
 
 **First live run (13 October 2026):**
 - 55 new news items from three publishers;

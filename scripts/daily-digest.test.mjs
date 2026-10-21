@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { render, run } from './daily-digest.mjs';
+import { render, run, trustCheck } from './daily-digest.mjs';
 
 const digest = { windowHours: 24, generatedAt: '2026-10-14T18:00:00.000Z', mode: 'paper', halted: false,
   money: { realisedPaise: '25000', unrealisedPaise: '-1200', totalPaise: '23800', realisedInWindowPaise: '25000', byBot: [{ botId: 'bot-one', totalPaise: '23800', returnOnBudgetPct: 2.38 }] },
@@ -78,6 +78,48 @@ test('the research section and failures the playbook does not know yet', () => {
   assert.ok(text.indexOf('playbook does not know') < text.indexOf('## Money'));
 });
 
+test('the review scorecard shows how taken and turned-down calls went', () => {
+  const review = { calls: 9, verdict: 'insufficient-evidence', accepted: { scored: 5, right: 3, rightPct: 60 }, rejected: { scored: 4, right: 1, rightPct: 25 },
+    byRejectionReason: { 'over-budget': { scored: 3, right: 1 }, 'stale-quote': { scored: 1, right: 0 } }, byRegimeAtCall: { SEVERE: { scored: 9, right: 4 } } };
+  const text = render(digest, null, null, { review });
+  assert.match(text, /## Review scorecard \(scored calls\)\n- Taken: 3 of 5 right \(60%\); turned down: 1 of 4 right \(25%\) — insufficient-evidence/);
+  assert.match(text, /by reason \(right\/scored\): over-budget 1\/3, stale-quote 0\/1/);
+  assert.match(text, /By the regime when the call was made: SEVERE 4\/9/);
+  assert.doesNotMatch(render(digest, null, null, { review: { calls: 0 } }), /Review scorecard/);
+});
+
+test('the trust check says what to check first, or that the digest rests on a clean cycle and fresh inputs', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'trust-'));
+  try {
+    const now = Date.parse('2026-10-14T18:00:00Z');
+    const put = async (path, value) => { await mkdir(join(root, ...path.slice(0, -1)), { recursive: true }); await writeFile(join(root, ...path), JSON.stringify(value)); };
+    const share = (symbol, last) => ({ symbol, retrievedAt: '2026-10-14T11:00:00Z', bars: [{ date: '2026-10-13' }, { date: last }] });
+    await put(['.local', 'trading-desk', 'daily', 'A.NS-1d.json'], share('A.NS', '2026-10-14'));
+    await put(['.local', 'trading-desk', 'daily', 'B.NS-1d.json'], share('B.NS', '2026-10-13'));
+    await put(['.local', 'cycles', '2026-10-13.json'], { steps: {}, runs: [{ code: { commit: 'aaa111', fingerprint: 'f1' } }] });
+    await put(['.local', 'cycles', '2026-10-14.json'], { steps: { 'market-data': { status: 'done' }, 'link-study': { status: 'failed' } },
+      runs: [{ code: { commit: 'bbb222', fingerprint: 'f2' } }] });
+    await put(['.local', 'knowledge', 'index-meta.json'], { builtAt: '2026-10-14T12:00:00Z' });
+    const t = await trustCheck(root, now);
+    assert.deepEqual(t.prices, { newest: '2026-10-14', ageDays: 0.75, behind: ['B.NS'] });
+    const text = render(digest, null, { ...{ date: '2026-10-14', risk: 'NORMAL', shares: 8 }, state: 'stale' }, null, t);
+    assert.ok(text.indexOf('## Needs you') < text.indexOf('## Can you trust this digest?') && text.indexOf('## Can you trust') < text.indexOf('## Money'));
+    for (const x of [/Check first: cycle steps failed: link-study/, /Check first: prices behind the others for B\.NS/, /Check first: the market regime is stale/,
+      /Check first: no live knowledge yet/, /Code: commit bbb222 \(fingerprint f2\); changed since the previous run \(aaa111\)/]) assert.match(text, x);
+    assert.doesNotMatch(text, /knowledge index is/); // built today
+    // all clear
+    await put(['.local', 'trading-desk', 'daily', 'B.NS-1d.json'], share('B.NS', '2026-10-14'));
+    await put(['.local', 'cycles', '2026-10-14.json'], { steps: { 'market-data': { status: 'done' } }, runs: [{ code: { commit: 'aaa111', fingerprint: 'f1' } }] });
+    await put(['.local', 'trading-desk', 'knowledge', 'live.json'], { generatedAt: '2026-10-14T12:00:00Z' });
+    const clear = render(digest, null, null, null, await trustCheck(root, now));
+    assert.match(clear, /- Yes: today's cycle has 1 step\(s\) done and none failed; prices to 2026-10-14/);
+    assert.doesNotMatch(clear, /Check first|changed since/);
+    // no cycle today, and prices a week old
+    assert.match(render(digest, null, null, null, await trustCheck(root, now + 7 * 86_400_000)),
+      /Check first: no organisation cycle has run today \(2026-10-21\)[\s\S]*Check first: prices are stale: last session 2026-10-14/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('the run writes the note locally and sends only a short summary to an optional webhook', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'digest-'));
   try {
@@ -87,7 +129,7 @@ test('the run writes the note locally and sends only a short summary to an optio
       return url.endsWith('/v1/owner/digest') ? { ok: true, json: async () => digest } : { ok: true };
     };
     const env = { PRINCIPALS_JSON: JSON.stringify([{ id: 'e', role: 'evaluator', token: 'eval-token' }]), ALERT_WEBHOOK_URL: 'https://notify.example/t' };
-    const result = await run(env, { fetchImpl, outDir: dir, world: null, regime: null, knowledge: null });
+    const result = await run(env, { fetchImpl, outDir: dir, world: null, regime: null, knowledge: null, trust: null });
     assert.equal(result.webhook, true);
     assert.match(await readFile(join(dir, '2026-10-14.md'), 'utf8'), /Needs you/);
     assert.equal(sent[1].auth, undefined); // the backend credential never goes to the webhook

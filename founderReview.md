@@ -47,7 +47,7 @@ with `npm run agenda`.
 | B2 | **The basket as the default home for money** | Bots get budget only by beating holding the 8 shares after tax on their live record | **Yes.** It is the honest benchmark, and no strategy beats it yet | [roadmap](docs/skill-roadmap.md) |
 | B3 | **Self-expiring loss brakes** | Pause a bot after a daily, weekly or monthly loss or a losing streak; the pause lifts by itself; exits stay allowed | **Yes.** Top-ranked gap. Suggested starting thresholds: pause at 2% of budget lost in a day, 5% in a week or 8% in a month, and for one session after 2 losing exits in a row | [gap analysis A1](docs/research-notes/README.md) |
 | B4 | **Unrealised-loss protection and horizon exits** | A portfolio drawdown halt on marked value; optional trailing stops; close or renew a position when its horizon passes | **Yes to the drawdown halt and horizon renewal;** stops optional | [gap analysis A2](docs/research-notes/README.md) |
-| B5 | **The regime as a sizing input** | Today the regime is advice only. Option: size new buys down at HIGH or SEVERE | **Not yet.** First test "regime v2" (matching the original specification) and a re-entry signal | [market regime](docs/market-regime.md) |
+| B5 | **The regime as a sizing input** | Today the regime is advice only. Option: size new buys down at HIGH or SEVERE | **Not yet.** Regime v2 (closer to the original specification) was tested on 21 Oct: it warns of falls less sharply than v1 and calls SEVERE on 42% of days. A re-entry signal is still untested | [market regime](docs/market-regime.md) |
 
 ### Research and scoring
 
@@ -101,21 +101,30 @@ with `npm run agenda`.
 
 ## Part C: done by the agents without you (for your information)
 
-These are cheap fixes from the gap analysis. They need no decision, and development does them next:
-- an as-of filter on the debate context;
-- counting the scenario panel's silent fallbacks;
-- model-evaluation improvements (an exit code, baseline regression, judge fingerprints);
-- keeping evaluation rows out of training data;
-- a freshness check on the regime;
-- a real bull-answers-bear debate;
-- the bot's own record in debates;
-- "data missing" markers;
-- recording refused orders;
-- run manifests;
-- a limits banner in the digest;
-- a digest self-check;
-- statistical guards (deflated Sharpe, a turnover-matched random baseline, crisis windows);
-- regime v2 for comparison.
+These are fixes from the gap analysis that need no decision.
+
+**Done on 21 Oct** (see the [project log](docs/project-log/2026-10-21.md)):
+- **The debate:**
+  - it sees only news and prices from before the call;
+  - it is a real debate, where the bull answers the bear;
+  - it sees the bot's own record, "data missing" markers and a press dossier from the knowledge index.
+- **The scenario panel:** a voice that fails is counted, never treated as flat.
+- **The model gate:** it fails missing tasks, flags regressions against a baseline, fingerprints its judges and exits
+  non-zero on DON'T SHIP.
+- **Training data:** evaluation answers never enter it.
+- **The regime:** it is marked when stale or incomplete. Regime v2 was compared, and v1 stays.
+- **The knowledge index:** news, stories, drivers, regimes, ideas, method cards, problems and panel calls are connected
+  and searchable point-in-time ([knowledge index](docs/knowledge-index.md)).
+- **Statistical guards:** a deflated Sharpe ratio, a turnover-matched random baseline, years ahead, twice the costs and
+  India's crisis windows. Nothing beats luck: the best is 0.31, against a bar of 0.95.
+- **Run manifests:** the code, switches and prices behind every cycle run.
+- **The digest:** a self-check, "Can you trust this digest?".
+- **The review scorecard:** whether the risk review turns down worse calls than it takes, by reason and by regime. It
+  needs live calls to say anything.
+
+**Still to do:**
+- recording refused orders (a new backend table);
+- a limits banner in the digest (needs the backend's digest to report the limits).
 
 ## Part D: things you should know
 

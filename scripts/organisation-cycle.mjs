@@ -5,9 +5,10 @@
 // model. Nothing here trades, funds, or changes limits: those stay with reviews, owner decisions and paper trading.
 //   node --env-file=.env scripts/organisation-cycle.mjs [--with-model] [--force]
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { diagnose } from './playbook.mjs';
 
@@ -112,6 +113,8 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     { id: 'score-signals', cmd: PY, args: [desk('signal_scorer.py'), '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 },
     // LEARN-03: every scored call becomes a verified factual lesson for its bot (no model)
     { id: 'reflections', cmd: PY, args: [desk('reflections.py')], timeoutMs: 300_000 },
+    // TRUST-02: how the calls the review took and turned down went, by reason and by the regime at the time (read-only)
+    { id: 'review-scorecard', cmd: PY, args: [desk('review_scorecard.py')], timeoutMs: 120_000 },
     { id: 'live-fitness', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'live-fitness.mjs')], timeoutMs: 120_000 },
     { id: 'paper-snapshot', kind: 'http', method: 'POST', path: '/v1/paper/performance/snapshots', role: 'evaluator' },
     // ORG-02: the daily management review of every working bot; it only recommends, the owner decides (npm run agenda)
@@ -244,6 +247,66 @@ export async function computeCheck(gate, { env = process.env, fetchImpl = fetch 
   } catch (error) { return 'compute check unreachable: ' + (error.cause?.code || error.name); }
 }
 
+// TRUST-01 run manifest: what each run ran on (code, switches, prices), so any later result can be traced to its inputs
+const CODE_DIRS = ['integrations', 'scripts', join('backend', 'src')];
+const SKIP_DIRS = new Set(['node_modules', '__pycache__', 'dist']);
+// the settings that change what a cycle does: identifiers and names only, never a credential or a limit
+export const SWITCHES = ['RULE_BOT_ID', 'RND_SOURCE', 'RND_DEPARTMENT', 'PRICE_EVIDENCE_SOURCE', 'MODEL_ALLOCATOR_RUN', 'MODEL_ALLOCATOR_BOT',
+  'TA_BOT_ID', 'TA_WEEKDAY', 'DEBATE_BULL_BOT', 'DEBATE_BEAR_BOT', 'HERMES_MODEL'];
+
+async function codeFiles(dir, out = []) {
+  let entries;
+  try { entries = await readdir(dir, { withFileTypes: true }); } catch { return out; }
+  for (const e of entries) {
+    if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name) && !e.name.startsWith('.')) await codeFiles(join(dir, e.name), out); }
+    else if (/\.(py|mjs|js|ts|json)$/.test(e.name)) out.push(join(dir, e.name));
+  }
+  return out;
+}
+
+/** A content hash of files, the same on Windows and Linux (relative forward-slash names, LF line ends). */
+export async function fingerprint(paths, root) {
+  const named = paths.map(p => [relative(root, p).split('\\').join('/'), p]).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  const hash = createHash('sha256');
+  for (const [name, p] of named) hash.update(name + '\0' + (await readFile(p, 'utf8')).replace(/\r\n/g, '\n') + '\0');
+  return hash.digest('hex').slice(0, 16);
+}
+
+async function gitCommit(root) {
+  try {
+    const head = (await readFile(join(root, '.git', 'HEAD'), 'utf8')).trim();
+    if (!head.startsWith('ref: ')) return head.slice(0, 12);
+    const ref = head.slice(5);
+    try { return (await readFile(join(root, '.git', ref), 'utf8')).trim().slice(0, 12); } catch { /* packed */ }
+    const line = (await readFile(join(root, '.git', 'packed-refs'), 'utf8')).split('\n').find(l => l.trim().endsWith(' ' + ref));
+    return line ? line.slice(0, 12) : null;
+  } catch { return null; }
+}
+
+/** The code and switches a run starts with. */
+export async function runManifest({ root = ROOT, env = process.env, withModel = false, force = false, now = new Date() } = {}) {
+  const files = (await Promise.all(CODE_DIRS.map(d => codeFiles(join(root, d))))).flat();
+  return { startedAt: now.toISOString(), withModel, force, code: { commit: await gitCommit(root), fingerprint: await fingerprint(files, root), files: files.length },
+    switches: Object.fromEntries(SWITCHES.filter(k => env[k]).map(k => [k, env[k]])) };
+}
+
+/** The prices the run's decisions used, as the run left them: per share the bar count and last session, and one hash. */
+export async function dataManifest({ root = ROOT } = {}) {
+  const dir = join(root, '.local', 'trading-desk', 'daily');
+  let names = [];
+  try { names = (await readdir(dir)).filter(n => n.endsWith('.json')).sort(); } catch { return null; }
+  const shares = {};
+  for (const name of names.filter(n => n.endsWith('-1d.json'))) {
+    try {
+      const d = JSON.parse(await readFile(join(dir, name), 'utf8'));
+      shares[d.symbol] = { bars: d.bars.length, lastSession: d.bars.at(-1)?.date ?? null, retrievedAt: d.retrievedAt ?? null };
+    } catch { shares[name] = { unreadable: true }; }
+  }
+  const last = Object.values(shares).map(s => s.lastSession).filter(Boolean).sort();
+  return { prices: shares, oldestLastSession: last[0] ?? null, newestLastSession: last.at(-1) ?? null,
+    fingerprint: await fingerprint(names.map(n => join(dir, n)), root) };
+}
+
 export const ESCALATE_AFTER = 3;          // consecutive failed cycles before a step becomes an incident
 export const BACKOFF_MS = [30_000, 90_000]; // waits between retries of a transient step
 
@@ -291,9 +354,13 @@ async function recordUnknown(path, entry) {
 
 export async function runCycle({ steps, journalPath, streaksPath = join(dirname(journalPath), 'streaks.json'), force = false, run = runProcess,
   http = runHttp, now = () => new Date(), sleep = ms => new Promise(r => setTimeout(r, ms)), escalateStep = escalate,
-  gate = g => releaseCheck(g, { run }), budget = g => computeCheck(g), unknownsPath = join(dirname(journalPath), 'unknown-problems.jsonl') }) {
+  gate = g => releaseCheck(g, { run }), budget = g => computeCheck(g), unknownsPath = join(dirname(journalPath), 'unknown-problems.jsonl'),
+  manifest = null, data = null }) {
   let journal = { startedAt: now().toISOString(), steps: {} };
   try { journal = JSON.parse(await readFile(journalPath, 'utf8')); } catch { /* first run today */ }
+  // every run of the day keeps its own manifest; a failure to describe the run never stops it
+  const described = manifest ? await manifest().catch(error => ({ error: String(error.message ?? error).slice(0, 200) })) : null;
+  if (described) journal.runs = [...(journal.runs ?? []), described];
   let streaks = {};
   try { streaks = JSON.parse(await readFile(streaksPath, 'utf8')); } catch { /* no history yet */ }
   const results = [];
@@ -335,6 +402,11 @@ export async function runCycle({ steps, journalPath, streaksPath = join(dirname(
     if (step.critical && outcome.status !== 'done') { results.push({ id: 'cycle', status: 'stopped', reason: step.id + ' failed' }); break; }
   }
   journal.finishedAt = now().toISOString();
+  if (described) {
+    described.finishedAt = journal.finishedAt;
+    if (data) described.data = await data().catch(error => ({ error: String(error.message ?? error).slice(0, 200) }));
+  }
+  await mkdir(dirname(journalPath), { recursive: true });
   await writeFile(journalPath, JSON.stringify(journal, null, 2) + '\n');
   return results;
 }
@@ -343,7 +415,8 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const args = new Set(process.argv.slice(2));
   const steps = await planSteps({ withModel: args.has('--with-model') });
   const journalPath = join(ROOT, '.local', 'cycles', new Date().toISOString().slice(0, 10) + '.json');
-  const results = await runCycle({ steps, journalPath, force: args.has('--force') });
+  const results = await runCycle({ steps, journalPath, force: args.has('--force'),
+    manifest: () => runManifest({ withModel: args.has('--with-model'), force: args.has('--force') }), data: () => dataManifest() });
   for (const r of results) console.log(`${r.status.padEnd(8)} ${r.id}${r.resumed ? ' (already done today)' : ''}${r.tries > 1 ? ` (after ${r.tries} tries)` : ''}`
     + `${r.escalated ? ' [escalated: ' + r.escalated + ']' : ''}${r.reason ? ' — ' + r.reason : ''}${r.summary ? ' — ' + String(r.summary).slice(0, 160) : ''}`
     + `${r.playbook ? `\n         fix (${r.playbook.decidedBy}): ${r.playbook.fix}` : ''}`);
