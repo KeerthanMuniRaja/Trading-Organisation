@@ -80,10 +80,23 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(t['debate']['errors'], {'TIMEOUT': 5})         # 2 repeats + variant, and 2 repeats
         self.assertEqual(t['debate']['validity'], 0.0)
 
+    def test_a_candidate_worse_than_the_baseline_or_missing_a_task_does_not_ship(self):
+        good_report = me.summarise(me.run(good, CASES, log=lambda *a: None))
+        self.assertEqual(good_report['overall'], 'SHIP')
+        baseline = {'runId': 'base', 'tasks': {'claims': {'validity': 1.0, 'correctness': 1.0, 'consistency': 1.0}}}
+        worse = {**good_report['tasks']['claims'], 'correctness': 0.9}
+        self.assertEqual(me.regressions({'claims': worse}, baseline), {'claims': ['correctness 0.9 fell more than 0.05 below the baseline 1.0']})
+        noisy = {**baseline, 'noise': {'claims': {'correctness': 0.15}}}
+        self.assertEqual(me.regressions({'claims': worse}, noisy), {})            # within the measured noise
+        only_claims = [c for c in CASES if c['task'] == 'claims']
+        missing = me.summarise(me.run(good, only_claims, log=lambda *a: None), requested=('claims', 'debate'))
+        self.assertEqual((missing['overall'], missing['tasks']['debate']['reasons']), ("DON'T SHIP", ['not run']))
+
     def test_the_lock_names_the_pinned_model_and_the_cases(self):
         locked = me.lock('Qwen3.5-4B-Q4_K_M', 'cases')
         self.assertEqual(locked['pinned']['key'], 'qwen3.5-4b-q4km')
         self.assertEqual(len(locked['casesFingerprint']), 16)
+        self.assertEqual(len(locked['judgesFingerprint']), 16)
         self.assertIsNone(me.lock('some-other-model', 'cases')['pinned'])
 
 

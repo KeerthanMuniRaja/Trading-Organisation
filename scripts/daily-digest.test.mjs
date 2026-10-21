@@ -59,6 +59,7 @@ test('the market regime is shown as advice, with what our history says about it'
   assert.match(text, /## Market regime \(advice\)\n- SEVERE on 2026-10-19: 9 distribution day\(s\) in 25 sessions; 1\/8 shares above their 50-day and 1\/8 above their 200-day average; basket below its 200-day trend/);
   assert.match(text, /Advisory exposure ceiling 0% \(not applied to any limit\)\. On our history: no-clear-warning; falls over 5% within 20 sessions followed 17% of SEVERE days and 7% of NORMAL days/);
   assert.ok(text.indexOf('## Market regime') < text.indexOf('## Trading'));
+  assert.match(render(digest, null, { ...regime, state: 'stale' }), /- STALE \(do not rely on it\): SEVERE on 2026-10-19/); // never shown as today's
   assert.doesNotMatch(render(digest), /Market regime/);
 });
 

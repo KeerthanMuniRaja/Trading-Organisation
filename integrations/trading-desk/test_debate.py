@@ -75,6 +75,56 @@ class DebateTests(unittest.TestCase):
         self.assertEqual(ctx['verifiedNews'][0]['title'], 'HDFC Bank profit rises')
         self.assertEqual(schema['properties']['evidenceId']['anyOf'][0]['enum'], ['ev-1'])
 
+    def test_the_bull_answers_the_bear_and_nobody_sees_the_future(self):
+        signal = {**PENDING[0], 'id': 'p9', 'createdAt': '2026-10-19T10:40:00.000Z', 'challenges': []}
+        self.headlines.write_text(json.dumps([
+            {'publishedAt': '2026-10-19T15:30:00+05:30', 'source': 'Wire', 'title': 'Before: HDFC Bank profit rises', 'symbols': ['HDFCBANK.NS']},  # 10:00Z
+            {'publishedAt': '2026-10-19T16:30:00+05:30', 'source': 'Wire', 'title': 'After: HDFC Bank shares slump', 'symbols': ['HDFCBANK.NS']},  # 11:00Z
+        ]), encoding='utf-8')
+        scored = [{'botId': 'momentum-rules', 'symbol': 'HDFCBANK', 'action': 'enter-long', 'createdAt': '2026-09-01T10:40:00Z',
+                   'outcome': {'moveBps': -120, 'correct': False}, 'review': {'outcome': 'accepted'}, 'evidenceIds': ['e']},
+                  {'botId': 'momentum-rules', 'symbol': 'ITC', 'action': 'enter-long', 'createdAt': '2026-08-01T10:40:00Z',
+                   'outcome': {'moveBps': 250, 'correct': True}, 'review': {'outcome': 'accepted'}, 'evidenceIds': ['e']}]
+
+        class Backend2(Backend):
+            def __call__(self, req, timeout):
+                body = json.loads(req.data) if req.data else {}
+                if req.full_url.endswith('/v1/trading/signals/query') and body.get('pending') != 'unreviewed':
+                    self.calls.append(('scored', body, None))
+                    payload = {'signals': scored}
+
+                    class Response:
+                        def __enter__(s): return s
+                        def __exit__(s, *a): return False
+                        def read(s, n=None): return json.dumps(payload).encode()
+                    return Response()
+                return super().__call__(req, timeout)
+        seen = []
+
+        def llm(system, user, schema):
+            seen.append((system, json.loads(user)))
+            side = 'bear' if 'bear researcher' in system else 'bull'
+            return {'argument': f'The {side} case: margins, valuation and the recent fall all matter here.', 'evidenceId': None}, {}
+        import eod_trader
+        real = eod_trader.pages
+        eod_trader.pages = lambda *a, **k: [signal]
+        try:
+            out = db.run(llm, ENV, self.cache, Backend2(), self.headlines)
+        finally:
+            eod_trader.pages = real
+        self.assertEqual([(o['side'], o.get('answered')) for o in out], [('bear', None), ('bull', True)])
+        (bear_system, bear_ctx), (bull_system, bull_ctx) = seen
+        self.assertNotIn('opposingArgument', bear_ctx)
+        self.assertEqual(bull_ctx['opposingArgument'], 'The bear case: margins, valuation and the recent fall all matter here.')
+        self.assertEqual([h['title'] for h in bear_ctx['verifiedNews']], ['Before: HDFC Bank profit rises'])  # time zones compared as instants
+        self.assertEqual(bear_ctx['share'], {'symbol': 'HDFCBANK', 'name': 'HDFC Bank', 'exchange': 'NSE'})
+        self.assertEqual((bear_ctx['botRecord']['scoredCalls'], bear_ctx['botRecord']['right']), (2, 1))
+        self.assertEqual(bear_ctx['botRecord']['thisShare'][0]['movePct'], -1.2)
+        self.assertTrue(all(b['date'] <= '2026-10-19' for b in bear_ctx['recentCloses']))
+        missing = db.context(signal, self.cache, [], news_status='missing')
+        self.assertEqual(missing['dataStatus']['verifiedNews'], 'feeds or fact-checker not available')  # not "no news"
+        self.assertEqual(db.context(signal, self.cache, [])['dataStatus']['verifiedNews'], 'none published about this share before the proposal')
+
     def test_without_both_debaters_nothing_is_argued(self):
         out = db.run(lambda *a: ({}, {}), {**ENV, 'DEBATE_BEAR_BOT': ''}, self.cache, Backend(), self.headlines)
         self.assertEqual(out[0]['state'], 'not-configured')

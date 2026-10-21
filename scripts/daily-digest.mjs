@@ -31,8 +31,12 @@ export function worldLines(world) {
 /** REGIME-01: the latest market regime and its study, from the desk's files; null when the cycle has not made them. */
 export async function marketRegime(root = join(dirname(fileURLToPath(import.meta.url)), '..')) {
   const read = async name => { try { return JSON.parse(await readFile(join(root, '.local', 'trading-desk', 'regime', name), 'utf8')); } catch { return null; } };
-  const now = await read('latest.json');
-  return now ? { ...now, study: await read('study.json') } : null;
+  const latest = await read('latest.json');
+  if (!latest) return null;
+  // an old or partial regime is labelled as such, never shown as today's (same rule as live_knowledge.regime_state)
+  const age = (Date.now() - Date.parse(latest.date + 'T00:00:00Z')) / 86_400_000;
+  const state = latest.inputsComplete === false ? 'incomplete' : age > 5 ? 'stale' : 'fresh';
+  return { ...latest, state, study: await read('study.json') };
 }
 
 /** KNOW-05: the live knowledge (.local/trading-desk/knowledge/live.json) and failures the playbook does not know yet. */
@@ -63,7 +67,7 @@ export function researchLines(k) {
 export function regimeLine(r) {
   if (!r) return null;
   const s = r.study, severe = s?.levels?.SEVERE, normal = s?.levels?.NORMAL;
-  return `${r.risk} on ${r.date}: ${r.distributionDays} distribution day(s) in 25 sessions; ${r.breadth50d ?? '?'}/${r.shares} shares above their 50-day `
+  return `${r.state && r.state !== 'fresh' ? `${r.state.toUpperCase()} (do not rely on it): ` : ''}${r.risk} on ${r.date}: ${r.distributionDays} distribution day(s) in 25 sessions; ${r.breadth50d ?? '?'}/${r.shares} shares above their 50-day `
     + `and ${r.breadth200d ?? '?'}/${r.shares} above their 200-day average; basket ${r.aboveTrend200d === false ? 'below' : r.aboveTrend200d ? 'above' : '?'} its 200-day trend. `
     + `Advisory exposure ceiling ${r.exposureCeilingPct}% (not applied to any limit)`
     + (s ? `. On our history: ${s.verdict}; falls over 5% within ${s.horizonSessions} sessions followed ${Math.round(100 * (severe?.fallOver5PctShare ?? 0))}% of SEVERE days and ${Math.round(100 * (normal?.fallOver5PctShare ?? 0))}% of NORMAL days` : '');

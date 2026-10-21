@@ -47,9 +47,12 @@ class PanelTests(unittest.TestCase):
         r = sp.run(llm, now=now, stories_path=self.stories, out=self.out, cache=self.cache)
         self.assertEqual((r['state'], r['stories'], r['calls'], r['directional']), ('rehearsed', 1, 2, 1))  # the football story reaches no share
         calls = {c['symbol']: c for c in map(json.loads, (self.out / 'calls.jsonl').read_text().splitlines())}
-        self.assertEqual((calls['RELIANCE.NS']['direction'], calls['RELIANCE.NS']['votes']), ('up', {'up': 3, 'down': 1, 'flat': 1}))
+        self.assertEqual((calls['RELIANCE.NS']['direction'], calls['RELIANCE.NS']['votes']), ('up', {'up': 3, 'down': 1, 'flat': 0}))
         self.assertEqual(calls['HDFCBANK.NS']['direction'], 'flat')  # split views are no call
-        self.assertEqual(calls['RELIANCE.NS']['personas']['sector-analyst'], {'direction': 'flat', 'why': ''})  # a failed voice is no view
+        self.assertEqual(calls['RELIANCE.NS']['personas']['sector-analyst'], {'direction': 'flat', 'why': '', 'failed': True})  # marked, not passed off as a view
+        self.assertEqual(calls['RELIANCE.NS']['failedVoices'], 1)
+        self.assertEqual(calls['RELIANCE.NS']['votes'], {'up': 3, 'down': 1, 'flat': 0})  # failed voices do not vote
+        self.assertEqual(r['failedVoices'], 2 + 1)  # the analyst failed on both shares; the bank watcher left HDFC Bank out
         self.assertLessEqual(calls['RELIANCE.NS']['asOf'], '2023-06-01')
         self.assertEqual(sp.run(llm, now=now, stories_path=self.stories, out=self.out, cache=self.cache)['state'], 'already-run')
 

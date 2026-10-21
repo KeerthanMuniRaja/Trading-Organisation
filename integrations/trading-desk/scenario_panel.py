@@ -73,24 +73,27 @@ def ask_panel(llm, story, regime=None):
     user = json.dumps({'story': story['title'], 'countries': story['countries'], 'drivers': story['drivers'], 'shares': story['symbols'],
                        **({'marketRegime': regime} if regime else {})})
     for name, who in PERSONAS.items():
+        failed = False
         try:
             value, _ = llm(SYSTEM.format(who=who), user, schema(story['symbols']))
             calls = {c['symbol']: c for c in (value or {}).get('calls', []) if isinstance(c, dict) and c.get('symbol') in story['symbols']
                      and c.get('direction') in ('up', 'down', 'flat')}
         except Exception:  # noqa: BLE001 - one voice failing must not stop the panel
-            calls = {}
-        answers[name] = {s: {'direction': calls.get(s, {}).get('direction', 'flat'), 'why': str(calls.get(s, {}).get('why', ''))[:200]}
-                         for s in story['symbols']}
+            calls, failed = {}, True
+        # a voice that failed, or left a share out, is MARKED, never silently passed off as a 'flat' view (MiroFish review)
+        answers[name] = {s: {'direction': calls.get(s, {}).get('direction', 'flat'), 'why': str(calls.get(s, {}).get('why', ''))[:200],
+                             **({'failed': True} if failed or s not in calls else {})} for s in story['symbols']}
     return answers
 
 
 def panel_calls(story, answers, day, as_of):
     out = []
     for s in story['symbols']:
-        votes = {d: sum(a[s]['direction'] == d for a in answers.values()) for d in ('up', 'down', 'flat')}
+        valid = [a[s] for a in answers.values() if not a[s].get('failed')]
+        votes = {d: sum(v['direction'] == d for v in valid) for d in ('up', 'down', 'flat')}
         direction = next((d for d in ('up', 'down') if votes[d] >= QUORUM), 'flat')
         out.append({'day': day, 'asOf': as_of, 'story': story['title'], 'countries': story['countries'], 'symbol': s, 'direction': direction,
-                    'votes': votes, 'personas': {p: a[s] for p, a in answers.items()}})
+                    'votes': votes, 'failedVoices': len(answers) - len(valid), 'personas': {p: a[s] for p, a in answers.items()}})
     return out
 
 
@@ -113,7 +116,8 @@ def run(llm, now=None, stories_path=STORIES, out=OUT, cache=daily.DAILY, limit=2
     with path.open('a', encoding='utf-8') as handle:
         for c in calls:
             handle.write(json.dumps(c, sort_keys=True) + '\n')
-    return {'day': day, 'state': 'rehearsed', 'stories': len(stories), 'calls': len(calls), 'directional': sum(c['direction'] != 'flat' for c in calls)}
+    return {'day': day, 'state': 'rehearsed', 'stories': len(stories), 'calls': len(calls), 'directional': sum(c['direction'] != 'flat' for c in calls),
+            'failedVoices': sum(c['failedVoices'] for c in calls)}
 
 
 def score(out=OUT, cache=daily.DAILY, horizon=HORIZON):
@@ -136,11 +140,12 @@ def score(out=OUT, cache=daily.DAILY, horizon=HORIZON):
             waiting += c['direction'] != 'flat'
             continue
         move = excess(c['symbol'], a)
-        for who, direction in [('panel', c['direction']), *((p, v['direction']) for p, v in c['personas'].items() if p in tally)]:
+        for who, direction in [('panel', c['direction']), *((p, v['direction']) for p, v in c['personas'].items() if p in tally and not v.get('failed'))]:
             if direction != 'flat' and move != 0:
                 tally[who][0 if (move > 0) == (direction == 'up') else 1] += 1
     judged = {who: {'right': r, 'wrong': w, 'pValue': round(fitness.sign_test(r, w), 4), 'verdict': fitness.verdict(r, w)} for who, (r, w) in tally.items()}
-    report = {'horizonSessions': horizon, 'calls': len(calls), 'waiting': waiting, 'panel': judged['panel'],
+    failures = {p: sum(1 for c in calls if c['personas'].get(p, {}).get('failed')) for p in PERSONAS}
+    report = {'horizonSessions': horizon, 'calls': len(calls), 'waiting': waiting, 'panel': judged['panel'], 'failedVoices': failures,
               'personas': {p: judged[p] for p in PERSONAS},
               'note': 'Shadow record: calls are judged against the equal-weight basket; nothing was traded.'}
     Path(out).mkdir(parents=True, exist_ok=True)

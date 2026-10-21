@@ -23,7 +23,7 @@ function localLines(f) {
     + `${f.knowledge.unknown?.length ? `; ${f.knowledge.unknown.length} unknown cycle problem(s)` : ''}`);
   if (f.intraday) out.push(`Intraday  ${f.intraday.mode} ${f.intraday.day}: basket ${f.intraday.final.basketMovePct}%, positions ${f.intraday.final.lossPct}%; `
     + `events: ${f.intraday.events.map(e => e.rule + ':' + e.subject).join(', ') || 'none'}`);
-  if (f.regime) out.push(`Regime    ${f.regime.risk} on ${f.regime.date} (${f.regime.distributionDays} distribution days; ${f.regime.breadth200d ?? '?'}/${f.regime.shares} above 200-day); advisory ceiling ${f.regime.exposureCeilingPct}%`);
+  if (f.regime) out.push(`Regime    ${f.regime.state && f.regime.state !== 'fresh' ? f.regime.state.toUpperCase() + ' ' : ''}${f.regime.risk} on ${f.regime.date} (${f.regime.distributionDays} distribution days; ${f.regime.breadth200d ?? '?'}/${f.regime.shares} above 200-day); advisory ceiling ${f.regime.exposureCeilingPct}%`);
   if (f.world && !f.world.error) {
     const w = f.world, s = w.stories;
     out.push(`World     feeds working in ${w.coverage.countriesCovered.join(', ') || 'no country yet'}`

@@ -65,6 +65,11 @@ class DatasetTests(unittest.TestCase):
         m = bd.build(self.journal, self.evals, self.out)
         self.assertEqual(m['counts']['debate']['evaluation'], {'fixable': 1})   # cited evidence it may not cite: corrected to none
         self.assertIn('invented fixtures', m['note'])
+        self.assertIn('eval-only/debate-preference.jsonl', m['files'])            # evaluation rows never reach a training file
+        self.assertFalse((self.out / 'debate' / 'preference.jsonl').exists())
+        row = json.loads((self.out / 'eval-only' / 'debate-preference.jsonl').read_text(encoding='utf-8'))
+        self.assertEqual(row['source'], 'evaluation')
+        self.assertTrue((self.out / 'claims' / 'kto.jsonl').exists())              # the unusable production answer, labelled undesirable
 
     def test_the_production_journal_records_calls_and_can_be_switched_off(self):
         import os

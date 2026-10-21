@@ -85,7 +85,9 @@ def regime(table, dates, i):
     b50, b200 = above(table, dates, i, 50), above(table, dates, i, 200)
     ceiling = CEILING[risk] - (25 if trend is False else 0) - (25 if b200 is not None and b200 <= 2 else 0)
     return {'date': dates[i], 'distributionDays': len(days), 'distributionDates': days, 'risk': risk, 'aboveTrend200d': trend,
-            'breadth50d': b50, 'breadth200d': b200, 'shares': len(table), 'exposureCeilingPct': max(0, ceiling)}
+            'breadth50d': b50, 'breadth200d': b200, 'shares': len(table), 'exposureCeilingPct': max(0, ceiling),
+            # readers check these before trusting it (trading-skills' provenance gate): which shares it rests on
+            'inputsComplete': len(table) == len(daily.datasets.UNIVERSE)}
 
 
 def calm(table, dates, i):

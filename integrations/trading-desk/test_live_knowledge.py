@@ -37,10 +37,14 @@ class LiveKnowledgeTests(unittest.TestCase):
             self.assertEqual((live['regime']['risk'], live['regime']['studyVerdict']), ('SEVERE', 'warns-of-falls'))
             self.assertEqual(live['newsLinks']['carrying'], ['crude-oil'])
             self.assertIsNone(live['scenarioPanel'])
-            brief = lk.briefing(desk)
+            from datetime import date
+            brief = lk.briefing(desk, today=date(2026, 10, 21))
             self.assertIn('SEVERE on 2026-10-19', brief['marketRegime'])
             self.assertEqual(len(brief['lessons']), len(lk.DECISION_LESSONS))
             self.assertLess(len(json.dumps(brief)), 4000)  # small enough for a 4B model's prompt
+            stale = lk.briefing(desk, today=date(2026, 11, 2))['marketRegime']
+            self.assertIn('is stale: do not rely on it', stale)  # an old regime is never presented as today's
+            self.assertEqual(lk.regime_state({'date': '2026-10-19', 'inputsComplete': False}, date(2026, 10, 20)), 'incomplete')
 
     def test_without_evidence_the_briefing_says_unknown(self):
         with tempfile.TemporaryDirectory() as tmp:

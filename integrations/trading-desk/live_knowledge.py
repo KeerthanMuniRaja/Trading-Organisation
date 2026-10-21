@@ -69,7 +69,7 @@ def refresh(desk=DESK, now=None):
     research = _latest('scout-nifty50-*.json', desk / 'rnd')
     live = {'generatedAt': (now or datetime.now(timezone.utc)).isoformat(),
             'research': scout_summary(desk_scout), 'researchNifty50': scout_summary(research),
-            'regime': {**{k: regime.get(k) for k in ('date', 'risk', 'distributionDays', 'breadth200d', 'shares', 'aboveTrend200d', 'exposureCeilingPct')},
+            'regime': {**{k: regime.get(k) for k in ('date', 'risk', 'distributionDays', 'breadth200d', 'shares', 'aboveTrend200d', 'exposureCeilingPct', 'inputsComplete')},
                        'studyVerdict': (study or {}).get('verdict')} if regime else None,
             'newsLinks': {'drivers': len(links['drivers']), 'carrying': sorted(d for d, r in links['drivers'].items() if r['verdict'] == 'link-carries-information'),
                           'headlines': links['headlines']} if links else None,
@@ -81,14 +81,34 @@ def refresh(desk=DESK, now=None):
     return live
 
 
-def briefing(desk=DESK, cards_path=CARDS, lessons=DECISION_LESSONS):
+STALE_DAYS = 5  # calendar days: a regime older than this (a long weekend plus a missed cycle) is not today's regime
+
+
+def regime_state(r, today=None):
+    """'fresh', 'stale' or 'incomplete' for a regime record: readers never present an old or partial regime as current."""
+    from datetime import date
+    if not r:
+        return 'unknown'
+    if r.get('inputsComplete') is False:
+        return 'incomplete'
+    age = ((today or date.today()) - date.fromisoformat(r['date'])).days
+    return 'stale' if age > STALE_DAYS else 'fresh'
+
+
+def briefing(desk=DESK, cards_path=CARDS, lessons=DECISION_LESSONS, today=None):
     """The bounded context for a model agent making or challenging a decision: today's regime and the decision lessons."""
     live = _read(desk / 'knowledge' / 'live.json') or {}
     cards = {c['id']: c for c in (_read(cards_path) or {}).get('cards', [])}
     r = live.get('regime')
-    return {'marketRegime': (f"{r['risk']} on {r['date']}: {r['distributionDays']} distribution days, {r['breadth200d']}/{r['shares']} shares above "
-                             f"their 200-day average; history says: {r['studyVerdict']}. Advice only.") if r else 'unknown',
-            'lessons': [cards[i]['lesson'] for i in lessons if i in cards]}
+    state = regime_state(r, today)
+    if state == 'fresh':
+        regime = (f"{r['risk']} on {r['date']}: {r['distributionDays']} distribution days, {r['breadth200d']}/{r['shares']} shares above "
+                  f"their 200-day average; history says: {r['studyVerdict']}. Advice only.")
+    elif state in ('stale', 'incomplete'):
+        regime = f"unknown (the last regime, from {r['date']}, is {state}: do not rely on it)"
+    else:
+        regime = 'unknown'
+    return {'marketRegime': regime, 'lessons': [cards[i]['lesson'] for i in lessons if i in cards]}
 
 
 def main(argv=None):

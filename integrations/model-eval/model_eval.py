@@ -209,7 +209,30 @@ def run(llm, cases, tasks=TASKS, repeats=2, clock=time.monotonic, log=print):
     return results
 
 
-def summarise(results, gate=GATE):
+REGRESSION_FLOOR = 0.05  # a candidate may not fall more than this (or the measured noise, if larger) below the baseline
+
+
+def regressions(tasks, baseline, floor=REGRESSION_FLOOR):
+    """Soup's rule: passing fixed thresholds is not enough; a candidate must not be worse than the model it replaces.
+    `baseline` is an earlier report (its 'tasks'); a drop beyond max(floor, the baseline's measured noise) fails the task."""
+    if not baseline:
+        return {}
+    out = {}
+    for task, m in tasks.items():
+        base = baseline.get('tasks', {}).get(task)
+        if not base:
+            continue
+        noise = (baseline.get('noise') or {}).get(task, {})
+        for key in ('validity', 'correctness', 'consistency'):
+            if m.get(key) is None or base.get(key) is None:
+                continue
+            allowed = max(floor, noise.get(key, 0))
+            if m[key] < base[key] - allowed:
+                out.setdefault(task, []).append(f'{key} {m[key]} fell more than {allowed} below the baseline {base[key]}')
+    return out
+
+
+def summarise(results, gate=GATE, requested=None, baseline=None):
     tasks = {}
     for task in dict.fromkeys(r['task'] for r in results):
         rs = [r for r in results if r['task'] == task]
@@ -232,8 +255,16 @@ def summarise(results, gate=GATE):
         m['verdict'] = 'SHIP' if not reasons else "DON'T SHIP"
         m['reasons'] = reasons
         tasks[task] = m
+    for task, why in regressions(tasks, baseline).items():
+        tasks[task]['reasons'] += why
+        tasks[task]['verdict'] = "DON'T SHIP"
+    # a task that was asked for but produced nothing is a failure, never a silent omission
+    for task in requested or ():
+        if task not in tasks:
+            tasks[task] = {'calls': 0, 'verdict': "DON'T SHIP", 'reasons': ['not run'], 'validity': None, 'correctness': None, 'consistency': None,
+                           'errors': {}, 'latencySeconds': None, 'failures': []}
     overall = 'SHIP' if tasks and all(t['verdict'] == 'SHIP' for t in tasks.values()) else "DON'T SHIP"
-    return {'overall': overall, 'tasks': tasks, 'gate': gate}
+    return {'overall': overall, 'tasks': tasks, 'gate': gate, **({'baseline': baseline.get('runId')} if baseline else {})}
 
 
 def lock(model_name, cases_text):
@@ -245,7 +276,12 @@ def lock(model_name, cases_text):
                        if model_name and (model_name in (k, m['alias'], m['file']) or m['alias'].lower() in str(model_name).lower())), None)
     except (OSError, ValueError, KeyError):
         pass
-    return {'model': model_name, 'pinned': pinned, 'promptVersions': PROMPT_VERSIONS, 'casesFingerprint': hashlib.sha256(cases_text.encode()).hexdigest()[:16]}
+    import inspect
+    # the judges are part of what was tested: a changed validator is a different exam (Soup's lock idea)
+    judges = fingerprint(inspect.getsource(judge), inspect.getsource(claims.valid_shape), inspect.getsource(claims.verify),
+                         inspect.getsource(ai_allocator.valid), playbook_drafts.OWNER_ONLY.pattern, GATE)
+    return {'model': model_name, 'pinned': pinned, 'promptVersions': PROMPT_VERSIONS, 'judgesFingerprint': judges,
+            'casesFingerprint': hashlib.sha256(cases_text.encode()).hexdigest()[:16]}
 
 
 def main(argv=None):
@@ -253,6 +289,8 @@ def main(argv=None):
     parser.add_argument('--tasks', default=','.join(TASKS))
     parser.add_argument('--repeats', type=int, default=2, choices=range(1, 6))
     parser.add_argument('--timeout', type=int, default=300)
+    parser.add_argument('--baseline', type=Path, default=OUT / 'baseline.json', help='the report a candidate must not be worse than')
+    parser.add_argument('--set-baseline', action='store_true', help='save this run as the new baseline (the model in use)')
     args = parser.parse_args(argv)
     tasks = tuple(t for t in args.tasks.split(',') if t in TASKS)
     cases_text = CASES.read_text(encoding='utf-8')
@@ -262,7 +300,9 @@ def main(argv=None):
     run_id = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     print(f'Model evaluation {run_id}: {endpoint.model}, tasks {",".join(tasks)}, {args.repeats} repeats + reworded variants')
     results = run(llm, cases, tasks, args.repeats)
-    report = {'runId': run_id, 'lock': lock(endpoint.model, cases_text), 'repeats': args.repeats, **summarise(results),
+    baseline = json.loads(args.baseline.read_text(encoding='utf-8')) if args.baseline.exists() and not args.set_baseline else None
+    report = {'runId': run_id, 'lock': lock(endpoint.model, cases_text), 'repeats': args.repeats,
+              **summarise(results, requested=tasks, baseline=baseline),
               'note': 'Cases are invented fixtures. Validity and consistency are measured; correctness only where a case states an expectation.'}
     out = OUT / run_id
     out.mkdir(parents=True, exist_ok=True)
@@ -273,6 +313,11 @@ def main(argv=None):
         print(f"  {task:9s} {m['verdict']:11s} valid {m['validity']:.0%}  correct {'-' if m['correctness'] is None else format(m['correctness'], '.0%')}  "
               f"consistent {m['consistency']:.0%}  p50 {m['latencySeconds']['p50']}s  max {m['latencySeconds']['max']}s  {'; '.join(m['reasons'])}")
     print(f'Report: {out / "report.json"}')
+    if args.set_baseline:
+        args.baseline.write_text(json.dumps(report, indent=2), encoding='utf-8')
+        print(f'Saved as the baseline every candidate must not fall below: {args.baseline}')
+    if report['overall'] != 'SHIP':
+        sys.exit(1)  # a script or a release gate can act on the verdict
 
 
 if __name__ == '__main__':

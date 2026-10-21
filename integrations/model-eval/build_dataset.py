@@ -147,25 +147,34 @@ def build(journal=JOURNAL, evals=EVALS, out=OUT):
         bucket = counts.setdefault(task, {}).setdefault(source, {})
         bucket[verdict] = bucket.get(verdict, 0) + 1
         prompt = [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}]
+        # evaluation rows come from invented fixtures: they go to eval-only/, never into a training file (Soup review)
+        folder = 'eval-only' if source == 'evaluation' else task
+        name = f'{task}-{{}}' if source == 'evaluation' else '{}'
         if verdict == 'good':
-            files.setdefault((task, 'sft'), []).append({'messages': prompt + [{'role': 'assistant', 'content': json.dumps(answer, ensure_ascii=False)}]})
+            files.setdefault((folder, name.format('sft')), []).append({'source': source,
+                'messages': prompt + [{'role': 'assistant', 'content': json.dumps(answer, ensure_ascii=False)}]})
         elif verdict == 'fixable':
-            files.setdefault((task, 'preference'), []).append({'prompt': prompt, 'reasons': reasons,
+            files.setdefault((folder, name.format('preference')), []).append({'source': source, 'prompt': prompt, 'reasons': reasons,
                 'chosen': [{'role': 'assistant', 'content': json.dumps(corrected, ensure_ascii=False)}],
                 'rejected': [{'role': 'assistant', 'content': json.dumps(answer, ensure_ascii=False)}]})
+        elif verdict == 'bad' and source == 'production':
+            # an unusable answer is still a lesson: a KTO-style 'undesirable' example (no corrected version exists)
+            files.setdefault((task, 'kto'), []).append({'source': source, 'prompt': prompt, 'reasons': reasons, 'label': False,
+                'completion': [{'role': 'assistant', 'content': json.dumps(answer, ensure_ascii=False)}]})
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     written = {}
-    for (task, kind), rows in sorted(files.items()):
-        (out / task).mkdir(exist_ok=True)
+    for (folder, kind), rows in sorted(files.items()):
+        (out / folder).mkdir(exist_ok=True)
         text = '\n'.join(json.dumps(r, ensure_ascii=False) for r in rows) + '\n'
-        (out / task / f'{kind}.jsonl').write_text(text, encoding='utf-8')
-        written[f'{task}/{kind}.jsonl'] = {'rows': len(rows), 'sha256': hashlib.sha256(text.encode()).hexdigest()[:16]}
+        (out / folder / f'{kind}.jsonl').write_text(text, encoding='utf-8')
+        written[f'{folder}/{kind}.jsonl'] = {'rows': len(rows), 'sha256': hashlib.sha256(text.encode()).hexdigest()[:16]}
     manifest = {'counts': counts, 'files': written, 'awaitingOutcome': list(AWAITING_OUTCOME),
                 'fingerprint': hashlib.sha256(json.dumps(written, sort_keys=True).encode()).hexdigest()[:16],
-                'note': 'Labelled by the organisation\'s own checks. sft.jsonl: chat messages; preference.jsonl: prompt/chosen/rejected '
-                        '(chosen is the same answer corrected by the check). Evaluation-sourced rows come from invented fixtures: '
-                        'keep them out of a final training set or use them only for testing.'}
+                'note': 'Labelled by the organisation\'s own checks. <task>/sft.jsonl: chat messages; <task>/preference.jsonl: '
+                        'prompt/chosen/rejected (chosen is the same answer corrected by the check); <task>/kto.jsonl: unusable answers '
+                        'labelled undesirable. Rows from evaluation runs (invented fixtures) are only in eval-only/ and never in a '
+                        'training file. Shuffle before training: Soup takes its validation split from the end of a file.'}
     (out / 'manifest.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
     return manifest
 
