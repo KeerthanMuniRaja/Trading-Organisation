@@ -25,6 +25,7 @@ The preferred experimental model is constrained Qwen3.5-4B Q4_K_M on the direct 
 
 ## The organisation in operation (October 2026)
 
+- [Startup guide: set up, run, commands, roles and endpoints](../STARTUP.md)
 - [Founder review: switch-on checklist and every pending decision](../founderReview.md)
 - [Research notes on 13 reference projects, and the gap analysis](research-notes/README.md)
 - [Model evaluation suite and training data](model-eval.md)
