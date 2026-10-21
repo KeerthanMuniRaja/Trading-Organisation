@@ -17,12 +17,15 @@ import { scanText } from './secret-scan.mjs';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // the data folders under .local that hold collected or computed information
 export const FOLDERS = ['alerts', 'backups', 'claims', 'cycles', 'digests', 'feeds', 'intraday', 'knowledge', 'market-replay', 'model-benchmarks',
-  'model-calls', 'model-eval', 'practice-benchmarks', 'readiness', 'trading-desk', 'tradingagents', 'world'];
+  'model-calls', 'model-eval', 'organisation-starter', 'paired-artifact-fixtures', 'practice-benchmarks', 'readiness', 'trading-desk', 'tradingagents', 'world'];
+// integrations that keep their own state beside their code (exported as state/<name>, restored to integrations/<name>/.state)
+export const STATE_DIRS = ['hermes', 'ruflo', 'skfolio'];
 // single files directly under .local: feed configurations, the holiday file and verification reports
 export const TOP_FILES = [/^feed-[a-z0-9-]+\.json$/, /^nse-holidays\.json$/, /^nifty50-fetch\.json$/, /^[a-z0-9-]+-verification(-[a-z]+)?\.json$/, /^demo-report\.json$/];
 // never copied, wherever they appear
 export const NEVER = [/(^|\/)\.env/, /credentials/i, /\.pem$/, /signing-key/i, /secret/i, /token/i, /\.log$/, /(^|\/)__pycache__\//, /\.pyc$/,
-  /\.(sqlite|db)(-wal|-shm)?$/]; // the knowledge index is rebuilt from the rest (npm run knowledge -- build)
+  /\.lock$/, // a run lock only means "running"; restoring one would block the next run
+  /^local\/knowledge\/.*\.(sqlite|db)(-wal|-shm)?$/]; // the knowledge index is rebuilt from the rest (npm run knowledge -- build)
 export const KEEP_BACKUPS = 4;          // the newest database backups; older ones stay on the machine
 export const MAX_FILE_BYTES = 95 * 1024 * 1024; // GitHub refuses files over 100 MB
 const TEXT = /\.(json|jsonl|md|txt|csv|yaml|yml|html|mjs|js|py)$/i;
@@ -37,31 +40,35 @@ async function walk(dir, out = []) {
   return out;
 }
 
-/** What would be copied from `local` (a .local folder): [{path (relative, forward slashes), bytes}], skipped, and backups left out. */
-export async function plan(local) {
-  const files = [], skipped = [];
+/** What would be copied from the project at `root`: [{path in the data repository (local/... or state/<name>/...), source,
+ *  bytes}], what was skipped and why, and the backups kept. */
+export async function plan(root) {
+  const local = join(root, '.local'), files = [], skipped = [];
   const backups = existsSync(join(local, 'backups')) ? (await readdir(join(local, 'backups'), { withFileTypes: true })).filter(d => d.isDirectory()).map(d => d.name).sort() : [];
   const keptBackups = new Set(backups.slice(-KEEP_BACKUPS));
-  const candidates = [];
-  for (const folder of FOLDERS) candidates.push(...await walk(join(local, folder)));
-  for (const name of existsSync(local) ? await readdir(local) : []) if (TOP_FILES.some(r => r.test(name))) candidates.push(join(local, name));
-  for (const full of candidates) {
-    const path = relative(local, full).split('\\').join('/');
+  const candidates = []; // [source, path in the data repository]
+  for (const folder of FOLDERS) for (const f of await walk(join(local, folder))) candidates.push([f, 'local/' + relative(local, f).split('\\').join('/')]);
+  for (const name of existsSync(local) ? await readdir(local) : []) if (TOP_FILES.some(r => r.test(name))) candidates.push([join(local, name), 'local/' + name]);
+  for (const name of STATE_DIRS) {
+    const dir = join(root, 'integrations', name, '.state');
+    for (const f of await walk(dir)) candidates.push([f, `state/${name}/` + relative(dir, f).split('\\').join('/')]);
+  }
+  for (const [source, path] of candidates) {
     if (NEVER.some(r => r.test(path))) { skipped.push({ path, why: 'never exported' }); continue; }
     const parts = path.split('/');
-    if (parts[0] === 'backups' && parts.length > 2 && !keptBackups.has(parts[1])) continue; // an older backup
-    const bytes = (await stat(full)).size;
+    if (parts[1] === 'backups' && parts.length > 3 && !keptBackups.has(parts[2])) continue; // an older backup
+    const bytes = (await stat(source)).size;
     if (bytes > MAX_FILE_BYTES) { skipped.push({ path, why: `over ${MAX_FILE_BYTES} bytes` }); continue; }
-    files.push({ path, bytes });
+    files.push({ path, source, bytes });
   }
   files.sort((a, b) => (a.path < b.path ? -1 : 1));
   return { files, skipped, backupsKept: [...keptBackups], backupsLeftOut: backups.length - keptBackups.size };
 }
 
 /** Secret-scan every text file in the plan; returns findings (path, line, rule), never the matched text. */
-export async function scanPlan(local, files) {
+export async function scanPlan(files) {
   const findings = [];
-  for (const f of files) if (TEXT.test(f.path)) findings.push(...scanText('local/' + f.path, await readFile(join(local, f.path), 'utf8')));
+  for (const f of files) if (TEXT.test(f.path)) findings.push(...scanText(f.path, await readFile(f.source, 'utf8')));
   return findings;
 }
 
@@ -77,7 +84,8 @@ Not here, by design: \`.env\`, credentials and the owner signing key (keep your 
 ## Continue on a new machine
 
 1. Clone the code repository and this one.
-2. Copy this repository's \`local/\` folder to the code repository's \`.local/\`.
+2. Copy this repository's \`local/\` folder to the code repository's \`.local/\`, and each \`state/<name>/\` folder to
+   \`integrations/<name>/.state/\` (hermes, ruflo, skfolio).
 3. Put your \`.env\`, \`.local/credentials.json\` and \`.local/owner-signing-key.pem\` back from your safe copy.
 4. Install as the code repository's README says (Node, the Python research environment, the model file).
 5. Restore the newest backup into an empty folder:
@@ -89,18 +97,20 @@ Not here, by design: \`.env\`, credentials and the owner signing key (keep your 
 \`MANIFEST.json\` lists every file with its size and SHA-256, the export time and the code commit it came from.
 `;
 
-/** Mirror the plan into <to>/local (stale files removed), with MANIFEST.json and README.md. Stops on any secret finding. */
-export async function write(local, to, { commit = null, now = new Date() } = {}) {
-  const p = await plan(local);
-  const findings = await scanPlan(local, p.files);
+/** Mirror the plan into <to>/local and <to>/state (stale files removed), with MANIFEST.json and README.md. Stops on any
+ *  secret finding. */
+export async function write(root, to, { commit = null, now = new Date() } = {}) {
+  const p = await plan(root);
+  const findings = await scanPlan(p.files);
   if (findings.length) return { written: false, findings };
   await rm(join(to, 'local'), { recursive: true, force: true });
+  await rm(join(to, 'state'), { recursive: true, force: true });
   const files = [];
   for (const f of p.files) {
-    const target = join(to, 'local', f.path);
+    const target = join(to, ...f.path.split('/'));
     await mkdir(dirname(target), { recursive: true });
-    await cp(join(local, f.path), target);
-    files.push({ ...f, sha256: createHash('sha256').update(await readFile(target)).digest('hex') });
+    await cp(f.source, target);
+    files.push({ path: f.path, bytes: f.bytes, sha256: createHash('sha256').update(await readFile(target)).digest('hex') });
   }
   const manifest = { format: 'organisation-data-v1', exportedAt: now.toISOString(), codeCommit: commit, files: files.length,
     bytes: files.reduce((s, f) => s + f.bytes, 0), backupsKept: p.backupsKept, backupsLeftOut: p.backupsLeftOut, skipped: p.skipped, list: files };
@@ -118,18 +128,18 @@ async function headCommit(root) {
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const args = process.argv.slice(2), at = args.indexOf('--to');
-  const local = join(ROOT, '.local'), to = resolve(at >= 0 ? args[at + 1] : join(local, 'data-repo'));
+  const to = resolve(at >= 0 ? args[at + 1] : join(ROOT, '.local', 'data-repo'));
   if (!args.includes('--write')) {
-    const p = await plan(local), findings = await scanPlan(local, p.files);
+    const p = await plan(ROOT), findings = await scanPlan(p.files);
     const mb = p.files.reduce((s, f) => s + f.bytes, 0) / 1048576;
     const byFolder = {};
-    for (const f of p.files) byFolder[f.path.split('/')[0]] = (byFolder[f.path.split('/')[0]] ?? 0) + f.bytes;
+    for (const f of p.files) { const k = f.path.split('/').slice(0, 2).join('/'); byFolder[k] = (byFolder[k] ?? 0) + f.bytes; }
     console.log(JSON.stringify({ dryRun: true, files: p.files.length, megabytes: Math.round(mb * 10) / 10,
       byFolderMB: Object.fromEntries(Object.entries(byFolder).map(([k, v]) => [k, Math.round(v / 104857.6) / 10])),
       backupsKept: p.backupsKept, backupsLeftOut: p.backupsLeftOut, skipped: p.skipped, secretFindings: findings }, null, 2));
     process.exitCode = findings.length ? 1 : 0;
   } else {
-    const r = await write(local, to, { commit: await headCommit(ROOT) });
+    const r = await write(ROOT, to, { commit: await headCommit(ROOT) });
     console.log(JSON.stringify(r, null, 2));
     process.exitCode = r.written ? 0 : 1;
   }

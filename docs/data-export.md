@@ -18,12 +18,16 @@ folder:
 - prices and research (`trading-desk/`), and the regime;
 - news feeds, world news, claims and the model-call journal;
 - cycles, digests, alerts, readiness and model evaluations;
-- feed configurations, the holiday file and the verification reports.
+- feed configurations, the holiday file and the verification reports;
+- the organisation-starter plan and the paired-artifact fixtures;
+- the state the integrations keep beside their code: `integrations/{hermes,ruflo,skfolio}/.state`. That includes the
+  skfolio academy database. It is exported as `state/<name>/`.
 
 **Never exported:**
 - `.env` and its backups, `credentials.json` and the owner signing key;
 - anything whose name suggests a secret or token;
 - logs, the model file, virtual environments and caches;
+- file locks (`*.lock`, which only mean "running");
 - the knowledge index database, which is rebuilt from the rest.
 
 Every copied text file goes through the project's secret scanner. **Any finding stops the export before anything is
@@ -31,7 +35,13 @@ written**, and the findings name the rule, never the secret. Files over 95 MB ar
 refuses files over 100 MB. `MANIFEST.json` lists every file with its size and SHA-256, the export time and the code
 commit.
 
-First export, 21 Oct 2026: 315 files, 59 MB, including the 4 backups. The secret scan found nothing.
+Exports on 21 Oct 2026:
+- **First:** 315 files, 59 MB.
+- **Second:** 387 files, 64 MB. It added the integration state, the starter plan and a fresh backup
+  (`backup-2026-10-21T10-34-12-608Z`, verified: valid, 399 audit events). The previous backup was older than the
+  database's last change.
+
+The secret scan found nothing either time.
 
 ## The routine (weekly, after the backup)
 
