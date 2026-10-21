@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { render, run, trustCheck } from './daily-digest.mjs';
+import { arithmeticProblems, render, run, trustCheck } from './daily-digest.mjs';
 
 const digest = { windowHours: 24, generatedAt: '2026-10-14T18:00:00.000Z', mode: 'paper', halted: false,
   money: { realisedPaise: '25000', unrealisedPaise: '-1200', totalPaise: '23800', realisedInWindowPaise: '25000', byBot: [{ botId: 'bot-one', totalPaise: '23800', returnOnBudgetPct: 2.38 }] },
@@ -78,13 +78,48 @@ test('the research section and failures the playbook does not know yet', () => {
   assert.ok(text.indexOf('playbook does not know') < text.indexOf('## Money'));
 });
 
+test('the self-check catches figures that do not add up and runs that never finished', async () => {
+  assert.deepEqual(arithmeticProblems(digest), []);
+  const wrong = { ...digest, money: { ...digest.money, totalPaise: '23900' }, trading: { ...digest.trading, accuracy: 1.5, executed: -1 } };
+  assert.deepEqual(arithmeticProblems(wrong), ['total P&L is not realised plus open', 'accuracy 1.5 is outside 0..1', 'a trading count is not a whole number']);
+  const root = await mkdtemp(join(tmpdir(), 'crash-'));
+  try {
+    await mkdir(join(root, '.local', 'cycles'), { recursive: true });
+    const run = (at, done) => ({ startedAt: at, ...(done ? { finishedAt: at } : {}), code: { commit: 'c', fingerprint: 'f' } });
+    await writeFile(join(root, '.local', 'cycles', '2026-10-14.json'), JSON.stringify({ steps: {},
+      runs: [run('2026-10-14T11:00:00Z', false), run('2026-10-14T12:00:00Z', true), run('2026-10-14T13:00:00Z', false)] }));
+    const t = await trustCheck(root, Date.parse('2026-10-14T13:30:00Z'), async () => null);
+    assert.deepEqual(t.crashedRuns, ['2026-10-14T11:00:00Z']); // the newest unfinished run is this cycle, still running
+    const text = render(wrong, null, null, null, t);
+    assert.match(text, /Check first: the digest does not add up: total P&L is not realised plus open/);
+    assert.match(text, /Check first: 1 cycle run\(s\) never finished \(started 2026-10-14T11:00:00Z\)/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('the limits banner shows what the backend loaded and flags settings that differ; refused orders are counted', () => {
+  const limits = { maxOrderPaise: '500000', maxExposurePaise: '2000000', maxRealisedLossPaise: '100000', feeBps: 10, slippageBps: 5, realisedLossPaise: '25000', lossLimitUsedPct: 25 };
+  const d = { ...digest, limits, trading: { ...digest.trading, refusedOrders: 3, topRefusals: [{ message: 'Bot budget exceeded', count: 2 }, { message: 'New risk is halted', count: 1 }] } };
+  const trust = { day: '2026-10-14', crashedRuns: [], cycle: { failed: [], degraded: [], done: 3 }, prices: { newest: '2026-10-14', ageDays: 0.5, behind: [] },
+    liveAgeDays: 0.2, indexAgeDays: 0.2, code: null };
+  const clean = render(d, null, null, null, { ...trust, env: { MAX_ORDER_PAISE: '500000', PAPER_FEE_BPS: '10' } });
+  assert.match(clean, /- Limits the backend loaded: Max order ₹5,000 · organisation exposure ₹20,000 · realised-loss limit ₹1,000 \(₹250 used, 25%\) · fees 10 bps, slippage 5 bps/);
+  assert.match(clean, /- Yes: today's cycle/);
+  assert.match(clean, /- 3 order\(s\) refused: Bot budget exceeded ×2; New risk is halted ×1/);
+  const stale = render(d, null, null, null, { ...trust, env: { MAX_ORDER_PAISE: '100000', PAPER_SLIPPAGE_BPS: '5' } });
+  assert.match(stale, /Check first: the running backend loaded different limits from this digest's settings \(MAX_ORDER_PAISE\)/);
+  assert.doesNotMatch(stale, /100000/); // names only, never the value it expected
+  assert.doesNotMatch(render(digest), /order\(s\) refused|Limits the backend/);
+});
+
 test('the review scorecard shows how taken and turned-down calls went', () => {
-  const review = { calls: 9, verdict: 'insufficient-evidence', accepted: { scored: 5, right: 3, rightPct: 60 }, rejected: { scored: 4, right: 1, rightPct: 25 },
+  const review = { calls: 9, verdict: 'insufficient-evidence', accepted: { scored: 5, right: 3, rightPct: 60, buysWithPath: 4, averageWorstPct: -3.1,
+    averageBestPct: 4.2, worstPct: -8 }, rejected: { scored: 4, right: 1, rightPct: 25 },
     byRejectionReason: { 'over-budget': { scored: 3, right: 1 }, 'stale-quote': { scored: 1, right: 0 } }, byRegimeAtCall: { SEVERE: { scored: 9, right: 4 } } };
   const text = render(digest, null, null, { review });
   assert.match(text, /## Review scorecard \(scored calls\)\n- Taken: 3 of 5 right \(60%\); turned down: 1 of 4 right \(25%\) — insufficient-evidence/);
   assert.match(text, /by reason \(right\/scored\): over-budget 1\/3, stale-quote 0\/1/);
   assert.match(text, /By the regime when the call was made: SEVERE 4\/9/);
+  assert.match(text, /Buys taken, while held: average worst -3.1%, average best 4.2%, deepest -8% \(4 buys\)/);
   assert.doesNotMatch(render(digest, null, null, { review: { calls: 0 } }), /Review scorecard/);
 });
 

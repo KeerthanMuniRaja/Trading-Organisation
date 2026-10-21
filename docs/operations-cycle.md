@@ -20,7 +20,7 @@ Three pieces that make the organisation run on its own and stay auditable. They 
 | `model-allocator-propose` | Turns a current decided month into proposals, citing the facts the model saw, recomputed and verified by the evaluator ([trade signals](trade-signals.md#the-model-allocator-in-the-daily-cycle)) | `MODEL_ALLOCATOR_RUN` and `MODEL_ALLOCATOR_BOT` set; no model needed |
 | `eod-trading` | Reviews waiting proposals at the verified close, executes accepted ones at the verified next open | backend, daily data |
 | `score-signals` | Scores proposals whose horizon has passed | backend, daily data |
-| `review-scorecard` | Read-only. Shows how the calls the risk review took and turned down went: by fate, by rejection reason and by the regime when each call was made. Writes `.local/trading-desk/review-scorecard.json` | backend (evaluator credential) |
+| `review-scorecard` | Read-only. Shows how the calls the risk review took and turned down went: by fate, by rejection reason, and by the regime when each call was made and when it ended. For buys it also shows the worst and best price while held (MAE/MFE). Writes `.local/trading-desk/review-scorecard.json` | backend (evaluator credential) |
 | `live-fitness` | Files each bot's fitness report from its scored paper calls; once there is a verdict, re-evaluates its active release with it | backend |
 | `paper-snapshot` | Records today's per-bot P&L mark (evaluator credential) | backend |
 | `alerts` | Evaluates alert rules and delivers new alerts | backend |
@@ -47,6 +47,22 @@ first:
 
 It also shows the code commit, and says when the code changed since the previous run, so results before and after come
 from different code.
+
+The self-check also covers:
+- **arithmetic:** total P&L equals realised plus open, accuracy lies between 0 and 1, and every count is a whole
+  number;
+- **crashed runs:** runs that started but never finished;
+- **the limits banner:** the limits the running backend actually loaded, and the share of the realised-loss limit used,
+  from `limits` in `POST /v1/owner/digest`. When a limit setting in the digest's own environment differs from what the
+  backend loaded, it says so by name only: a stale shell variable, or a backend not restarted after a change.
+
+**Refused orders (TRUST-03, migration 053).** A refused reserve or fill used to leave no trace, because its transaction
+rolls back:
+- each business refusal (403, 404 or 409) is now kept in `order_refusals`, written separately after the rollback, once
+  per request;
+- the caller still gets exactly the same error;
+- the digest counts them, with the commonest reasons;
+- `POST /v1/paper/refusals/query` lists them.
 
 **Review scorecard (TRUST-02).** A verdict needs 20 or more scored calls on each side and a gap of at least 10 points in
 the share right:

@@ -121,6 +121,7 @@ State-changing routes require an `Idempotency-Key` containing 8–100 letters, d
 | POST `/paper/orders` | Trader | Reserve a risk-checked paper buy or sell. |
 | POST `/paper/fills` | Trader | Recheck current conditions and fill a reserved paper order. |
 | POST `/paper/cancellations` | Owner, trader | Cancel and release a reservation. |
+| POST `/paper/refusals/query` | Owner, evaluator | Refused orders and fills (TRUST-03, migration 053). Each refusal is kept after its rollback, once per request. Body `{hours?: 1..744 (default 24), botId?, limit?: 1..200 (default 50)}`. |
 | POST `/incidents` | Owner, researcher, evaluator, trader, treasury, market | Record an incident; critical severity halts new risk. |
 | POST `/incidents/resolutions` | Owner | Link verified resolution evidence. |
 | POST `/operations/control` | Owner | Halt/resume; unresolved critical incidents block resume. |

@@ -39,17 +39,24 @@ favourable and are now corrected:
 - **Reversal on NIFTY 50:** with realistic next-open entry, its p-value moved from 0.03 to 0.14.
 - **Proof time:** the best idea on the 8 shares would need about 490 years of records.
 
-## 2. Known defects not yet fixed
+## 2. Known defects
+
+Still open, and both wait on the owner ([founder review](../../founderReview.md) B6 and B9):
 
 | Item | Source | Effort | Who |
 | --- | --- | --- | --- |
 | **Call scoring has no neutral band.** An exit is "right" on any fall, even 0.05%, which flatters exit-heavy records and live fitness | trading-skills postmortem | M (a new scoring version) | **Owner** |
 | **The TradingAgents member's memory file** (`.local/tradingagents/memory.md`) is written by our model, steers its later decisions, and is not part of its release identity | TradingAgents | S (turn it off in shadow, or hash it into the identity) | **Owner** (member governance) |
-| **The debate context has no as-of filter.** A replay of a past day would see later headlines and lessons | TradingAgents | S | Agents |
-| **The scenario panel silently turns a failed persona into "flat"** | MiroFish | S (count and show these fallbacks) | Agents |
-| **The model evaluation** always exits 0, drops tasks that never ran, has no baseline-regression rule, and does not fingerprint its judges | Soup | S | Agents |
-| **The training-data builder** can put evaluation rows into the training files | Soup | S (a `source` field; evaluation rows never reach training) | Agents |
-| **The regime file is read without a freshness or completeness check** | trading-skills, Fincept | S | Agents |
+
+Fixed on 21 Oct 2026 (commit 761572b):
+
+| Item | Fix |
+| --- | --- |
+| The debate context had no as-of filter | Headlines and bars are filtered to before the signal, compared as real instants |
+| The scenario panel silently turned a failed persona into "flat" | Failed voices are marked, excluded from votes and scoring, and counted (`failedVoices`) |
+| The model evaluation always exited 0, dropped tasks that never ran, had no baseline rule and no judge fingerprint | All four fixed (`--baseline`, `judgesFingerprint`, exit 1 on DON'T SHIP) |
+| The training-data builder could put evaluation rows into the training files | Rows carry a `source`; evaluation rows go only to `eval-only/` |
+| The regime file was read without a freshness or completeness check | `inputsComplete` plus a 5-day staleness rule in the briefing, the digest and the status line |
 
 ## 3. Gaps and ideas, ranked by value for our organisation
 

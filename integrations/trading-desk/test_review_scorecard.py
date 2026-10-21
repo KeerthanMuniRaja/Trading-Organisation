@@ -11,7 +11,7 @@ import review_scorecard as rs
 
 def call(n, fate='executed', correct=True, action='enter-long', reasons=(), created='2026-10-15T11:00:00Z', move=150):
     review = {'outcome': 'accepted' if fate in ('executed', 'lapsed', 'accepted-open') else fate, 'reasons': list(reasons)}
-    return {'id': f's{n}', 'action': action, 'createdAt': created, 'review': review,
+    return {'id': f's{n}', 'symbol': 'SBIN', 'horizonDays': 30, 'action': action, 'createdAt': created, 'review': review,
             'execution': {'id': 'x'} if fate == 'executed' else None, 'lapse': {'releasedPaise': '1'} if fate == 'lapsed' else None,
             'outcome': {'correct': correct, 'moveBps': move if correct else -move}}
 
@@ -46,6 +46,26 @@ class ScorecardTests(unittest.TestCase):
         no_action = [call(400 + k, 'rejected', correct=False, action='no-action') for k in range(20)]
         self.assertEqual(rs.scorecard(taken + no_action)['rejected']['scored'], 0)
 
+    def test_buys_get_their_worst_and_best_price_while_held_and_the_regime_at_exit(self):
+        from datetime import datetime, timezone
+        bars = [{'date': d, 'openPaise': 100, 'closePaise': c, 'lowPaise': lo, 'highPaise': hi, 'volume': 1}
+                for d, c, lo, hi in (('2026-10-12', 100, 99, 101), ('2026-10-13', 100, 99, 101), ('2026-10-14', 95, 92, 99),
+                                     ('2026-10-15', 106, 94, 108), ('2026-10-16', 104, 103, 105), ('2026-10-19', 104, 103, 105))]
+        with tempfile.TemporaryDirectory() as d:
+            cache = Path(d)
+            (cache / 'SBIN.NS-1d.json').write_text(json.dumps({'symbol': 'SBIN.NS', 'bars': bars}), encoding='utf-8')
+            buy = {**call(1), 'symbol': 'SBIN', 'horizonDays': 3, 'createdAt': '2026-10-13T11:00:00Z'}
+            now = datetime(2026, 10, 20, tzinfo=timezone.utc)
+            path = rs.excursion(cache, buy, now)
+            # from the 13th's close (100) to the first session closing at or after 3 days later (the 19th): lows 92, highs 108
+            self.assertEqual(path, {'exitDay': '2026-10-19', 'worstPct': -8.0, 'bestPct': 8.0})
+            self.assertIsNone(rs.excursion(cache, {**buy, 'action': 'exit'}, now))
+            self.assertIsNone(rs.excursion(cache, {**buy, 'symbol': 'NONE'}, now))
+        card = rs.scorecard([buy], [{'date': '2026-10-12', 'risk': 'NORMAL'}, {'date': '2026-10-19', 'risk': 'SEVERE'}], {buy['id']: path})
+        self.assertEqual(card['byRegimeAtExit']['SEVERE']['scored'], 1)
+        self.assertEqual({k: card['accepted'][k] for k in ('buysWithPath', 'averageWorstPct', 'averageBestPct', 'worstPct')},
+                         {'buysWithPath': 1, 'averageWorstPct': -8.0, 'averageBestPct': 8.0, 'worstPct': -8.0})
+
     def test_run_reads_every_page_with_the_evaluator_and_writes_the_card(self):
         pages = [{'signals': [call(1)], 'nextBefore': 'cursor'}, {'signals': [call(2, 'rejected', False, reasons=['x'])], 'nextBefore': None}]
         seen = []
@@ -58,7 +78,7 @@ class ScorecardTests(unittest.TestCase):
         env = {'API_URL': 'http://127.0.0.1:3000', 'PRINCIPALS_JSON': json.dumps([{'id': 'e', 'role': 'evaluator', 'token': 'eval-token'}])}
         with tempfile.TemporaryDirectory() as d:
             out = Path(d) / 'card.json'
-            card = rs.run(env, opener=opener, out=out, regimes=Path(d) / 'none.json')
+            card = rs.run(env, opener=opener, out=out, regimes=Path(d) / 'none.json', cache=Path(d))
             self.assertEqual(json.loads(out.read_text(encoding='utf-8'))['calls'], 2)
         self.assertEqual(card['byFate']['rejected']['scored'], 1)
         self.assertEqual([s[1].get('before') for s in seen], [None, 'cursor'])

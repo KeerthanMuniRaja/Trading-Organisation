@@ -63,7 +63,9 @@ export function reviewLines(card) {
   return ['## Review scorecard (scored calls)',
     `- Taken: ${pct(card.accepted)}; turned down: ${pct(card.rejected)} — ${card.verdict}`,
     ...(reasons.length ? [`- Turned down, by reason (right/scored): ${reasons.join(', ')}`] : []),
-    ...(regimes.length ? [`- By the regime when the call was made: ${regimes.join(', ')}`] : []), ''];
+    ...(regimes.length ? [`- By the regime when the call was made: ${regimes.join(', ')}`] : []),
+    ...(card.accepted?.buysWithPath ? [`- Buys taken, while held: average worst ${card.accepted.averageWorstPct}%, average best ${card.accepted.averageBestPct}%, `
+      + `deepest ${card.accepted.worstPct}% (${card.accepted.buysWithPath} buys)`] : []), ''];
 }
 
 const PRICES_STALE_DAYS = 5, KNOWLEDGE_STALE_DAYS = 2;
@@ -77,13 +79,19 @@ export async function trustCheck(root = join(dirname(fileURLToPath(import.meta.u
   let journals = [];
   try { journals = (await readdir(cycles)).filter(n => /^\d{4}-\d{2}-\d{2}\.json$/.test(n)).sort(); } catch { /* no cycle yet */ }
   const today = journals.includes(day + '.json') ? await read(join(cycles, day + '.json')) : null;
-  const runs = [];
-  for (const name of journals.slice(-2)) runs.push(...((await read(join(cycles, name)))?.runs ?? []).filter(r => r.code));
+  const runs = [], crashed = [];
+  for (const name of journals.slice(-2)) {
+    const all = (await read(join(cycles, name)))?.runs ?? [];
+    runs.push(...all.filter(r => r.code));
+    // a run that never finished crashed or was killed (the newest one may be this very cycle, still running)
+    crashed.push(...all.filter(r => !r.finishedAt && r.startedAt).map(r => r.startedAt));
+  }
+  if (crashed.at(-1) === runs.at(-1)?.startedAt) crashed.pop();
   const [before, latest] = runs.slice(-2).length === 2 ? runs.slice(-2) : [null, runs.at(-1) ?? null];
   const steps = Object.entries(today?.steps ?? {});
   const p = await prices({ root }).catch(() => null);
   return {
-    day,
+    day, crashedRuns: crashed,
     cycle: today ? { failed: steps.filter(([, s]) => s.status === 'failed').map(([id]) => id), degraded: steps.filter(([, s]) => s.status === 'degraded').map(([id]) => id),
       done: steps.filter(([, s]) => s.status === 'done').length } : null,
     prices: p ? { newest: p.newestLastSession, ageDays: ageDays(p.newestLastSession, now), behind: Object.entries(p.prices).filter(([, s]) => s.lastSession && s.lastSession < p.newestLastSession).map(([sym]) => sym) } : null,
@@ -94,9 +102,42 @@ export async function trustCheck(root = join(dirname(fileURLToPath(import.meta.u
   };
 }
 
-export function trustLines(t, regime = null) {
+// TRUST-03: the limit settings, by the name the backend reads them from (values are limits, not secrets)
+export const LIMIT_SETTINGS = { MAX_ORDER_PAISE: 'maxOrderPaise', MAX_EXPOSURE_PAISE: 'maxExposurePaise', MAX_REALISED_LOSS_PAISE: 'maxRealisedLossPaise',
+  PAPER_FEE_BPS: 'feeBps', PAPER_SLIPPAGE_BPS: 'slippageBps' };
+
+/** Settings in this script's environment that differ from what the running backend loaded: a stale shell variable or a
+ *  backend not restarted after a change. Only names are reported. */
+export function limitMismatches(limits, env = {}) {
+  if (!limits) return [];
+  return Object.entries(LIMIT_SETTINGS).filter(([name, field]) => env[name] !== undefined && String(env[name]).trim() !== String(limits[field])).map(([name]) => name);
+}
+
+export function limitsLine(l) {
+  if (!l) return null;
+  return `Max order ${rupees(l.maxOrderPaise)} · organisation exposure ${rupees(l.maxExposurePaise)} · realised-loss limit ${rupees(l.maxRealisedLossPaise)}`
+    + ` (${rupees(l.realisedLossPaise)} used${l.lossLimitUsedPct !== null ? `, ${l.lossLimitUsedPct}%` : ''}) · fees ${l.feeBps} bps, slippage ${l.slippageBps} bps`;
+}
+
+/** The digest's own arithmetic: figures that must agree with each other (paise as integers, shares of one). */
+export function arithmeticProblems(d) {
+  const m = d.money, t = d.trading, out = [];
+  try {
+    if (BigInt(m.totalPaise) !== BigInt(m.realisedPaise) + BigInt(m.unrealisedPaise)) out.push('total P&L is not realised plus open');
+  } catch { out.push('P&L figures are not whole paise'); }
+  if (t.accuracy !== null && t.accuracy !== undefined && !(t.accuracy >= 0 && t.accuracy <= 1)) out.push(`accuracy ${t.accuracy} is outside 0..1`);
+  if (['proposed', 'accepted', 'rejected', 'executed', 'scored'].some(k => !Number.isInteger(t[k]) || t[k] < 0)) out.push('a trading count is not a whole number');
+  return out;
+}
+
+export function trustLines(t, regime = null, d = null) {
   if (!t) return [];
+  const stale = d ? limitMismatches(d.limits, t.env) : [];
   const problems = [
+    ...(d ? arithmeticProblems(d).map(x => `the digest does not add up: ${x}`) : []),
+    ...(stale.length ? [`the running backend loaded different limits from this digest's settings (${stale.join(', ')}): restart the backend after a change, `
+      + 'and clear stale shell variables'] : []),
+    ...(t.crashedRuns?.length ? [`${t.crashedRuns.length} cycle run(s) never finished (started ${t.crashedRuns.join(', ')}): they crashed or were stopped`] : []),
     ...(!t.cycle ? [`no organisation cycle has run today (${t.day})`] : []),
     ...(t.cycle?.failed.length ? [`cycle steps failed: ${t.cycle.failed.join(', ')}`] : []),
     ...(t.cycle?.degraded.length ? [`cycle steps degraded: ${t.cycle.degraded.join(', ')}`] : []),
@@ -109,6 +150,7 @@ export function trustLines(t, regime = null) {
   return ['## Can you trust this digest?',
     ...(problems.length ? problems.map(x => `- Check first: ${x}`)
       : [`- Yes: today's cycle has ${t.cycle.done} step(s) done and none failed; prices to ${t.prices.newest}; knowledge rebuilt within ${KNOWLEDGE_STALE_DAYS} days.`]),
+    ...(d?.limits ? [`- Limits the backend loaded: ${limitsLine(d.limits)}`] : []),
     ...(t.code ? [`- Code: commit ${t.code.commit ?? 'unknown'} (fingerprint ${t.code.fingerprint})`
       + (t.code.changedFrom ? `; changed since the previous run (${t.code.changedFrom}), so results before and after come from different code` : '')] : []), ''];
 }
@@ -147,7 +189,7 @@ export function render(d, world = null, regime = null, known = null, trust = nul
     `Window: last ${d.windowHours} hours · mode: ${d.mode}${d.halted ? ' · **NEW RISK HALTED**' : ''}`, '',
     '## Needs you',
     ...(needs.length ? needs.map(n => `- ${n}`) : ['- Nothing right now.']), '',
-    ...trustLines(trust, regime),
+    ...trustLines(trust, regime, d),
     '## Money (paper)',
     `- Total P&L ${rupees(m.totalPaise)} (realised ${rupees(m.realisedPaise)}, open ${rupees(m.unrealisedPaise)}); realised in window ${rupees(m.realisedInWindowPaise)}`,
     ...m.byBot.map(b => `- ${b.botId}: ${rupees(b.totalPaise)}${b.returnOnBudgetPct !== null ? ` (${b.returnOnBudgetPct}% of budget)` : ''}`),
@@ -157,6 +199,7 @@ export function render(d, world = null, regime = null, known = null, trust = nul
     `- ${t.proposed} proposed, ${t.accepted} accepted, ${t.rejected} rejected, ${t.executed} executed, ${t.challenges} challenges`,
     `- ${t.scored} outcomes scored${t.accuracy !== null ? `, ${Math.round(t.accuracy * 100)}% right` : ''}`,
     ...(t.lapsed ? [`- ${t.lapsed} accepted proposal(s) expired unexecuted; ${rupees(t.releasedPaise ?? '0')} of reservations released`] : []),
+    ...(t.refusedOrders ? [`- ${t.refusedOrders} order(s) refused: ${(t.topRefusals ?? []).map(r => `${r.message} ×${r.count}`).join('; ')}`] : []),
     ...(t.corporateActions ? [`- ${t.corporateActions} corporate action(s) recorded; positions rescaled`] : []), '',
     '## Against holding all shares equally (same days)',
     ...((d.benchmark ?? []).length ? d.benchmark.map(b => b.excessPct === null ? `- ${b.botId}: no basket prices for ${b.from}..${b.to} yet`
@@ -194,7 +237,8 @@ export async function run(env = process.env, { fetchImpl = fetch, outDir = join(
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + s.token } });
   if (!response.ok) throw new Error(`digest refused (HTTP ${response.status})`);
   const digest = await response.json();
-  const text = render(digest, world ? await world() : null, regime ? await regime() : null, knowledge ? await knowledge() : null, trust ? await trust() : null);
+  const text = render(digest, world ? await world() : null, regime ? await regime() : null, knowledge ? await knowledge() : null,
+    trust ? { ...await trust(), env: Object.fromEntries(Object.keys(LIMIT_SETTINGS).filter(k => env[k] !== undefined).map(k => [k, env[k]])) } : null);
   await mkdir(outDir, { recursive: true });
   const path = join(outDir, digest.generatedAt.slice(0, 10) + '.md');
   await writeFile(path, text);
