@@ -95,6 +95,7 @@ Not here, by design: \`.env\`, credentials and the owner signing key (keep your 
 7. Check with \`npm run preflight\`, then start.
 
 \`MANIFEST.json\` lists every file with its size and SHA-256, the export time and the code commit it came from.
+\`claude-memory/\` holds the working notes for Claude Code (copied by hand; the export leaves that folder alone).
 `;
 
 /** Mirror the plan into <to>/local and <to>/state (stale files removed), with MANIFEST.json and README.md. Stops on any

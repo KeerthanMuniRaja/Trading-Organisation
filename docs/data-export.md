@@ -43,6 +43,10 @@ Exports on 21 Oct 2026:
 
 The secret scan found nothing either time.
 
+**Working notes.** `claude-memory/` holds Claude Code's working notes: the owner's preferences and the project's
+standing decisions. They were copied on 21 Oct, after a secret scan with no findings. The export leaves that folder
+alone. Its README explains where to put the notes on a new machine.
+
 ## The routine (weekly, after the backup)
 
 ```
