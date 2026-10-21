@@ -56,6 +56,26 @@ A changed rule is never renewed this way: it is a new idea and goes through R&D.
 
 Every rule is off unless set. With all of them on, an idea that R&D proves goes, without the owner, from birth to release, qualification, a starting budget and trading. The owner reads about it in the digest and can always step in.
 
+## The starter policy
+
+[`docs/policies/autonomy-starter.json`](policies/autonomy-starter.json) is a conservative first policy, **protective
+only**:
+
+| The agents may, by themselves | Stays with the owner |
+| --- | --- |
+| Suspend a bot the management review flags as losing | Budget raises and starting budgets (`raiseBudget` and `startingBudgetPaise` are null) |
+| Acknowledge a watch | Births, release activation and qualification |
+| Trial a same-rule code fix as a canary, and keep it if it wins live | Everything in "Never automatic" below |
+| Roll back a release that loses live | |
+
+At most 5 actions per run. To apply it (owner, with the backend running):
+
+```
+npm run autonomy -- set docs/policies/autonomy-starter.json --reason "Starter: protect, repair, roll back; money stays with me"
+```
+
+Loosen it later, one rule at a time, once the digest shows the agents acting sensibly.
+
 ## Never automatic
 
 Whatever the policy says, these stay with the owner:
@@ -83,3 +103,26 @@ Whatever the policy says, these stay with the owner:
 - a new bot going from birth to release, qualification and a ceiling-capped starting budget in two runs;
 - a halt stopping everything;
 - route guards.
+
+### The autonomy rehearsal (AUTO-04)
+
+`backend/test/rehearsal.test.ts` runs the real trading path for 8 rounds: 4 bots on 4 shares, with standing approvals on,
+and checks the invariants after every round. Failures are injected on purpose:
+- **retries:** duplicate proposals and doubled executions;
+- **stale data:** a stale quote just before a fill;
+- **wrong identity:** another bot's credential;
+- **a losing bot,** which the management review flags and the policy must suspend;
+- **budget raises** over the per-change limit and the monthly total;
+- **a crash:** a critical incident.
+
+The invariants checked after every round:
+- **money:** journals balance, Wallet 1 never goes negative, and Wallet 2 changes only through owner or profit transfers;
+- **limits:** exposure stays within the limit, and each bot's cost within its current budget;
+- **trading:** each proposal executes at most once, with exactly one filled order;
+- **brakes:** no buy fills for the suspended bot, and none for anyone after the kill switch. This holds for buys accepted
+  before the brake, because the paper engine refuses them at execution too;
+- **autonomy:** the policy covers every action taken, each raise is at most 25%, and the month's raises stay within the
+  total;
+- **audit:** the chain verifies.
+
+A second test checks that the starter policy is valid and moves no money by itself.

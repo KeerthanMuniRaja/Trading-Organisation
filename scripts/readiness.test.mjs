@@ -41,6 +41,13 @@ test('a fully prepared organisation is GO', () => {
   assert.equal(verdict(checks), 'GO', JSON.stringify(checks.filter(c => c.status !== 'GO')));
 });
 
+test('a supervisor that stopped beating is a warning; one never started is not mentioned', () => {
+  assert.equal(assess(ready, WED_MORNING).find(c => c.id === 'supervisor'), undefined);
+  assert.equal(status(assess({ ...ready, supervisor: { at: new Date(WED_MORNING - 60_000).toISOString(), next: 'readiness' } }, WED_MORNING), 'supervisor'), 'GO');
+  const dead = assess({ ...ready, supervisor: { at: new Date(WED_MORNING - 3_600_000).toISOString() } }, WED_MORNING).find(c => c.id === 'supervisor');
+  assert.deepEqual([dead.status, /60 minutes/.test(dead.detail)], ['WARN', true]);
+});
+
 test('each blocker is named with what to do', () => {
   assert.deepEqual(assess({ ...ready, health: false }, WED_MORNING).map(c => [c.id, c.status]), [['backend', 'NO-GO']]);
   assert.equal(status(assess({ ...ready, audit: { valid: false } }, WED_MORNING), 'audit-chain'), 'NO-GO');

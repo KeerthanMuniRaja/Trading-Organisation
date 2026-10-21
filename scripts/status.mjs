@@ -5,7 +5,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { modelHealthUrl, nextRuns } from './supervisor.mjs';
+import { heartbeat, modelHealthUrl, nextRuns } from './supervisor.mjs';
 import { worldSummary } from './world-news.mjs';
 import { knowledgeSummary, marketRegime } from './daily-digest.mjs';
 
@@ -56,6 +56,8 @@ export function render(f) {
   const m = f.digest?.money;
   if (m) out.push('', `Money     realised ${rupees(m.realisedPaise)}, open ${rupees(m.unrealisedPaise)}, total ${rupees(m.totalPaise)}${m.stalePositions ? `; ${m.stalePositions} stale price(s)` : ''}`);
   out.push(`Cycle     ${f.lastCycle ? `${f.lastCycle.day}: ${f.lastCycle.failed.length ? 'failed ' + f.lastCycle.failed.join(', ') : 'no failed steps'}` : 'none yet'}`);
+  if (f.supervisor && f.supervisor.state !== 'never') out.push(`Supervisor ${f.supervisor.state === 'alive' ? `alive${f.supervisor.running ? `, running ${f.supervisor.running}` : ''}`
+    : `NOT RUNNING (last heartbeat ${Math.round(f.supervisor.ageSeconds / 60)} min ago): npm run supervisor`}`);
   out.push(`Next      ${f.next.map(r => `${r.id} ${new Date(r.at + 330 * 60_000).toISOString().slice(5, 16).replace('T', ' ')} IST`).join('; ')}`);
   out.push(`R&D       ${f.ideas} invented idea(s) in the ledger${f.scout ? `; last screen ${f.scout.through}: ${f.scout.passing} passing of ${f.scout.ideasTried}` : ''}`);
   out.push(...localLines(f));
@@ -107,6 +109,7 @@ export async function gather(env = process.env, { fetchImpl = fetch, root = ROOT
   facts.regime = await marketRegime(root);
   facts.knowledge = await knowledgeSummary(root, now);
   facts.intraday = await json(join(root, '.local', 'intraday', 'latest.json'));
+  facts.supervisor = await heartbeat(root, now);
   if (facts.world?.coverage?.advice?.length && facts.digest) facts.digest.needsOwner = [...(facts.digest.needsOwner ?? []), ...facts.world.coverage.advice];
   return facts;
 }

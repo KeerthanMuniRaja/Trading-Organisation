@@ -26,10 +26,13 @@ The day's work runs **after the close**: decisions use settled daily closes, and
    { "source": "NSE circular <number and date>", "years": [2026], "days": ["YYYY-MM-DD", "..."] }
    ```
    Readiness then skips holidays when it works out the latest session, and says so on a holiday. Without the file, holidays stay unknown and readiness only warns. A malformed file, or one that doesn't cover the current year, is reported and never trusted. Nobody types these dates from memory: they must come from the circular.
-5. **Optional: read the world's news.** Central banks, regulators and publishers in the US, Europe, the UK and China are in a catalogue ([world news](world-news.md)). With the backend running:
+5. **Standing approvals (recommended).** Apply the protective starter policy, so the agents can suspend losing bots, roll
+   back failing releases and trial code fixes without waiting for you. It moves no money:
+   `npm.cmd run autonomy -- set docs/policies/autonomy-starter.json --reason "Starter: protect, repair, roll back"` ([autonomy](autonomy.md#the-starter-policy)).
+6. **Optional: read the world's news.** Central banks, regulators and publishers in the US, Europe, the UK and China are in a catalogue ([world news](world-news.md)). With the backend running:
    - `npm.cmd run world -- probe --all` reads each feed once with the cycle's own reader;
    - `npm.cmd run world -- enable <id...> --yes` registers and approves the sources that passed, and the cycle collects them from then on.
-6. **Optional: let R&D propose new bots.** Register and approve a research source once (`POST /v1/sources`, for example id `desk-research`). Then set `RND_SOURCE=desk-research` in `.env` ([R&D scout](rnd-scout.md)).
+7. **Optional: let R&D propose new bots.** Register and approve a research source once (`POST /v1/sources`, for example id `desk-research`). Then set `RND_SOURCE=desk-research` in `.env` ([R&D scout](rnd-scout.md)).
 
 ## Every trading day
 
@@ -51,6 +54,19 @@ The day's work runs **after the close**: decisions use settled daily closes, and
 - **Backend:** if it's down for a job, the supervisor starts it directly, with only the `.env` settings, and stops it afterwards. A backend you started is left alone.
 - **Model:** with `MODEL_AUTOSTART=qwen3.5-4b-q4km` in `.env`, the supervisor starts the pinned local model for the cycle if it isn't running, and stops it afterwards. The cycle then runs with the model, so the news fact-checker, learning, R&D invention, the debate desk and the TradingAgents member all work. A model you started yourself is used and left running. Whether the model is up is checked on llama.cpp's public `/health` endpoint.
 - **Log:** every step goes to `.local/supervisor/<day>.jsonl`.
+- **Catch-up:** if the laptop slept through a job's time, or the supervisor started late, it runs today's jobs that still
+  help when it starts or wakes:
+  - readiness, if it is before the close;
+  - the cycle, if it is after 16:05 IST and hasn't run, including by hand.
+
+  Each job gets at most two attempts a day, so a broken setup is never retried forever.
+- **Survives errors:** a job that fails unexpectedly is logged as `crashed`, and the supervisor carries on.
+- **Heartbeat:** `.local/supervisor/heartbeat.json` is refreshed every minute, also during a long cycle. `npm run status`
+  shows a Supervisor line. Readiness warns when a supervisor that ran has stopped beating for over 5 minutes.
+- **Keep it running without a terminal** (owner-run, once, per user, no administrator rights):
+  `pwsh -File scripts\install-supervisor-task.ps1 -WhatIf` shows the plan, and running it without `-WhatIf` registers a
+  scheduled task. The task starts the supervisor at logon and restarts it within 5 minutes whenever it stops.
+  `-Remove` takes it away. Check your IT policy first on an office laptop.
 
 Useful options:
 - `npm run supervisor -- --plan` shows the next jobs and changes nothing.

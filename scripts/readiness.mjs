@@ -97,6 +97,13 @@ export function assess(f, now) {
   // a degraded step finished but needs a person: e.g. data kept back by the steward, or a split to record
   for (const d of degraded) out.push(check('needs-owner', 'WARN', `${d.id}: ${d.note}`, d.note.includes('corporate-actions')
     ? 'Check the exchange notice, then record it: POST /v1/corporate-actions' : 'Read .local/cycles/' + f.lastCycle.day + '.json'));
+  // OPS-04: a supervisor that was started but stopped beating is the organisation silently not running
+  if (f.supervisor?.at) {
+    const age = now - Date.parse(f.supervisor.at);
+    out.push(age > 5 * 60_000 ? check('supervisor', 'WARN', `no heartbeat for ${Math.round(age / 60_000)} minutes: the supervisor is not running`,
+      'Start it again: npm.cmd run supervisor (or let the scheduled task restart it)')
+      : check('supervisor', 'GO', `alive${f.supervisor.next ? `, next ${f.supervisor.next}` : ''}`));
+  }
   out.push(f.backupAt === null ? check('backup', 'WARN', 'no backup yet', 'Stop the API, npm.cmd run backup -- create, restart')
     : now - f.backupAt > 2 * DAY ? check('backup', 'WARN', `last backup ${new Date(f.backupAt).toISOString().slice(0, 16)}Z (over 2 days)`, 'Stop the API, npm.cmd run backup -- create, restart')
       : check('backup', 'GO', `last backup ${new Date(f.backupAt).toISOString().slice(0, 16)}Z`));
@@ -155,8 +162,10 @@ export async function gather(env, { fetchImpl = fetch, root = ROOT, gate = null 
   if (existsSync(backups)) for (const n of await readdir(backups)) {
     if (n.startsWith('backup-') && existsSync(join(backups, n, 'manifest.json'))) backupAt = Math.max(backupAt ?? 0, (await stat(join(backups, n, 'manifest.json'))).mtimeMs);
   }
+  let supervisor = null;
+  try { supervisor = JSON.parse(await readFile(join(root, '.local', 'supervisor', 'heartbeat.json'), 'utf8')); } catch { /* never started */ }
   return {
-    health, audit, digest, prices, lastCycle, backupAt, holidays,
+    health, audit, digest, prices, lastCycle, backupAt, holidays, supervisor,
     credentials: { missing: ['owner', 'researcher', 'evaluator'].filter(r => !token(r)) },
     limits: { maxOrderPaise: env.MAX_ORDER_PAISE || '100000', feeBps: Number(env.PAPER_FEE_BPS || 10), slippageBps: Number(env.PAPER_SLIPPAGE_BPS || 5) },
     ruleBot: { id: ruleId, credential: !!ruleId && principals.some(p => p.role === 'trader' && p.botId === ruleId && p.token),

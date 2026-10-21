@@ -1,6 +1,44 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { childEnv, commands, indiaDay, modelHealthUrl, nextRuns } from './supervisor.mjs';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { MAX_ATTEMPTS, catchUp, childEnv, commands, heartbeat, history, indiaDay, modelHealthUrl, nextRuns } from './supervisor.mjs';
+
+test('started late, it catches up today\'s jobs that still help, at most twice each, and never on a holiday', () => {
+  const day = '2026-10-21';
+  assert.deepEqual(catchUp(ist(`${day}T08:30:00`), new Set(), new Set()), []);                  // nothing is due yet
+  assert.deepEqual(catchUp(ist(`${day}T10:00:00`), new Set(), new Set()), ['readiness']);       // missed 09:00, the session is still open
+  assert.deepEqual(catchUp(ist(`${day}T15:45:00`), new Set(), new Set()), []);                  // readiness is pointless after the close
+  assert.deepEqual(catchUp(ist(`${day}T17:30:00`), new Set(), new Set()), ['cycle']);           // slept through 16:05
+  assert.deepEqual(catchUp(ist(`${day}T17:30:00`), new Set(), new Set([`cycle:${day}`])), []);  // already ran (also by hand)
+  assert.deepEqual(catchUp(ist(`${day}T17:30:00`), new Set(), new Set(), new Map([[`cycle:${day}`, MAX_ATTEMPTS]])), []); // a broken setup is not retried forever
+  assert.deepEqual(catchUp(ist(`${day}T17:30:00`), new Set([day]), new Set()), []);             // a holiday
+  assert.deepEqual(catchUp(ist('2026-10-24T17:30:00'), new Set(), new Set()), []);              // Saturday
+});
+
+test('history reads the supervisor log and the cycle journal; the heartbeat says alive, stale or never', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'supervisor-'));
+  try {
+    assert.equal((await heartbeat(root)).state, 'never');
+    await mkdir(join(root, '.local', 'supervisor'), { recursive: true });
+    await mkdir(join(root, '.local', 'cycles'), { recursive: true });
+    const lines = [{ job: 'readiness', step: 'start' }, { job: 'readiness', step: 'readiness', ok: true }, { job: 'cycle', step: 'start' },
+      { job: 'cycle', step: 'start-backend', ok: false }, { job: 'supervisor', step: 'waiting' }];
+    await writeFile(join(root, '.local', 'supervisor', '2026-10-21.jsonl'), lines.map(l => JSON.stringify(l)).join('\n') + '\nnot json\n');
+    let h = await history('2026-10-21', root);
+    assert.deepEqual([...h.done], ['readiness:2026-10-21']);
+    assert.equal(h.attempts.get('cycle:2026-10-21'), 1);                    // started once, never reached its main step
+    await writeFile(join(root, '.local', 'cycles', '2026-10-21.json'), JSON.stringify({ finishedAt: '2026-10-21T11:00:00Z', steps: {} }));
+    h = await history('2026-10-21', root);
+    assert.ok(h.done.has('cycle:2026-10-21'));                              // the owner ran it by hand
+    const at = Date.parse('2026-10-21T11:00:00Z');
+    await writeFile(join(root, '.local', 'supervisor', 'heartbeat.json'), JSON.stringify({ at: new Date(at).toISOString(), running: 'cycle', next: 'readiness' }));
+    const alive = await heartbeat(root, at + 60_000);
+    assert.deepEqual([alive.state, alive.running], ['alive', 'cycle']);
+    assert.equal((await heartbeat(root, at + 10 * 60_000)).state, 'stale');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 const ist = s => Date.parse(s + '+05:30');
 

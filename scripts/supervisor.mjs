@@ -6,8 +6,11 @@
 // On trading days only: weekends are skipped, and so are holidays listed in the owner's .local/nse-holidays.json.
 // The cycle runs with the local model when one is configured and answers. If the backend is down the supervisor starts
 // it (with only .env settings) and stops it again afterwards. Every job is logged to .local/supervisor/<day>.jsonl.
+// Started late (the laptop slept through 16:05, or the supervisor was not running), it catches up today's jobs that are
+// still useful, at most twice each. A job failing unexpectedly is logged and the supervisor carries on. A heartbeat in
+// .local/supervisor/heartbeat.json, refreshed every minute, lets readiness and the status screen tell it is alive.
 import { spawn } from 'node:child_process';
-import { appendFile, mkdir, readFile } from 'node:fs/promises';
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,6 +43,47 @@ export function nextRuns(now, holidays = new Set(), jobs = JOBS) {
     }
   }
   return out.sort((a, b) => a.at - b.at);
+}
+
+export const MAX_ATTEMPTS = 2;   // a job that cannot even start (e.g. the backend will not come up) is tried twice a day, not forever
+const MAIN = new Set(['readiness', 'cycle', 'backup']);
+
+/** Today's jobs the supervisor should still run now, because the laptop was asleep or the supervisor was not running at
+ *  their time: readiness only while it still helps (before the close), the cycle any time after 16:05 IST. Pure. */
+export function catchUp(now, holidays, done, attempts = new Map()) {
+  const { day, weekday } = indiaDay(now);
+  if (!tradingDay(day, weekday, holidays)) return [];
+  const minutes = Math.floor(((now + IST) % 86_400_000) / 60_000);
+  const due = job => !done.has(`${job}:${day}`) && (attempts.get(`${job}:${day}`) ?? 0) < MAX_ATTEMPTS;
+  return [...(minutes >= 9 * 60 && minutes < 15 * 60 + 30 && due('readiness') ? ['readiness'] : []),
+    ...(minutes >= 16 * 60 + 5 && due('cycle') ? ['cycle'] : [])];
+}
+
+/** What already happened on an India day: jobs whose main step finished (the supervisor's log, or a cycle journal with
+ *  finishedAt, also when the owner ran it by hand) and how often each job was started. */
+export async function history(day, root = ROOT) {
+  const done = new Set(), attempts = new Map();
+  const path = join(root, '.local', 'supervisor', day + '.jsonl');
+  if (existsSync(path)) for (const line of (await readFile(path, 'utf8')).split('\n')) {
+    let e;
+    try { e = JSON.parse(line); } catch { continue; }
+    if (!MAIN.has(e.job)) continue;
+    if (e.step === e.job) done.add(`${e.job}:${day}`);
+    if (e.step === 'start') attempts.set(`${e.job}:${day}`, (attempts.get(`${e.job}:${day}`) ?? 0) + 1);
+  }
+  // the cycle journal is named by its UTC date, which is the India date from 05:30 to midnight IST
+  try { if (JSON.parse(await readFile(join(root, '.local', 'cycles', day + '.json'), 'utf8')).finishedAt) done.add(`cycle:${day}`); } catch { /* none */ }
+  return { done, attempts };
+}
+
+export const HEARTBEAT_STALE_MS = 5 * 60_000;
+/** The supervisor's heartbeat, written every minute while it runs (also during a long cycle). */
+export async function heartbeat(root = ROOT, now = Date.now()) {
+  try {
+    const beat = JSON.parse(await readFile(join(root, '.local', 'supervisor', 'heartbeat.json'), 'utf8'));
+    const age = now - Date.parse(beat.at);
+    return { state: age <= HEARTBEAT_STALE_MS ? 'alive' : 'stale', ageSeconds: Math.round(age / 1000), running: beat.running ?? null, next: beat.next ?? null, nextAt: beat.nextAt ?? null };
+  } catch { return { state: 'never' }; }
 }
 
 /** The commands for a job, given whether the backend and the model answered, and which model (if any) the supervisor may
@@ -128,6 +172,7 @@ function startModel(step, env) {
 
 /** Runs one job end to end and logs each step. Returns true when every step succeeded. */
 export async function runJob(job, env = process.env) {
+  await log({ job, step: 'start' });
   const api = (env.API_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
   const backendUp = await reachable(api + '/v1/health');
   const health = modelHealthUrl(env.HERMES_MODEL_BASE_URL);
@@ -181,11 +226,31 @@ async function main() {
   }
   const once = args.indexOf('--once');
   if (once >= 0) { process.exitCode = await runJob(args[once + 1] ?? 'cycle') ? 0 : 1; return; }
+  // the heartbeat runs on its own timer, so a long cycle does not make the supervisor look dead
+  const state = { running: null, next: null, nextAt: null };
+  const beat = () => mkdir(join(ROOT, '.local', 'supervisor'), { recursive: true })
+    .then(() => writeFile(join(ROOT, '.local', 'supervisor', 'heartbeat.json'), JSON.stringify({ at: new Date().toISOString(), pid: process.pid, ...state }) + '\n'))
+    .catch(() => {});
+  setInterval(beat, 60_000);
+  // one job failing in an unexpected way is logged; the supervisor itself keeps going
+  const guarded = async job => {
+    state.running = job; await beat();
+    try { await runJob(job); } catch (error) { await log({ job, step: 'crashed', ok: false, error: String(error?.message ?? error).slice(0, 300) }).catch(() => {}); }
+    finally { state.running = null; await beat(); }
+  };
   for (;;) {
-    const [next] = nextRuns(Date.now(), await holidays());
+    const hol = await holidays(), today = indiaDay(Date.now()).day;
+    const { done, attempts } = await history(today);
+    for (const job of catchUp(Date.now(), hol, done, attempts)) {
+      await log({ job: 'supervisor', step: 'catch-up', next: job });
+      await guarded(job);
+    }
+    const [next] = nextRuns(Date.now(), hol);
+    Object.assign(state, { next: next.id, nextAt: new Date(next.at).toISOString() });
+    await beat();
     await log({ job: 'supervisor', step: 'waiting', next: next.id, at: new Date(next.at).toISOString() });
     while (Date.now() < next.at) await new Promise(r => setTimeout(r, Math.min(60_000, next.at - Date.now())));
-    await runJob(next.id);
+    await guarded(next.id);
   }
 }
 
