@@ -96,7 +96,10 @@ ADOPTED_SPECS = {'trend-template-25pct-top3': {'family': 'trend-template', 'near
                  'pullback-rsi40-top3': {'family': 'pullback', 'rsiMax': 40, 'keep': 3},
                  'momentum-6m-top3-distribution': {'family': 'momentum', 'months': 6, 'keep': 3, 'filter': 'distribution-days'},
                  # added 20 Oct 2026: weak signals combined (momentum, calm, consistency), as factor funds do
-                 'combo-6m-60d-top3': {'family': 'combo', 'months': 6, 'window': 60, 'keep': 3}}
+                 'combo-6m-60d-top3': {'family': 'combo', 'months': 6, 'window': 60, 'keep': 3},
+                 # added 21 Oct 2026: the live bot's own rule, traded less often (less cost, tax deferred to the long-term rate)
+                 'momentum-6m-top3-quarterly': {'family': 'momentum', 'months': 6, 'keep': 3, 'rebalance': 3},
+                 'momentum-6m-top3-yearly': {'family': 'momentum', 'months': 6, 'keep': 3, 'rebalance': 12}}
 # The catalogue ideas the idea grammar can express, so an invented duplicate of one is refused (RND-03)
 CATALOGUE_SPECS = {**{f'momentum-{m}m-top{k}': {'family': 'momentum', 'months': m, 'keep': k} for m in (3, 6, 12) for k in (2, 3, 4)},
                    'low-volatility-top3': {'family': 'low-vol', 'window': 60, 'keep': 3}, 'reversal-1m-bottom3': {'family': 'reversal', 'days': 21, 'keep': 3},
@@ -120,7 +123,7 @@ def fingerprint(ledger_path=None):
     import rnd_ideas
     parts = [VERSION, str(ONE_WAY_COST_PCT), str(ALPHA), str(MIN_MONTHS), str(START), inspect.getsource(catalogue), json.dumps(ADOPTED_SPECS, sort_keys=True)]
     # the families' builders and the regime are part of what the adopted ideas do
-    parts += [inspect.getsource(f) for f in (rnd_ideas._trend_template, rnd_ideas._pullback, rnd_ideas.rsi, rnd_ideas._combo, market_regime.distribution_days,
+    parts += [inspect.getsource(f) for f in (rnd_ideas._trend_template, rnd_ideas._pullback, rnd_ideas.rsi, rnd_ideas._combo, rnd_ideas._every, market_regime.distribution_days,
                                              market_regime.basket, market_regime.calm)]
     parts += [inspect.getsource(f) for f in (pd.top_momentum, pd.inverse_volatility, pd.trend_filtered, low_volatility, reversal)]
     # the invented ideas are part of what was tried: the grammar's code and every idea in the ledger
@@ -218,7 +221,7 @@ def scout(through=None, cache=daily.DAILY, ledger_path=None, universe='desk', ra
         needed = rc.months_to_prove(excess, threshold)
         proof = {'monthsToProve': needed, 'yearsToProve': round(needed / 12, 1) if needed else None,
                  'turnoverPctPerMonth': round(100 * statistics.fmean(turns[1:] or turns), 1),
-                 'afterTaxCagrPct': rc.after_tax_cagr(rule_pct, turns)}
+                 'afterTaxCagrPct': rc.after_tax_cagr(rule_pct, turns, long_term_sales=(spec or {}).get('rebalance', 1) >= 12)}
         out.append({'name': name, 'description': description, 'specialty': specialty, 'method': method, 'alreadyServedBy': served,
                     'months': len(rows), 'ahead': ahead, 'behind': behind, 'averageExcessPct': round(average, 3),
                     'pValue': round(p, 6), 'halves': halves, 'passes': not reasons, 'reasons': reasons, 'spec': spec, 'source': source,

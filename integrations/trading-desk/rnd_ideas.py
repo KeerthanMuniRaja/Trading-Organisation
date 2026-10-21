@@ -18,6 +18,8 @@ Families (all monthly, long-only, equal weight over the chosen shares, the desk'
                (a dip in an uptrend; adapted from the dividend-growth pullback screener)
   Filters: `trend-200d` (cash when the universe is below its 200-day average) or `distribution-days` (cash when the
   market regime's distribution-day risk is HIGH or SEVERE; market_regime.py).
+  Every family may set `rebalance` to 3, 6 or 12 months (default monthly): the decision is taken at the start of each
+  quarter, half-year or year and held, so it trades less, pays less cost and defers tax to the long-term rate.
   combo        the `keep` best shares on three equal ranks: `months` momentum, `window`-day calm (low volatility) and
                consistency (rising months in the last year): weak signals combined, as factor funds do
   The trend-template and pullback families and the distribution-day filter adapt methods from claude-trading-skills (MIT).
@@ -50,6 +52,8 @@ GRAMMAR = {
     'combo': {'months': (3, 12), 'window': (20, 120), 'keep': (1, 5)},
 }
 FILTERS = (None, 'trend-200d', 'distribution-days')
+REBALANCE = (1, 3, 6, 12)   # months between rebalances; slower trading pays less cost and less short-term tax
+REBALANCE_SUFFIX = {3: '-q', 6: '-h', 12: '-y'}
 SPECIALTY = {'momentum': 'momentum-allocation', 'low-vol': 'risk-allocation', 'reversal': 'reversal-allocation',
              'trend-template': 'trend-allocation', 'pullback': 'pullback-allocation', 'combo': 'multi-factor-allocation'}
 SUFFIX = {'trend-200d': '-trend', 'distribution-days': '-dd'}
@@ -62,7 +66,7 @@ def canonical(spec):
     family = spec.get('family')
     if family not in GRAMMAR:
         raise ValueError(f'family must be one of {sorted(GRAMMAR)}')
-    allowed = set(GRAMMAR[family]) | {'family', 'filter'}
+    allowed = set(GRAMMAR[family]) | {'family', 'filter', 'rebalance'}
     if set(spec) - allowed:
         raise ValueError(f'unknown fields for {family}: {sorted(set(spec) - allowed)}')
     out = {'family': family}
@@ -75,6 +79,13 @@ def canonical(spec):
         raise ValueError(f'filter must be one of {FILTERS}')
     if spec.get('filter'):
         out['filter'] = spec['filter']
+    every = spec.get('rebalance', 1)
+    if every is None:
+        every = 1
+    if not isinstance(every, int) or isinstance(every, bool) or every not in REBALANCE:
+        raise ValueError(f'rebalance must be one of {REBALANCE} months')
+    if every != 1:  # monthly is the default and stays out of the spec, so every earlier idea keeps its hash
+        out['rebalance'] = every
     return out
 
 
@@ -85,7 +96,7 @@ def name_of(spec):
             'trend-template': f"trendtemplate-{s.get('nearHighPct')}pct-top{s.get('keep')}",
             'pullback': f"pullback-rsi{s.get('rsiMax')}-top{s.get('keep')}",
             'combo': f"combo-{s.get('months')}m-{s.get('window')}d-top{s.get('keep')}"}[s['family']]
-    return 'idea-' + body + SUFFIX.get(s.get('filter'), '')
+    return 'idea-' + body + SUFFIX.get(s.get('filter'), '') + REBALANCE_SUFFIX.get(s.get('rebalance', 1), '')
 
 
 def describe(spec):
@@ -99,7 +110,21 @@ def describe(spec):
                       f"(low volatility) and consistency (share of rising months in the last year)")}[s['family']]
     tail = {'trend-200d': ', in cash while the universe is below its 200-day average',
             'distribution-days': ', in cash while distribution-day risk is high'}.get(s.get('filter'), '')
-    return text + ', equal weights, monthly' + tail
+    every = s.get('rebalance', 1)
+    return text + ', equal weights, ' + ('monthly' if every == 1 else f'rebalanced every {every} months') + tail
+
+
+def _every(rule, months):
+    """Holds the weights chosen at the latest rebalance month (a calendar month number divisible by `months`, so quarters
+    start in Jan/Apr/Jul/Oct and years in January) until the next one. Uses only days up to i."""
+    def held(table, dates, i):
+        j = i
+        while j > 0:
+            if dates[j][:7] != dates[j - 1][:7] and (int(dates[j][:4]) * 12 + int(dates[j][5:7]) - 1) % months == 0:
+                break
+            j -= 1
+        return rule(table, dates, j) if j > 0 else {}
+    return held
 
 
 def _sma(table, symbol, dates, i, window):
@@ -197,11 +222,14 @@ def rule_of(spec):
     else:
         base = lambda t, d, i: _pullback(t, d, i, s['rsiMax'], s['keep'])  # noqa: E731
     if not s.get('filter'):
-        return base
-    if s['filter'] == 'distribution-days':
+        rule = base
+    elif s['filter'] == 'distribution-days':
         import market_regime
-        return lambda t, d, i: base(t, d, i) if market_regime.calm(t, d, i) else {}
-    return lambda t, d, i: base(t, d, i) if pd.trend_filtered(t, d, i) else {}
+        rule = lambda t, d, i: base(t, d, i) if market_regime.calm(t, d, i) else {}  # noqa: E731
+    else:
+        rule = lambda t, d, i: base(t, d, i) if pd.trend_filtered(t, d, i) else {}  # noqa: E731
+    # the whole decision, filter included, is taken only at a rebalance month and held until the next
+    return _every(rule, s['rebalance']) if s.get('rebalance', 1) != 1 else rule
 
 
 def spec_hash(spec):
@@ -256,7 +284,7 @@ SCHEMA = {'type': 'object', 'additionalProperties': False, 'required': ['ideas']
     'ideas': {'type': 'array', 'maxItems': MAX_NEW_PER_MONTH, 'items': {'anyOf': [
         {'type': 'object', 'additionalProperties': False, 'required': ['family', *fields, 'filter', 'why'], 'properties': {
             'family': {'const': family}, **{f: {'type': 'integer', 'minimum': lo, 'maximum': hi} for f, (lo, hi) in fields.items()},
-            'filter': {'enum': list(FILTERS)}, 'why': {'type': 'string', 'maxLength': 300}}}
+            'filter': {'enum': list(FILTERS)}, 'rebalance': {'enum': list(REBALANCE)}, 'why': {'type': 'string', 'maxLength': 300}}}
         for family, fields in GRAMMAR.items()]}}}}
 
 
@@ -303,6 +331,8 @@ def explore(results, limit=MAX_NEW_PER_MONTH):
                 if low <= value <= high:
                     variants.append({**s, name: value})
         variants += [{**{k: v for k, v in s.items() if k != 'filter'}, **({'filter': f} if f else {})} for f in FILTERS if f != s.get('filter')]
+        variants += [{**{k: v for k, v in s.items() if k != 'rebalance'}, **({'rebalance': m} if m != 1 else {})}
+                     for m in REBALANCE if m != s.get('rebalance', 1)]
     unique, seen = [], set()
     for v in variants:
         if spec_hash(v) not in seen:

@@ -180,13 +180,15 @@ def months_to_prove(excess_pct, alpha, power=0.8):
 STCG_PCT, LTCG_PCT = 20.0, 12.5   # Indian equity: short-term (held under a year) and long-term capital gains tax, from 23 Jul 2024
 
 
-def after_tax_cagr(monthly_pct, monthly_turnover=None, months_per_year=12):
+def after_tax_cagr(monthly_pct, monthly_turnover=None, months_per_year=12, long_term_sales=False):
     """An APPROXIMATE after-tax yearly growth. Each year the share of the portfolio that was sold (half the year's
     turnover, at most all of it) realises that year's gain at the short-term rate (a loss is offset within the year, no
     carry-forward); the unsold share's gain is deferred and taxed once at the end at the long-term rate. With no turnover
-    given (buy and hold), everything is deferred. Ignores the Rs 1.25 lakh long-term exemption, cess and the exact
-    holding period of each lot."""
+    given (buy and hold), everything is deferred. `long_term_sales`: a rule that rebalances once a year or less often is
+    ASSUMED to sell each lot only once it is over 12 months old, so its sales pay the long-term rate. Ignores the
+    Rs 1.25 lakh long-term exemption, cess and the exact holding period of each lot."""
     turnover = monthly_turnover or [0.0] * len(monthly_pct)
+    rate = LTCG_PCT if long_term_sales else STCG_PCT
     value, deferred = 1.0, 0.0
     for i in range(0, len(monthly_pct), months_per_year):
         growth = 1.0
@@ -195,7 +197,7 @@ def after_tax_cagr(monthly_pct, monthly_turnover=None, months_per_year=12):
         gain = value * (growth - 1)
         sold = min(1.0, sum(turnover[i:i + months_per_year]) / 2)
         realised, kept = gain * sold, gain * (1 - sold)
-        value += realised * (1 - STCG_PCT / 100) if realised > 0 else realised
+        value += realised * (1 - rate / 100) if realised > 0 else realised
         value += kept
         deferred += kept
     if deferred > 0:

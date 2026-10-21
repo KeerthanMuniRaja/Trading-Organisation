@@ -10,7 +10,7 @@ Seen history, 8 desk shares, 106 months:
 
 | Finding | Number |
 | --- | --- |
-| Ideas tried | 18 (bar 0.0028); none passes on return or on risk |
+| Ideas tried | 20 (bar 0.0025, after the two slower-rebalance ideas of 21 Oct); none passes on return or on risk |
 | Picking the best past idea each year | −0.35% a month out of sample |
 | Holding the basket | 13.6% a year, **12.5% after an approximate tax** |
 | The live bot's rule (momentum 6m top 3) | 12.8% a year, **9.8% after tax**, 52% of the portfolio traded each month |
@@ -42,8 +42,20 @@ rebalancing then pays short-term tax every year, which a buyer-and-holder defers
    - *Data needed:* each index's membership history. NSE publishes reconstitutions as press releases, usually twice a
      year, and its site terms restrict automated download, so the files would be downloaded by hand or bought.
    - *Data needed:* daily prices for every past member, including those that later left the index.
-2. **Slower, tax-aware rules.** Rebalance quarterly or yearly, hold winners past 12 months for long-term tax, and keep only
-   changes that are worth their cost. *Needs nothing new:* the R&D grammar can gain a rebalance-interval parameter.
+2. **Slower, tax-aware rules: built on 21 Oct 2026.** Every R&D family now takes `rebalance`: 1, 3, 6 or 12 months. The
+   decision is taken at the start of each quarter, half-year or year and then held. A yearly rule is assumed to sell lots
+   only after 12 months, so they pay long-term tax. Two pre-registered ideas test the live bot's own rule traded less
+   often:
+
+   | Momentum 6m top 3, 8 shares | Turnover a month | Before tax | After tax |
+   | --- | --- | --- | --- |
+   | Monthly (the live bot) | 52% | 12.8% | 9.8% |
+   | Quarterly | 27% | 13.6% | 10.7% |
+   | Yearly | 10.5% | 14.0% | 12.3% |
+   | Holding the basket | — | 13.6% | 12.5% |
+
+   Trading once a year recovers most of the tax and cost loss, but it still only matches the basket after tax, so it is
+   not an edge. Moving the live bot to yearly rebalancing would be a new release, and that is the owner's decision.
 3. **Fundamental and event data, where information is digested slowly**:
    - results against expectations (post-earnings drift);
    - earnings quality and revisions;

@@ -92,6 +92,7 @@ class StatsTests(unittest.TestCase):
         self.assertLess(traded, held)
         self.assertLess(held, gross)
         self.assertAlmostEqual(traded, round(100 * (1 + (1.01 ** 12 - 1) * 0.8) - 100, 2), places=1)
+        self.assertGreater(rc.after_tax_cagr(flat, [2.0] * 24, long_term_sales=True), traded)  # lots sold after a year pay 12.5%
 
     def test_the_combo_family_ranks_momentum_calm_and_consistency(self):
         import rnd_ideas
@@ -102,6 +103,28 @@ class StatsTests(unittest.TestCase):
         weights = rnd_ideas.rule_of(spec)(table, dates, len(dates) - 1)
         self.assertEqual(len(weights), 3)
         self.assertEqual(rnd_ideas.rule_of(spec)(table, dates, 100), {})  # not enough history for a year of consistency
+
+    def test_a_slower_rebalance_holds_its_decision_and_trades_less(self):
+        import rnd_ideas
+        monthly = {'family': 'momentum', 'months': 6, 'keep': 3}
+        # monthly stays the default and out of the spec, so every earlier idea keeps its hash and name
+        self.assertEqual(rnd_ideas.spec_hash({**monthly, 'rebalance': 1}), rnd_ideas.spec_hash(monthly))
+        self.assertEqual(rnd_ideas.name_of({**monthly, 'rebalance': 12}), 'idea-momentum-6m-top3-y')
+        self.assertIn('rebalanced every 3 months', rnd_ideas.describe({**monthly, 'rebalance': 3}))
+        with self.assertRaises(ValueError):
+            rnd_ideas.canonical({**monthly, 'rebalance': 2})
+        dates, table = table_of()
+        rules = {'monthly': rnd_ideas.rule_of(monthly), 'yearly': rnd_ideas.rule_of({**monthly, 'rebalance': 12})}
+        rows = rs.monthly(table, dates, rules)
+        changes = {n: sum(r['turnover'][n] > 0 for r in rows[1:]) for n in rules}
+        self.assertLessEqual(changes['yearly'], len(rows) // 12 + 1)   # at most one change a year
+        self.assertGreater(changes['monthly'], changes['yearly'])
+        # the held decision is the one taken at the January rebalance, never a later day's
+        january = next(i for i in range(300, len(dates)) if dates[i][5:7] == '01' and dates[i][:7] != dates[i - 1][:7])
+        june = next(i for i in range(january, len(dates)) if dates[i][5:7] == '06' and dates[i][:7] != dates[i - 1][:7])
+        self.assertEqual(rules['yearly'](table, dates, june), rules['monthly'](table, dates, january))
+        found = rc.check_rules({'yearly': rules['yearly']}, table, dates, rc.decision_days(dates, 300))
+        self.assertEqual(found['yearly']['lookahead'], [])
 
     def test_walk_forward_holds_the_best_of_the_past_window_out_of_sample(self):
         rows = [{'month': f'2020-{k:02d}', 'basketPct': 0.0, 'rules': {'a': 1.0 if k <= 6 else -1.0, 'b': 0.5 if k <= 6 else 2.0}} for k in range(1, 13)]
