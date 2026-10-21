@@ -74,8 +74,8 @@ Fixed on 21 Oct 2026 (commit 761572b):
 >
 > **Partly done:**
 > - **13:** deflated and probabilistic Sharpe, a turnover-matched random baseline, years ahead, twice the costs and
->   India's 2018, 2020 and 2022 stress windows, plus an expanding walk-forward and a warm-up sweep. Still open: the
->   plateau report and a shuffled null.
+>   India's 2018, 2020 and 2022 stress windows, plus an expanding walk-forward, a warm-up sweep and a shuffled-history
+>   null. Still open: the plateau report (useful only once an idea passes).
 > - **15:** regime v2 without stalling days. It warns less sharply than v1, so v1 stays.
 > - **23:** a review scorecard covering declined and lapsed calls.
 > - **25:** baseline regression, pinned judges and KTO rows. Still open: a measured noise floor.

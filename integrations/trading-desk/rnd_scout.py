@@ -179,6 +179,7 @@ def monthly(table, dates, rules, through=None):
 RANDOM_RULES = 100   # random pickers of 3 shares a month: the baseline an edge has to beat (vectorbt)
 BOOTSTRAP_SAMPLES = 5000  # risk-lens resamples; the pass rule also adds the p-value's own sampling error
 CASH_YIELD_PCT = 6.0  # ASSUMED yearly yield on uninvested cash for the risk lens only (a liquid fund or T-bill; not sourced data)
+SHUFFLES, SHUFFLE_TOP = 20, 3  # shuffled histories, and how many of the best ideas face them (each run is a full backtest)
 
 
 def full_history(all_bars, slack_days=31):
@@ -193,10 +194,11 @@ def full_history(all_bars, slack_days=31):
     return kept, {s: d for s, d in first.items() if s not in kept}
 
 
-def scout(through=None, cache=daily.DAILY, ledger_path=None, universe='desk', randoms=RANDOM_RULES):
+def scout(through=None, cache=daily.DAILY, ledger_path=None, universe='desk', randoms=RANDOM_RULES, shuffles=None):
     """Every idea's results, best first. `through` (YYYY-MM) limits the months, so a result can be recomputed later.
     universe 'nifty50' screens the research-only NIFTY 50 files (never traded; survivorship-biased)."""
     import research_checks as rc
+    shuffles = SHUFFLES if shuffles is None else shuffles
     members = daily.datasets.UNIVERSE if universe == 'desk' else daily.datasets.NIFTY50
     loaded, excluded = full_history(daily.load(sorted(members), cache)) if universe != 'desk' else (daily.load(sorted(members), cache), {})
     dates, table = pd.aligned(loaded)
@@ -268,6 +270,16 @@ def scout(through=None, cache=daily.DAILY, ledger_path=None, universe='desk', ra
                     'beatsRandomPct': rc.percentile(average, random_avg), 'warmupSensitive': bool(checks[name]['warmup']),
                     'stableFromSessions': checks[name].get('stableFromSessions')})
     out.sort(key=lambda c: (c['pValue'], c['name']))
+    # SHUFFLED-HISTORY NULL (backtesting.py): the best few ideas re-run on histories with the same daily moves in a random
+    # order. An idea that does not beat most of them is not exploiting timing, whatever its result on the real order.
+    if shuffles and out:
+        histories = [rc.shuffled_table(table, dates, seed=k) for k in range(shuffles)]
+        for c in out[:SHUFFLE_TOP]:
+            averages = []
+            for t in histories:
+                r = monthly(t, dates, {c['name']: rules[c['name']]}, through)
+                averages.append(statistics.fmean(x['rules'][c['name']] - x['basketPct'] for x in r) if r else 0.0)
+            c['beatsShuffledPct'] = rc.percentile(c['averageExcessPct'], sorted(averages))
     last = rows[-1]['month']
     wf = rc.walk_forward(rows, list(tried))
     wf['pValue'] = round(sign_p(wf['ahead'], wf['behind']), 6)

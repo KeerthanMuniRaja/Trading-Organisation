@@ -169,6 +169,20 @@ class StatsTests(unittest.TestCase):
         self.assertEqual(wf['picks'], [{'from': '2020-07', 'to': '2020-12', 'chosen': 'a'}])  # best in training, worst after
         self.assertEqual((wf['ahead'], wf['behind'], wf['averageExcessPct']), (0, 6, -1.0))
 
+    def test_a_shuffled_history_keeps_the_moves_but_not_their_order(self):
+        dates, table = table_of(years=2)
+        s = sorted(table)[0]
+        moves = lambda t: sorted(t[s][dates[k]]['closePaise'] / t[s][dates[k - 1]]['closePaise'] for k in range(1, len(dates)))  # noqa: E731
+        shuffled = rc.shuffled_table(table, dates, seed=3)
+        self.assertTrue(all(abs(a - b) < 1e-4 for a, b in zip(moves(shuffled), moves(table))))  # the same daily moves (to whole paise)
+        self.assertNotEqual([shuffled[s][d]['closePaise'] for d in dates[1:40]], [table[s][d]['closePaise'] for d in dates[1:40]])
+        self.assertEqual(rc.shuffled_table(table, dates, seed=3), shuffled)               # reproducible
+        first, second = sorted(table)[:2]
+        k = 10                                                                             # the shares move together on the same days
+        day = lambda t, x: t[x][dates[k]]['closePaise'] / t[x][dates[k - 1]]['closePaise']  # noqa: E731
+        orig = next(j for j in range(1, len(dates)) if abs(table[first][dates[j]]['closePaise'] / table[first][dates[j - 1]]['closePaise'] - day(shuffled, first)) < 1e-4)
+        self.assertAlmostEqual(day(shuffled, second), table[second][dates[orig]]['closePaise'] / table[second][dates[orig - 1]]['closePaise'], places=3)
+
     def test_an_expanding_walk_forward_chooses_on_all_the_history_so_far(self):
         # a is best over the first 6 months, b over the next 6; at month 13 the rolling 6-month window picks b, the
         # expanding window (all 12 months) still picks a
@@ -235,6 +249,9 @@ class ScoutIntegrationTests(unittest.TestCase):
             self.assertEqual(set(best['luck']), {'probabilisticSharpe', 'deflatedSharpe'})
             self.assertIn('yearsAheadOfBasket', best['robustness'])
             self.assertIsNotNone(best['beatsMatchedRandomPct'])
+            shuffled = [c for c in r['candidates'] if 'beatsShuffledPct' in c]
+            self.assertEqual(len(shuffled), rs.SHUFFLE_TOP)   # only the best few face the shuffled histories
+            self.assertTrue(all(0 <= c['beatsShuffledPct'] <= 100 for c in shuffled))
             self.assertEqual(set(r['randomBaseline']['matchedByTurnover']), {'every1m', 'every3m', 'every6m', 'every12m'})
             lens = best['riskLens']
             self.assertEqual(set(lens), {'sharpeTest', 'worstFallPct', 'basketWorstFallPct', 'averageCashPct', 'atAssumedCashYield', 'wouldPassRiskBar'})

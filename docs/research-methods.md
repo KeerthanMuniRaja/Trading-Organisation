@@ -69,6 +69,14 @@ is our own code, with no new dependencies.
     basket; the rolling version gives −0.12% a month;
   - every idea is stable from 300 sessions.
 
+- **Shuffled-history null** (added later on 21 Oct, from backtesting.py).
+  - **How:** the 3 best ideas are re-run on 20 histories built from the same daily moves in a random order, the same
+    order for every share, so the shares still move together.
+  - **What it measures:** `beatsShuffledPct` is the share of shuffled histories the real result beats. An idea that
+    truly uses timing (trends, dips) should beat about 95% of them.
+  - **Result on the 8 shares:** quarterly momentum 75%, monthly momentum 55%, combo 65%. No idea shows that its timing
+    matters.
+
 ## The NIFTY 50 research universe
 
 `datasets.NIFTY50` holds the members after the reconstitution effective 30 Sep 2026, taken from Wikipedia's NIFTY 50 page.

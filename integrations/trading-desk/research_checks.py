@@ -295,6 +295,27 @@ def robustness(months, excess_pct, turnover, one_way_cost_pct):
             'averageExcessPctAt2xCosts': round(statistics.fmean(excess_pct) - extra, 3), 'stressExcessPct': stress}
 
 
+def shuffled_table(table, dates, seed):
+    """A shuffled history (backtesting.py's shuffled-price null): every share's day-to-day moves in ONE shared random
+    order, so the same moves and the same cross-share correlation, but no time structure (no trends to follow, no dips
+    to buy). Bars are rebuilt from the shuffled moves, keeping each day's own open/high/low shape and volume."""
+    rng = random.Random(seed)
+    order = list(range(1, len(dates)))
+    rng.shuffle(order)
+    out = {}
+    for s in table:
+        bars, close = table[s], table[s][dates[0]]['closePaise']
+        rows = {dates[0]: dict(bars[dates[0]])}
+        for k, j in enumerate(order, start=1):
+            src = bars[dates[j]]
+            close = close * src['closePaise'] / bars[dates[j - 1]]['closePaise']
+            scale = close / src['closePaise']
+            rows[dates[k]] = {'openPaise': round(src['openPaise'] * scale), 'closePaise': round(close), 'highPaise': round(src['highPaise'] * scale),
+                              'lowPaise': round(src['lowPaise'] * scale), 'volume': src['volume']}
+        out[s] = rows
+    return out
+
+
 def walk_forward(rows, names, train=36, test=12, expanding=False):
     """Each step: the idea with the best average monthly excess over `train` months (with `expanding`, over every month so
     far, at least `train`), held for the next `test` months (vectorbt's rolling and expanding splits)."""
