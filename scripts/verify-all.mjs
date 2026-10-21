@@ -37,6 +37,8 @@ export function suites({ quick = false } = {}) {
     { id: 'trading-desk', cmd: REPLAY, args: ['-m', 'unittest', ...DESK_TESTS], cwd: join(ROOT, 'integrations', 'trading-desk'), requires: REPLAY },
     // the TradingAgents member's governance, tested with a stand-in engine (the real package is not needed)
     { id: 'tradingagents', cmd: REPLAY, args: ['-m', 'unittest', 'test_tradingagents'], cwd: join(ROOT, 'integrations', 'tradingagents'), requires: REPLAY },
+    // the model evaluation suite's own logic (stand-in models; the real model is never called by the gate)
+    { id: 'model-eval', cmd: REPLAY, args: ['-m', 'unittest', 'test_model_eval', 'test_build_dataset'], cwd: join(ROOT, 'integrations', 'model-eval'), requires: REPLAY },
     { id: 'quant-advisor', cmd: SKFOLIO, args: ['-m', 'unittest', 'test_quant_advisor'], cwd: join(ROOT, 'integrations', 'trading-desk'), requires: SKFOLIO },
     { id: 'claims', cmd: REPLAY, args: ['-m', 'unittest', 'test_claims', 'test_http_security', 'test_autolearn', 'test_refresh_headlines'],
       cwd: join(ROOT, 'integrations', 'claims'), requires: REPLAY },

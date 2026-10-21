@@ -18,13 +18,14 @@ Run with any project Python environment, e.g. .local\\replay-venv\\Scripts\\pyth
 from __future__ import annotations
 
 import argparse
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import sys
+import time
 import unicodedata
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -402,11 +403,39 @@ def model_client(settings, timeout, allow_remote_cost=False):
         raise SystemExit('Non-loopback endpoint: pass --allow-remote-cost after confirming the provider budget')
 
     def llm(system, user, schema):
-        result = chat(endpoint, system, user, 1200, timeout=timeout, schema=schema)
-        if result.get('finishReason') not in (None, 'stop'):
-            raise ValueError('INCOMPLETE_RESPONSE')
-        return strict_json(result['content']), result
+        started = time.monotonic()
+        try:
+            result = chat(endpoint, system, user, 1200, timeout=timeout, schema=schema)
+            if result.get('finishReason') not in (None, 'stop'):
+                raise ValueError('INCOMPLETE_RESPONSE')
+            value = strict_json(result['content'])
+        except Exception as error:
+            journal_call(endpoint.model, system, user, schema, None, getattr(error, 'code', None) or str(error)[:60], time.monotonic() - started)
+            raise
+        journal_call(endpoint.model, system, user, schema, value, None, time.monotonic() - started)
+        return value, result
     return llm, endpoint
+
+
+JOURNAL = ROOT / '.local' / 'model-calls'
+
+
+def journal_call(model, system, user, schema, value, error, seconds, directory=None):
+    """MODEL-DATA-01: every production model call is kept locally (instructions, input, answer or error, time; never a
+    key), so the organisation's own checkers can later label it and build training data for a fine-tune. Recording must
+    never break a task, so a failure to write is ignored. MODEL_CALL_JOURNAL=off turns it off."""
+    if os.environ.get('MODEL_CALL_JOURNAL', 'on').lower() == 'off':
+        return
+    try:
+        folder = Path(directory or JOURNAL)
+        folder.mkdir(parents=True, exist_ok=True)
+        entry = {'at': datetime.now(timezone.utc).isoformat(), 'model': model, 'system': system, 'user': user,
+                 'schemaHash': hashlib.sha256(json.dumps(schema, sort_keys=True).encode()).hexdigest()[:16],
+                 'answer': value, 'error': error, 'seconds': round(seconds, 2)}
+        with (folder / (entry['at'][:10] + '.jsonl')).open('a', encoding='utf-8') as handle:
+            handle.write(json.dumps(entry, ensure_ascii=False) + '\n')
+    except Exception:  # noqa: BLE001 - recording is best effort
+        pass
 
 
 def main(argv=None):
