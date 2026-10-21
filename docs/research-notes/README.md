@@ -53,6 +53,30 @@ favourable and are now corrected:
 
 ## 3. Gaps and ideas, ranked by value for our organisation
 
+> **Status, 21 Oct 2026.** Built without an owner decision (see the [project log](../project-log/2026-10-21.md)):
+>
+> **Done:**
+> - **16:** a real debate.
+> - **17:** debaters see the bot's own record.
+> - **18:** data-status markers and a share identity.
+>
+> **Partly done:**
+> - **13:** deflated and probabilistic Sharpe, a turnover-matched random baseline, years ahead, twice the costs and
+>   India's 2018, 2020 and 2022 stress windows. Still open: the plateau report, an expanding walk-forward, a shuffled
+>   null and a lookahead sweep.
+> - **15:** regime v2 without stalling days. It warns less sharply than v1, so v1 stays.
+> - **23:** a review scorecard covering declined and lapsed calls.
+> - **24:** the regime at entry. Still open: the regime at exit, and the worst and best move during each holding
+>   (MAE/MFE).
+> - **25:** baseline regression, pinned judges and KTO rows. Still open: a measured noise floor.
+> - **26:** run manifests for cycles, holding code, switches and price hashes. Still open: backtests, seeds and
+>   flagging crashed runs.
+> - **29:** a freshness self-check. Still open: arithmetic checks.
+>
+> **New, not on this list:** a point-in-time knowledge index.
+>
+> **Still open:** everything else, including the top-ranked A1 (self-expiring loss brakes), which needs the owner.
+
 ### A. Risk brakes that work by themselves (highest value for autonomy)
 
 1. **Self-expiring protections.** Pause a bot's new entries after a daily, weekly or monthly realised loss, after a losing

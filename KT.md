@@ -64,6 +64,27 @@ The organisation now manages itself like a firm, with the owner as CEO:
   - **Result:** nothing passes. Yearly momentum keeps 11.2% after tax, against the basket's 12.55%.
 - **Source-code review of 13 projects:** seven notes and a ranked gap analysis in `docs/research-notes/`. The top gaps are self-expiring loss brakes, unrealised-loss and horizon exits, and broker-readiness items. The cheap fixes the agents can make are listed in Part C of the founder review.
 - **Intraday monitor** (`scripts/intraday-monitor.mjs`): feed-agnostic, tested on 38 replayed days. A broker adapter waits for the founder's choice.
+- **Gap fixes that need no owner decision** (commits 761572b to fb9da65; see the [project log](docs/project-log/2026-10-21.md)):
+  - **Debate:**
+    - it sees only headlines and prices from before the signal;
+    - the bull answers the bear;
+    - it sees the bot's own scored record, data-status markers and a press dossier.
+  - **Scenario panel:** failed voices are left out of votes and scoring (`failedVoices`).
+  - **Model gate:** `--baseline` regression, judge fingerprints, and exit 1 on DON'T SHIP. Evaluation rows never enter training data.
+  - **Knowledge index** (`knowledge_index.py`, cycle step `knowledge-index`, `npm run knowledge`): one SQLite file with
+    FTS5, holding shares, sources, drivers, items, stories, daily regimes, ideas, method cards, problems and panel calls.
+    `dossier(symbol, as_of)` is point-in-time ([knowledge index](docs/knowledge-index.md)).
+  - **Luck guards** (`research_checks.py`):
+    - every idea gets a probabilistic and a deflated Sharpe ratio, robustness (years ahead, twice the costs, India's
+      stress windows) and `beatsMatchedRandomPct`;
+    - the best deflated Sharpe is 0.22 on the 8 shares and 0.31 for NIFTY 50 reversal, against a bar of 0.95.
+  - **Regime v2** (`market_regime.risk_v2`): studied beside v1; it warns less sharply, so v1 stays.
+  - **Trust checks** ([operations cycle](docs/operations-cycle.md)):
+    - a run manifest in every cycle journal (`runs`: code commit and fingerprint, switches, prices);
+    - the digest's "Can you trust this digest?" section;
+    - `review_scorecard.py` (cycle step `review-scorecard`), comparing calls the review took with calls it turned
+      down.
+  - **Still open (backend):** recording refused orders, and a limits banner in the digest.
 
 ### Added in the evening of 20 October 2026
 
