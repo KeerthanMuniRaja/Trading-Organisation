@@ -6,6 +6,16 @@ The day's work runs **after the close**: decisions use settled daily closes, and
 
 ## One-time setup (before the first day)
 
+Start with **`npm.cmd run preflight`**. It is read-only, works with the backend stopped and never prints a setting's
+value. It checks:
+- settings and credentials (names only), the rule bot, and whether the backend is stopped;
+- the backup against the newest migration;
+- the research environment, the price data and the model files;
+- the starter policy, the holiday file, the alert channel, the supervisor and the world feeds.
+
+Each gap is marked **TODO** (needed first) or **OPTIONAL** (recommended), with the command to fix it. It ends with READY
+or NOT READY. The steps below are the details.
+
 1. **Raise the paper order limit if needed.** With `MAX_ORDER_PAISE=100000` (₹1,000), a single share of ICICI Bank (about ₹1,360) or Axis Bank (about ₹1,268) cannot be bought, so those proposals are rejected as `size-below-one-share`. The readiness check lists which shares are affected. Suggested paper values:
    - `MAX_ORDER_PAISE=500000` (₹5,000);
    - `MAX_EXPOSURE_PAISE=3000000` (₹30,000);
