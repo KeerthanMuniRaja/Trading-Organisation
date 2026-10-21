@@ -33,6 +33,8 @@ answering in a session ("decision 3: yes"). This file is updated as items close.
 | A10 | **World news sources** (optional) | `npm run world -- probe --all`, then `npm run world -- enable <ids> --yes` | Adds central banks, regulators and publishers from the US, Europe, the UK and China ([world news](docs/world-news.md)) |
 | A11 | **A research source for R&D births** (optional) | Register and approve a source, then set `RND_SOURCE` in `.env` | Lets a passing idea become a birth proposal |
 | A12 | **Check the result** | `npm run status` and `npm run readiness` | Health, supervisor heartbeat, regime, research and world lines |
+| A13 | **Weekly: back up and export the data** | `npm run backup -- create` (backend stopped), `npm run export-data -- --write`, then commit and push `.local/data-repo` | Keeps the private data repository [trading-organisation-data](https://github.com/KeerthanMuniRaja/trading-organisation-data) current, so you can continue on any machine ([data export](docs/data-export.md)). First export done on 21 Oct |
+| A14 | **Keep a safe copy of your secrets** (once, and after changes) | Copy `.env`, `.local/credentials.json` and `.local/owner-signing-key.pem` to a password manager or an encrypted pen drive | They are deliberately in neither repository. Without them, a new machine cannot act as the owner |
 
 **Days after the switch-on:** read the digest in `.local/digests/<day>.md` ("Needs you" comes first). Answer the agenda
 with `npm run agenda`.
@@ -98,6 +100,13 @@ with `npm run agenda`.
 | # | Decision | Note |
 | --- | --- | --- |
 | B23 | **Merge `dev` into `main`** with a pull request | `main` was last merged on 20 Oct |
+| B25 | **The code repository is public** | Trading-Organisation can be read by anyone, including this file, your portfolio size and the docs. It holds no secrets (a secret scan runs before every push), and the data is in the private repository. **Recommendation: make it private** (GitHub → Settings → Danger zone → Change visibility), unless you want it public. The public results page `trading-desk-results` is separate and unaffected |
+
+### Running all the time
+
+| # | Decision | Options | Note |
+| --- | --- | --- | --- |
+| B24 | **A machine that stays on** (for 24/7 news collection, overnight model work and, later, intraday) | A home mini PC (16 GB RAM, 6–8 cores, 256 GB SSD, about ₹12–20k), an old personal laptop with 16 GB RAM, or a free cloud computer (the data would leave your premises) | Until then, run once a day after the close (about an hour). The supervisor catches up on what it missed. Development of a 24/7 service mode can start without this decision |
 
 ---
 

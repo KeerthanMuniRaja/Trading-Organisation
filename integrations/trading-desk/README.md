@@ -703,7 +703,7 @@ Writes `.local/trading-desk/dashboard.html`, a self-contained page with:
 
 It only reads saved results. Open the file in a browser, and rerun it after more weeks finish.
 
-**Public copy (owner's choice).** On 9 October 2026 the owner chose to publish the page openly, so it can be viewed from any device or account. It is served by GitHub Pages from a separate public repository, [KeerthanMuniRaja/trading-desk-results](https://github.com/KeerthanMuniRaja/trading-desk-results). The code repository stays private and untouched. The public page and repository do not use the project's name.
+**Public copy (owner's choice).** On 9 October 2026 the owner chose to publish the page openly, so it can be viewed from any device or account. It is served by GitHub Pages from a separate public repository, [KeerthanMuniRaja/trading-desk-results](https://github.com/KeerthanMuniRaja/trading-desk-results). The code repository is untouched by it. (Correction, 21 Oct 2026: the code repository is public too; see founderReview.md B25.) The public page and repository do not use the project's name.
 
 - **Address:** https://keerthanmuniraja.github.io/trading-desk-results/
 - **Updating:** regenerate the page, scan it for anything private, then upload it as `index.html` to that repository. The upload must include the current file's `sha`.

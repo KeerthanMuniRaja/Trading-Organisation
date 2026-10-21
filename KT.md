@@ -46,7 +46,13 @@ The organisation now manages itself like a firm, with the owner as CEO:
 
 ### Added on 21 October 2026 (read first)
 
-- **Founder review** ([founderReview.md](founderReview.md)): the switch-on checklist (planned for Sat 24 Oct) and all 23 pending decisions. Keep it up to date as items close.
+- **Founder review** ([founderReview.md](founderReview.md)): the switch-on checklist (planned for Sat 24 Oct) and all pending decisions. Keep it up to date as items close.
+- **Data repository** ([data export](docs/data-export.md)):
+  - the collected data and backups live in the **private** repository `KeerthanMuniRaja/trading-organisation-data`;
+  - its clone is at `.local/data-repo`, and `npm run export-data -- --write` refreshes it;
+  - secrets and the model file are never exported.
+
+  The code repository is **public** (B25).
 - **Live operations are paused until Saturday.** The backend has been stopped since 20 Oct. Migrations 052–054 apply on the next start, so take a backup first.
 - **Autonomy:**
   - **Rehearsal:** `backend/test/rehearsal.test.ts` checks the invariants over 8 rounds, with injected failures.
