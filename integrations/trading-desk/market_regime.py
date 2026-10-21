@@ -86,6 +86,7 @@ def regime(table, dates, i):
     ceiling = CEILING[risk] - (25 if trend is False else 0) - (25 if b200 is not None and b200 <= 2 else 0)
     return {'date': dates[i], 'distributionDays': len(days), 'distributionDates': days, 'risk': risk, 'aboveTrend200d': trend,
             'breadth50d': b50, 'breadth200d': b200, 'shares': len(table), 'exposureCeilingPct': max(0, ceiling),
+            'followThrough': follow_through(table, dates, i)['state'],
             # readers check these before trusting it (trading-skills' provenance gate): which shares it rests on
             'inputsComplete': len(table) == len(daily.datasets.UNIVERSE)}
 
@@ -139,6 +140,87 @@ def calm(table, dates, i):
     return risk_of(len(distribution_days(table, dates, i))) in ('NORMAL', 'CAUTION')
 
 
+# REGIME-02 follow-through day: the re-entry half of a distribution-day regime, adapted from claude-trading-skills
+# (MIT, skills/ftd-detector, ftd_methodology.md). A correction is a fall of at least 3% from the highest close of the last
+# 40 sessions, with at least 3 down days. Day 1 of a rally attempt is the first up close after the low (a lower close
+# restarts the count from a new low). A follow-through day is day 4 to 10 of the attempt with a basket gain of at least
+# 1.25% on higher traded value than the day before. It confirms a new uptrend for FTD_VALID sessions, unless the basket
+# closes below the rally's low (a failed follow-through) or a new correction begins. Their quality score and the
+# second-index confirmation are left out: there is one basket and no index feed.
+CORRECTION_PCT, PEAK_LOOKBACK, MIN_DOWN_DAYS = 3.0, 40, 3
+FTD_GAIN_PCT, FTD_DAYS, FTD_VALID = 1.25, (4, 10), 25
+FTD_HISTORY = PEAK_LOOKBACK + FTD_DAYS[1] + FTD_VALID + 15
+
+
+def follow_through(table, dates, i):
+    """The follow-through state at day i (completed days only): {'state': 'none' | 'correction' | 'rally' | 'confirmed',
+    'lowDate', 'rallyDay', 'ftdDate'}."""
+    start = max(0, i - FTD_HISTORY)
+    if i - start < 5:
+        return {'state': 'none', 'lowDate': None, 'rallyDay': None, 'ftdDate': None}
+    level, ret, _ = basket(table, dates, start, i)
+    value = [sum(table[s][dates[k]]['volume'] * table[s][dates[k]]['closePaise'] for s in table) for k in range(start, i + 1)]
+    def falling(k, since=0):
+        """A correction at k: at least CORRECTION_PCT below the highest close of the last PEAK_LOOKBACK sessions (from
+        `since` on), with MIN_DOWN_DAYS down days after that high."""
+        peak = max(range(max(since, k - PEAK_LOOKBACK), k + 1), key=lambda j: (level[j], j))
+        return level[k] <= level[peak] * (1 - CORRECTION_PCT / 100) and sum(ret[j] < 0 for j in range(peak + 1, k + 1)) >= MIN_DOWN_DAYS
+
+    low = day1 = ftd = None
+    for k in range(1, len(level)):
+        if ftd is not None:
+            if level[k] < level[low]:
+                low, day1, ftd = k, None, None          # a failed follow-through: back to the correction, from a new low
+            elif falling(k, since=ftd):
+                low, day1, ftd = k, None, None          # a new correction, measured from the high made after the confirmation
+            continue
+        if low is None:
+            if falling(k):
+                low = k
+            continue
+        if level[k] < level[low]:
+            low, day1 = k, None                          # a deeper low restarts the rally attempt
+        elif day1 is None:
+            if ret[k] > 0:
+                day1 = k
+        else:
+            day = k - day1 + 1
+            if FTD_DAYS[0] <= day <= FTD_DAYS[1] and ret[k] >= FTD_GAIN_PCT and value[k] > value[k - 1]:
+                ftd = k
+            elif day > FTD_DAYS[1]:
+                day1 = None                              # the attempt ran out without a follow-through; wait for the next
+    n = len(level) - 1
+    out = {'lowDate': dates[start + low] if low is not None else None, 'rallyDay': (n - day1 + 1) if day1 is not None and ftd is None else None,
+           'ftdDate': dates[start + ftd] if ftd is not None else None}
+    if ftd is not None and n - ftd < FTD_VALID:
+        return {'state': 'confirmed', **out}
+    if ftd is not None:
+        return {'state': 'none', **out}                  # an old confirmation: the uptrend is simply the normal state now
+    return {'state': 'rally' if day1 is not None else 'correction' if low is not None else 'none', **out}
+
+
+def calm_or_followed_through(table, dates, i):
+    """The R&D filter `distribution-ftd`: invested while distribution risk is NORMAL or CAUTION, and also under HIGH or
+    SEVERE once a follow-through day has confirmed a new uptrend (the regime's way back in)."""
+    return calm(table, dates, i) or follow_through(table, dates, i)['state'] == 'confirmed'
+
+
+def ftd_study(table, dates, start=200, horizon=HORIZON):
+    """What followed confirmed follow-through days, against stressed days (HIGH or SEVERE) without one: the basket's
+    next-`horizon`-session return and worst fall. Seen history, overlapping windows: a description, not proof."""
+    level, _, _ = basket(table, dates, 0, len(dates) - 1)
+    groups = {'confirmed': [], 'stressed-without-ftd': []}
+    for i in range(start, len(dates) - horizon):
+        ahead = level[i + 1:i + horizon + 1]
+        row = (100 * (ahead[-1] / level[i] - 1), 100 * (min(ahead) / level[i] - 1))
+        if follow_through(table, dates, i)['state'] == 'confirmed':
+            groups['confirmed'].append(row)
+        elif not calm(table, dates, i):
+            groups['stressed-without-ftd'].append(row)
+    return {name: {'days': len(xs), 'averageReturnPct': round(statistics.fmean(r for r, _ in xs), 2) if xs else None,
+                   'averageWorstFallPct': round(statistics.fmean(f for _, f in xs), 2) if xs else None} for name, xs in groups.items()}
+
+
 def study(table, dates, start=200, horizon=HORIZON, risk_at=None):
     """Per risk level: how often it occurred and the basket's next-`horizon`-session return and worst fall. `risk_at`
     chooses the regime version (default v1)."""
@@ -184,12 +266,17 @@ def main(argv=None):
     # v2 is studied on the same days, side by side, so the better-evidenced version can be chosen (owner decision)
     report['v2'] = {**study(table, dates, risk_at=risk_v2), 'rules': 'SEVERE at 6, 5- and 15-session clusters, below the 21-day EMA or '
                     '50-day average, traded-value volume; no stalling days', 'ceiling': CEILING_V2}
+    report['followThrough'] = {**ftd_study(table, dates), 'rules': f'correction {CORRECTION_PCT}% in {PEAK_LOOKBACK} sessions with {MIN_DOWN_DAYS}+ down days; '
+                               f'day {FTD_DAYS[0]}-{FTD_DAYS[1]} of a rally, gain {FTD_GAIN_PCT}%+ on higher traded value; valid {FTD_VALID} sessions'}
     batch.save(OUT / 'study.json', report)
     batch.save(OUT / 'history.json', {'note': 'The regime of every session, computed with completed days only.', 'days': history(table, dates)})
     for version, r in (('v1', report), ('v2', report['v2'])):
         for name, row in r['levels'].items():
             print(f"  {version} {name:8s} days {row['days']:>5}  next {HORIZON} sessions: return {row['averageReturnPct']}%  worst fall {row['averageWorstFallPct']}%"
                   f"  falls over 5%: {row['fallOver5PctShare']}")
+    for name, row in report['followThrough'].items():
+        if isinstance(row, dict):
+            print(f"  ftd {name:22s} days {row['days']:>5}  next {HORIZON} sessions: return {row['averageReturnPct']}%  worst fall {row['averageWorstFallPct']}%")
     print(json.dumps({'verdict': report['verdict'], 'verdictV2': report['v2']['verdict'], 'from': report['from'], 'through': report['through']}))
 
 

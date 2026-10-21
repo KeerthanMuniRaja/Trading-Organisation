@@ -53,6 +53,41 @@ Some skills were already covered by what the organisation has, so we did not cop
 | Edge strategy reviewer | The scout's Bonferroni bar over every idea ever tried |
 | Bull/bear agents | The debate desk |
 
+## The re-entry signal: follow-through days (added 21 Oct 2026)
+
+A distribution-day regime only ever says "be careful". The follow-through day is its way back in. It is adapted from
+claude-trading-skills' `ftd_methodology.md`, and `market_regime.follow_through` implements it:
+- **Correction:** the basket is at least 3% below its highest close of the last 40 sessions, with at least 3 down days.
+- **Rally attempt:** day 1 is the first up close after the low. A lower close restarts the attempt from a new low.
+- **Follow-through day:** day 4 to 10 of the attempt, a basket gain of at least 1.25% on higher traded value than the day
+  before.
+- **Confirmed uptrend:** lasts 25 sessions, unless the basket closes below the rally's low (a failed follow-through) or a
+  new correction begins.
+
+Their quality score and the second-index confirmation are left out: we have one basket and no index feed. The regime
+now shows `followThrough` (none, correction, rally or confirmed), and the R&D filter `distribution-ftd` gets back in
+under HIGH or SEVERE once a follow-through day has confirmed.
+
+**Result on 10 years:**
+
+| After | Days | Next 20 sessions | Worst fall |
+| --- | --- | --- | --- |
+| Confirmed follow-through days | 532 | +0.97% | −2.70% |
+| HIGH or SEVERE days without one | 1,162 | +0.99% | −2.85% |
+
+There is no real difference. As a filter it recovers a little of what the distribution filter loses, but both still
+trail holding the basket:
+
+| Idea | Return a year |
+| --- | --- |
+| Equal weight with the distribution filter | 9.07% |
+| Equal weight with the follow-through re-entry | 9.15% |
+| Momentum with the distribution filter | 9.2% |
+| Momentum with the follow-through re-entry | 9.5% |
+| Holding the basket | 13.7% |
+
+The 2 ideas joined the catalogue, so the bar is now 0.05 / 22.
+
 ## Governance
 
 The exposure ceiling is **advice**. It is never applied to a bot, a budget or a limit, because money and limits stay with the

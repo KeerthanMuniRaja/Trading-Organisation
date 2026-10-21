@@ -3,7 +3,32 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MAX_ATTEMPTS, catchUp, childEnv, commands, heartbeat, history, indiaDay, modelHealthUrl, nextRuns } from './supervisor.mjs';
+import { MAX_ATTEMPTS, catchUp, childEnv, commands, heartbeat, history, indiaDay, modelHealthUrl, nextNews, nextRuns, newsMinutes, NEWS_MINUTES } from './supervisor.mjs';
+import { enabledFeeds } from './organisation-cycle.mjs';
+
+test('news is polled on the clock every day, weekends and nights included, with the backend up only while it polls', async () => {
+  const saturdayNight = Date.parse('2026-10-24T17:40:00Z'); // 23:10 IST on a Saturday: no daily job, but news still flows
+  const n = nextNews(saturdayNight);
+  assert.equal(new Date(n.at).toISOString(), '2026-10-24T18:00:00.000Z'); // the next half hour on the clock
+  assert.equal(nextNews(saturdayNight, 0), null);
+  assert.deepEqual([newsMinutes({}), newsMinutes({ SUPERVISOR_NEWS_MINUTES: '0' }), newsMinutes({ SUPERVISOR_NEWS_MINUTES: '60' }),
+    newsMinutes({ SUPERVISOR_NEWS_MINUTES: '5' })], [NEWS_MINUTES, 0, 60, NEWS_MINUTES]); // too frequent is not allowed
+  const feeds = ['feed-livemint.json', 'feed-us-fed.json'];
+  assert.deepEqual(commands('news', { backendUp: false, modelUp: false, feeds }).map(c => c.id), ['start-backend', 'news-livemint', 'news-us-fed', 'stop-backend']);
+  assert.deepEqual(commands('news', { backendUp: true, modelUp: false, feeds }).map(c => c.id), ['news-livemint', 'news-us-fed']);
+  const poll = commands('news', { backendUp: true, modelUp: false, feeds })[0];
+  assert.deepEqual(poll.args.slice(-3).map(a => a.split(/[\\/]/).join('/')), ['run', '.local/feed-livemint.json', '.local/feeds/livemint']);
+  assert.match(commands('news', { backendUp: false, modelUp: false, feeds: [] })[0].skip, /no feed is enabled/); // nothing to start the backend for
+  // only configurations the owner enabled are polled
+  const root = await mkdtemp(join(tmpdir(), 'feeds-'));
+  try {
+    await mkdir(join(root, '.local'), { recursive: true });
+    await writeFile(join(root, '.local', 'feed-on.json'), JSON.stringify({ enabled: true }));
+    await writeFile(join(root, '.local', 'feed-off.json'), JSON.stringify({ enabled: false }));
+    await writeFile(join(root, '.local', 'feed-broken.json'), '{');
+    assert.deepEqual(await enabledFeeds(root), ['feed-on.json']);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 test('started late, it catches up today\'s jobs that still help, at most twice each, and never on a holiday', () => {
   const day = '2026-10-21';

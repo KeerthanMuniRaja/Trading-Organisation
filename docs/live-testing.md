@@ -65,6 +65,14 @@ or NOT READY. The steps below are the details.
 - **Backup:** Fridays at 16:45 IST, but only when the backend isn't running. It never stops a backend it didn't start.
 - **Backend:** if it's down for a job, the supervisor starts it directly, with only the `.env` settings, and stops it afterwards. A backend you started is left alone.
 - **Model:** with `MODEL_AUTOSTART=qwen3.5-4b-q4km` in `.env`, the supervisor starts the pinned local model for the cycle if it isn't running, and stops it afterwards. The cycle then runs with the model, so the news fact-checker, learning, R&D invention, the debate desk and the TradingAgents member all work. A model you started yourself is used and left running. Whether the model is up is checked on llama.cpp's public `/health` endpoint.
+- **News all day (added 21 Oct 2026):** between the daily jobs the supervisor polls every enabled feed every 30 minutes,
+  every day, including weekends, holidays and nights, so headlines are collected before the publishers' feeds roll them
+  off. Each feed's own poll interval and back-off still apply.
+  - The backend is started for the poll, if it's down, and stopped again.
+  - A daily job is never skipped or delayed for news.
+  - `SUPERVISOR_NEWS_MINUTES` sets the interval (15–240); `0` turns news polling off.
+  - `npm run supervisor -- --once news` polls once.
+  - While the supervisor runs, let it start the backend; don't also run `npm start` yourself.
 - **Log:** every step goes to `.local/supervisor/<day>.jsonl`.
 - **Catch-up:** if the laptop slept through a job's time, or the supervisor started late, it runs today's jobs that still
   help when it starts or wakes:

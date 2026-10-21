@@ -1,7 +1,8 @@
 // The supervisor (OPS-03): runs the organisation's day so no person has to. Owner-started and never installed by
 // itself: run it in a terminal, or register it with the operating system's scheduler if the owner chooses to.
 //   node scripts/supervisor.mjs               keep running: readiness 09:00 IST, cycle 16:05 IST, backup Fridays
-//   node scripts/supervisor.mjs --once cycle  one job now and exit (readiness | cycle | backup)
+//   node scripts/supervisor.mjs --once cycle  one job now and exit (readiness | cycle | backup | news)
+// Between the daily jobs it polls every enabled news feed every NEWS_MINUTES, on any day (news never stops).
 //   node scripts/supervisor.mjs --plan        the next jobs it would run, and stop
 // On trading days only: weekends are skipped, and so are holidays listed in the owner's .local/nse-holidays.json.
 // The cycle runs with the local model when one is configured and answers. If the backend is down the supervisor starts
@@ -15,9 +16,25 @@ import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseHolidays } from './readiness.mjs';
+import { enabledFeeds, feedCommand } from './organisation-cycle.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const JOBS = [{ id: 'readiness', at: [9, 0] }, { id: 'cycle', at: [16, 5] }, { id: 'backup', at: [16, 45], weekday: 5 }];
+// NEWS-03: news does not stop for weekends, holidays or the night. Between the daily jobs the supervisor polls every
+// enabled feed this often (each feed's own poll interval and back-off still apply), so headlines are collected before
+// the publishers' feeds roll them off. SUPERVISOR_NEWS_MINUTES sets it (15-240); 0 turns it off.
+export const NEWS_MINUTES = 30;
+export function newsMinutes(env = process.env) {
+  if (env.SUPERVISOR_NEWS_MINUTES === undefined || env.SUPERVISOR_NEWS_MINUTES === '') return NEWS_MINUTES;
+  const n = Number(env.SUPERVISOR_NEWS_MINUTES);
+  return n === 0 ? 0 : Number.isInteger(n) && n >= 15 && n <= 240 ? n : NEWS_MINUTES;
+}
+/** The next news poll strictly after `now`, on the clock (every `minutes`, any day); null when turned off. */
+export function nextNews(now, minutes = NEWS_MINUTES) {
+  if (!minutes) return null;
+  const step = minutes * 60_000, at = Math.floor(now / step) * step + step;
+  return { id: 'news', at, day: indiaDay(at).day };
+}
 const IST = 330 * 60_000;
 // variables that would silently override .env if inherited from the parent process
 const OVERRIDES = ['MAX_ORDER_PAISE', 'MAX_EXPOSURE_PAISE', 'MAX_REALISED_LOSS_PAISE', 'PRINCIPALS_JSON', 'DATABASE_PATH', 'API_URL'];
@@ -88,12 +105,15 @@ export async function heartbeat(root = ROOT, now = Date.now()) {
 
 /** The commands for a job, given whether the backend and the model answered, and which model (if any) the supervisor may
  *  start itself (MODEL_AUTOSTART). Pure, so it is tested. */
-export function commands(job, { backendUp, modelUp, modelAuto = null }) {
+export function commands(job, { backendUp, modelUp, modelAuto = null, feeds = [] }) {
   const npm = s => ({ cmd: process.platform === 'win32' ? 'npm.cmd' : 'npm', args: ['run', ...s] });
   // the backend is started directly (no shell), so the supervisor holds its real process and can stop exactly it
   const start = backendUp ? [] : [{ cmd: process.execPath, args: ['--env-file=.env', join('backend', 'dist', 'src', 'main.js')], background: true, id: 'start-backend' }];
   const stop = backendUp ? [] : [{ id: 'stop-backend', stop: true }];
   if (job === 'readiness') return [...start, { ...npm(['readiness']), id: 'readiness' }, ...stop];
+  // news is submitted as evidence, so the backend must be up; with no enabled feed there is nothing to start
+  if (job === 'news') return feeds.length ? [...start, ...feeds.map(f => ({ ...feedCommand(f, ROOT), id: 'news-' + f.slice(5, -5) })), ...stop]
+    : [{ id: 'news', skip: 'no feed is enabled (.local/feed-*.json with "enabled": true)' }];
   if (job === 'cycle') {
     // the model is started for the cycle only when the owner named one to start, and stopped again afterwards
     const startModel = !modelUp && modelAuto ? [{ cmd: process.execPath, args: ['--env-file=.env', join('scripts', 'local-model.mjs'), 'serve', modelAuto],
@@ -105,7 +125,7 @@ export function commands(job, { backendUp, modelUp, modelAuto = null }) {
   // a backup needs the database closed; a backend someone else started is never stopped by the supervisor
   if (job === 'backup') return backendUp ? [{ id: 'backup', skip: 'the backend is running and was not started by the supervisor; stop it to let the weekly backup run' }]
     : [{ ...npm(['backup', '--', 'create']), id: 'backup' }];
-  throw new Error(`Unknown job "${job}" (readiness, cycle, backup)`);
+  throw new Error(`Unknown job "${job}" (readiness, cycle, backup, news)`);
 }
 
 /** The environment for a child: the parent's, minus anything that would override .env. */
@@ -179,7 +199,8 @@ export async function runJob(job, env = process.env) {
   const modelUp = !!health && await reachable(health);
   const modelAuto = health && /^[A-Za-z0-9._-]{1,80}$/.test(env.MODEL_AUTOSTART ?? '') ? env.MODEL_AUTOSTART : null;
   let started = null, model = null, ok = true;
-  for (const step of commands(job, { backendUp, modelUp, modelAuto })) {
+  const feeds = job === 'news' ? await enabledFeeds(ROOT) : [];
+  for (const step of commands(job, { backendUp, modelUp, modelAuto, feeds })) {
     if (step.skip) { await log({ job, step: step.id, ok: true, skipped: step.skip }); continue; }
     if (step.model) {
       model = await startModel(step, childEnv(env));
@@ -210,7 +231,8 @@ export async function runJob(job, env = process.env) {
       continue;
     }
     await log({ job, step: step.id, ok: r.code === 0, exitCode: r.code, tail: r.tail });
-    if (r.code !== 0 && step.id !== 'readiness' && step.id !== 'cycle') { ok = false; break; } // a NO-GO or a failed step is logged, not fatal
+    // a NO-GO, a failed cycle step or one feed failing is logged, not fatal (the other feeds still poll)
+    if (r.code !== 0 && step.id !== 'readiness' && step.id !== 'cycle' && !step.id.startsWith('news-')) { ok = false; break; }
     if (r.code !== 0) ok = false;
   }
   // a model this job started is never left running, whatever happened in between
@@ -245,10 +267,12 @@ async function main() {
       await log({ job: 'supervisor', step: 'catch-up', next: job });
       await guarded(job);
     }
-    const [next] = nextRuns(Date.now(), hol);
+    // the next daily job, unless a news poll comes first (a daily job is never skipped for news: news only fills the gaps)
+    const [daily] = nextRuns(Date.now(), hol), news = nextNews(Date.now(), newsMinutes());
+    const next = news && news.at < daily.at ? news : daily;
     Object.assign(state, { next: next.id, nextAt: new Date(next.at).toISOString() });
     await beat();
-    await log({ job: 'supervisor', step: 'waiting', next: next.id, at: new Date(next.at).toISOString() });
+    if (next.id !== 'news') await log({ job: 'supervisor', step: 'waiting', next: next.id, at: new Date(next.at).toISOString() });
     while (Date.now() < next.at) await new Promise(r => setTimeout(r, Math.min(60_000, next.at - Date.now())));
     await guarded(next.id);
   }

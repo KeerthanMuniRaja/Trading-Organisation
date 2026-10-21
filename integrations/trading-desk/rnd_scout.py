@@ -89,6 +89,10 @@ def catalogue():
     out['equal-weight-distribution'] = ('Equal weights while distribution-day risk is normal or cautious, else cash', 'trend-allocation',
                                         'equal-weight-distribution-days',
                                         lambda t, d, i: pd.equal_weight(t, d, i) if market_regime.calm(t, d, i) else {}, None)
+    # added 21 Oct 2026: the regime's way back in (follow-through day, from claude-trading-skills, MIT)
+    out['equal-weight-distribution-ftd'] = ('Equal weights while distribution-day risk is normal or cautious, or once a follow-through day '
+                                            'has confirmed a new uptrend; else cash', 'trend-allocation', 'equal-weight-distribution-ftd',
+                                            lambda t, d, i: pd.equal_weight(t, d, i) if market_regime.calm_or_followed_through(t, d, i) else {}, None)
     return out
 
 
@@ -99,7 +103,9 @@ ADOPTED_SPECS = {'trend-template-25pct-top3': {'family': 'trend-template', 'near
                  'combo-6m-60d-top3': {'family': 'combo', 'months': 6, 'window': 60, 'keep': 3},
                  # added 21 Oct 2026: the live bot's own rule, traded less often (less cost, tax deferred to the long-term rate)
                  'momentum-6m-top3-quarterly': {'family': 'momentum', 'months': 6, 'keep': 3, 'rebalance': 3},
-                 'momentum-6m-top3-yearly': {'family': 'momentum', 'months': 6, 'keep': 3, 'rebalance': 12}}
+                 'momentum-6m-top3-yearly': {'family': 'momentum', 'months': 6, 'keep': 3, 'rebalance': 12},
+                 # added 21 Oct 2026: the distribution filter with the follow-through re-entry
+                 'momentum-6m-top3-distribution-ftd': {'family': 'momentum', 'months': 6, 'keep': 3, 'filter': 'distribution-ftd'}}
 # The catalogue ideas the idea grammar can express, so an invented duplicate of one is refused (RND-03)
 CATALOGUE_SPECS = {**{f'momentum-{m}m-top{k}': {'family': 'momentum', 'months': m, 'keep': k} for m in (3, 6, 12) for k in (2, 3, 4)},
                    'low-volatility-top3': {'family': 'low-vol', 'window': 60, 'keep': 3}, 'reversal-1m-bottom3': {'family': 'reversal', 'days': 21, 'keep': 3},
@@ -124,7 +130,7 @@ def fingerprint(ledger_path=None):
     parts = [VERSION, str(ONE_WAY_COST_PCT), str(ALPHA), str(MIN_MONTHS), str(START), inspect.getsource(catalogue), json.dumps(ADOPTED_SPECS, sort_keys=True)]
     # the families' builders and the regime are part of what the adopted ideas do
     parts += [inspect.getsource(f) for f in (rnd_ideas._trend_template, rnd_ideas._pullback, rnd_ideas.rsi, rnd_ideas._combo, rnd_ideas._every, market_regime.distribution_days,
-                                             market_regime.basket, market_regime.calm)]
+                                             market_regime.basket, market_regime.calm, market_regime.follow_through, market_regime.calm_or_followed_through)]
     parts += [inspect.getsource(f) for f in (pd.top_momentum, pd.inverse_volatility, pd.trend_filtered, low_volatility, reversal)]
     # the invented ideas are part of what was tried: the grammar's code and every idea in the ledger
     parts += [inspect.getsource(rnd_ideas.rule_of), *sorted(i['hash'] for i in rnd_ideas.ledger(ledger_path or rnd_ideas.LEDGER))]

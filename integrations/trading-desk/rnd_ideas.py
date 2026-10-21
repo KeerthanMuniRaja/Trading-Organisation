@@ -16,8 +16,9 @@ Families (all monthly, long-only, equal weight over the chosen shares, the desk'
                200-day rising over a month) within `nearHighPct`% of their 52-week high, the `keep` strongest over 6 months
   pullback     shares above their 200-day average whose 14-day RSI is at most `rsiMax`, the `keep` most oversold
                (a dip in an uptrend; adapted from the dividend-growth pullback screener)
-  Filters: `trend-200d` (cash when the universe is below its 200-day average) or `distribution-days` (cash when the
-  market regime's distribution-day risk is HIGH or SEVERE; market_regime.py).
+  Filters: `trend-200d` (cash when the universe is below its 200-day average), `distribution-days` (cash when the
+  market regime's distribution-day risk is HIGH or SEVERE; market_regime.py) or `distribution-ftd` (the same, but back in
+  once a follow-through day has confirmed a new uptrend; adapted from claude-trading-skills' FTD method, MIT).
   Every family may set `rebalance` to 3, 6 or 12 months (default monthly): the decision is taken at the start of each
   quarter, half-year or year and held, so it trades less, pays less cost and defers tax to the long-term rate.
   combo        the `keep` best shares on three equal ranks: `months` momentum, `window`-day calm (low volatility) and
@@ -51,12 +52,12 @@ GRAMMAR = {
     'pullback': {'rsiMax': (20, 50), 'keep': (1, 5)},
     'combo': {'months': (3, 12), 'window': (20, 120), 'keep': (1, 5)},
 }
-FILTERS = (None, 'trend-200d', 'distribution-days')
+FILTERS = (None, 'trend-200d', 'distribution-days', 'distribution-ftd')
 REBALANCE = (1, 3, 6, 12)   # months between rebalances; slower trading pays less cost and less short-term tax
 REBALANCE_SUFFIX = {3: '-q', 6: '-h', 12: '-y'}
 SPECIALTY = {'momentum': 'momentum-allocation', 'low-vol': 'risk-allocation', 'reversal': 'reversal-allocation',
              'trend-template': 'trend-allocation', 'pullback': 'pullback-allocation', 'combo': 'multi-factor-allocation'}
-SUFFIX = {'trend-200d': '-trend', 'distribution-days': '-dd'}
+SUFFIX = {'trend-200d': '-trend', 'distribution-days': '-dd', 'distribution-ftd': '-ddftd'}
 
 
 def canonical(spec):
@@ -109,7 +110,8 @@ def describe(spec):
             'combo': (f"The {s.get('keep')} best shares on three equal ranks: {s.get('months')}-month momentum, {s.get('window')}-day calm "
                       f"(low volatility) and consistency (share of rising months in the last year)")}[s['family']]
     tail = {'trend-200d': ', in cash while the universe is below its 200-day average',
-            'distribution-days': ', in cash while distribution-day risk is high'}.get(s.get('filter'), '')
+            'distribution-days': ', in cash while distribution-day risk is high',
+            'distribution-ftd': ', in cash while distribution-day risk is high unless a follow-through day has confirmed a new uptrend'}.get(s.get('filter'), '')
     every = s.get('rebalance', 1)
     return text + ', equal weights, ' + ('monthly' if every == 1 else f'rebalanced every {every} months') + tail
 
@@ -228,6 +230,9 @@ def rule_of(spec):
     elif s['filter'] == 'distribution-days':
         import market_regime
         rule = lambda t, d, i: base(t, d, i) if market_regime.calm(t, d, i) else {}  # noqa: E731
+    elif s['filter'] == 'distribution-ftd':
+        import market_regime
+        rule = lambda t, d, i: base(t, d, i) if market_regime.calm_or_followed_through(t, d, i) else {}  # noqa: E731
     else:
         rule = lambda t, d, i: base(t, d, i) if pd.trend_filtered(t, d, i) else {}  # noqa: E731
     # the whole decision, filter included, is taken only at a rebalance month and held until the next

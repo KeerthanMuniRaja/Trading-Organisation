@@ -63,8 +63,8 @@ class ScoutTests(unittest.TestCase):
             new = [o for o in added if o['outcome'] == 'added']
             self.assertEqual(len(new), 3)  # bounded per month
             report = rs.scout(cache=self.cache, ledger_path=ledger)
-            self.assertEqual(report['ideasTried'], 23)
-            self.assertAlmostEqual(report['bonferroniThreshold'], 0.05 / 23, places=6)
+            self.assertEqual(report['ideasTried'], 25)
+            self.assertAlmostEqual(report['bonferroniThreshold'], 0.05 / 25, places=6)
             invented = [c for c in report['candidates'] if c['source'] == 'ledger:explorer']
             self.assertEqual(sorted(c['name'] for c in invented), sorted(o['name'] for o in new))
             self.assertNotEqual(report['fingerprint'], self.report['fingerprint'])  # what was tried is part of the identity
@@ -78,8 +78,8 @@ class ScoutTests(unittest.TestCase):
 
     def test_every_idea_is_reported_and_only_robust_skill_passes(self):
         r = self.report
-        self.assertEqual((r['ideasTried'], len(r['candidates'])), (20, 20))  # losers stay visible
-        self.assertAlmostEqual(r['bonferroniThreshold'], 0.05 / 20, places=6)
+        self.assertEqual((r['ideasTried'], len(r['candidates'])), (22, 22))  # losers stay visible
+        self.assertAlmostEqual(r['bonferroniThreshold'], 0.05 / 22, places=6)
         passing = {c['name'] for c in r['candidates'] if c['passes']}
         self.assertIn('momentum-6m-top2', passing)
         for c in r['candidates']:

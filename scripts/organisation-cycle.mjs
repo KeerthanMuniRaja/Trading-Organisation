@@ -18,12 +18,23 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PY = process.env.CYCLE_PYTHON || join(ROOT, '.local', 'replay-venv', ...(process.platform === 'win32' ? ['Scripts', 'python.exe'] : ['bin', 'python']));
 const NODE = process.execPath;
 
-export async function planSteps({ withModel = false, root = ROOT } = {}) {
+/** The feed configurations the owner explicitly enabled (.local/feed-<name>.json with enabled: true), by file name. */
+export async function enabledFeeds(root = ROOT) {
   const candidates = existsSync(join(root, '.local')) ? (await readdir(join(root, '.local'))).filter(n => /^feed-[a-z0-9-]+\.json$/.test(n)).sort() : [];
   const feeds = [];
   for (const name of candidates) { // only configurations the owner explicitly enabled; fixtures and drafts are ignored
     try { if (JSON.parse(await readFile(join(root, '.local', name), 'utf8')).enabled === true) feeds.push(name); } catch { /* not a feed config */ }
   }
+  return feeds;
+}
+
+/** The command that polls one enabled feed once (its own poll interval and back-off are respected inside). */
+export function feedCommand(name, root = ROOT) {
+  return { cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'run-feed-cycle.mjs'), 'run', join('.local', name), join('.local', 'feeds', name.slice(5, -5))] };
+}
+
+export async function planSteps({ withModel = false, root = ROOT } = {}) {
+  const feeds = await enabledFeeds(root);
   const desk = p => join(root, 'integrations', 'trading-desk', p);
   const steps = [
     { id: 'backend-health', critical: true, kind: 'http', path: '/v1/health' },
@@ -32,8 +43,7 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     // study of how the regime and later falls went together (no model, no network, changes no limit)
     { id: 'market-regime', cmd: PY, args: [desk('market_regime.py'), 'now'], timeoutMs: 120_000 },
     { id: 'regime-study', cmd: PY, args: [desk('market_regime.py'), 'study'], timeoutMs: 300_000 },
-    ...feeds.map(f => ({ id: 'news-' + f.slice(5, -5), cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'run-feed-cycle.mjs'), 'run',
-      join('.local', f), join('.local', 'feeds', f.slice(5, -5))], timeoutMs: 120_000, okCodes: [0], retries: 2, verify: verifyFeed })),
+    ...feeds.map(f => ({ id: 'news-' + f.slice(5, -5), ...feedCommand(f, root), timeoutMs: 120_000, okCodes: [0], retries: 2, verify: verifyFeed })),
     // KNOW-02: fixed backend rules set aside news about nothing the organisation tracks, before anyone reviews it
     { id: 'news-triage', kind: 'http', method: 'POST', path: '/v1/evidence/triage', role: 'evaluator', freshKey: true },
     // NEWS-02: the collected items of every country grouped into stories and linked to the shares (no network, no model)

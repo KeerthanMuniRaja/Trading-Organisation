@@ -87,6 +87,47 @@ class RegimeV2Tests(unittest.TestCase):
         self.assertEqual(set(v2['levels']), {'NORMAL', 'CAUTION', 'HIGH', 'SEVERE'})
 
 
+class FollowThroughTests(unittest.TestCase):
+    # an uptrend, a 5-day correction of about 5%, then a rally attempt
+    BASE = [0.1] * 250 + [-1.0] * 5
+
+    def test_a_strong_up_day_on_higher_volume_in_days_4_to_10_confirms_a_new_uptrend(self):
+        moves = self.BASE + [0.3, 0.2, 0.1, 2.0]           # day 1, 2, 3, then day 4: +2% ...
+        volumes = [1000] * (len(moves) - 1) + [2000]         # ... on higher traded value
+        dates, table = market(moves, volumes)
+        f = mr.follow_through(table, dates, len(dates) - 1)
+        self.assertEqual((f['state'], f['ftdDate'], f['lowDate']), ('confirmed', dates[-1], dates[255]))
+        self.assertEqual(mr.follow_through(table, dates, len(dates) - 2)['state'], 'rally')  # day 3: still an attempt
+        self.assertEqual(mr.follow_through(table, dates, len(dates) - 2)['rallyDay'], 3)
+
+    def test_too_early_too_weak_or_on_lower_volume_is_not_a_follow_through(self):
+        early = market(self.BASE + [2.0], [1000] * 255 + [2000])                       # day 1 is never the follow-through
+        weak = market(self.BASE + [0.3, 0.2, 0.1, 1.0], [1000] * 258 + [2000])         # +1% is below 1.25%
+        quiet = market(self.BASE + [0.3, 0.2, 0.1, 2.0], [1000] * 258 + [500])         # lower traded value
+        for dates, table in (early, weak, quiet):
+            self.assertNotEqual(mr.follow_through(table, dates, len(dates) - 1)['state'], 'confirmed')
+
+    def test_closing_below_the_rally_low_fails_it_and_the_confirmation_expires(self):
+        moves = self.BASE + [0.3, 0.2, 0.1, 2.0] + [-3.0, -3.0]   # the rally gives way below its low
+        dates, table = market(moves, [1000] * 258 + [2000, 1000, 1000])
+        self.assertEqual(mr.follow_through(table, dates, len(dates) - 1)['state'], 'correction')
+        held = market(self.BASE + [0.3, 0.2, 0.1, 2.0] + [0.05] * (mr.FTD_VALID + 2), [1000] * 258 + [2000] + [1000] * (mr.FTD_VALID + 2))
+        self.assertEqual(mr.follow_through(held[1], held[0], 259 + mr.FTD_VALID - 2)['state'], 'confirmed')
+        self.assertEqual(mr.follow_through(held[1], held[0], len(held[0]) - 1)['state'], 'none')  # an old confirmation is just the normal state
+
+    def test_the_filter_gets_back_in_under_stress_once_a_follow_through_confirms(self):
+        from unittest import mock
+        dates, table = market(self.BASE + [0.3, 0.2, 0.1, 2.0], [1000] * 258 + [2000])
+        with mock.patch.object(mr, 'calm', return_value=False):   # distribution risk HIGH or SEVERE
+            self.assertTrue(mr.calm_or_followed_through(table, dates, len(dates) - 1))
+            self.assertFalse(mr.calm_or_followed_through(table, dates, len(dates) - 2))
+        spec = {'family': 'momentum', 'months': 6, 'keep': 3, 'filter': 'distribution-ftd'}
+        self.assertEqual(rnd_ideas.canonical(spec), spec)
+        self.assertEqual(rnd_ideas.name_of(spec), 'idea-momentum-6m-top3-ddftd')
+        self.assertIn('follow-through day', rnd_ideas.describe(spec))
+        self.assertIn('followThrough', mr.regime(table, dates, len(dates) - 1))
+
+
 class AdoptedFamilyTests(unittest.TestCase):
     def test_the_new_families_are_valid_ideas_with_bounds(self):
         for spec in ({'family': 'trend-template', 'nearHighPct': 25, 'keep': 3}, {'family': 'pullback', 'rsiMax': 40, 'keep': 3},
