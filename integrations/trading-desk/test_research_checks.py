@@ -80,7 +80,12 @@ class StatsTests(unittest.TestCase):
         steady = [0.3 + (0.5 if k % 2 else -0.5) for k in range(100)]   # +0.3% a month, little noise
         noisy = [0.3 + (3.0 if k % 2 else -3.0) for k in range(100)]    # +0.3% a month, 3% noise
         quick, slow = rc.months_to_prove(steady, 0.0029), rc.months_to_prove(noisy, 0.0029)
-        self.assertLess(quick, 50)
+        self.assertLess(quick, 80)
+        # the scout judges with a sign test, which needs about pi/2 times the months of a t-test
+        import math, statistics
+        mean, sd = statistics.fmean(steady), statistics.stdev(steady)
+        z = statistics.NormalDist().inv_cdf(1 - 0.0029) + statistics.NormalDist().inv_cdf(0.8)
+        self.assertEqual(quick, math.ceil((z * sd / mean) ** 2 * math.pi / 2))
         self.assertGreater(slow, 500)  # the honest arithmetic: a small edge in a noisy record takes decades to prove
         self.assertIsNone(rc.months_to_prove([-0.1, 0.1, -0.2], 0.0029))
 
@@ -160,7 +165,11 @@ class ScoutIntegrationTests(unittest.TestCase):
             import rnd_ideas
             real, rnd_ideas.LEDGER = rnd_ideas.LEDGER, cache / 'none.jsonl'
             try:
-                r = rs.scout(cache=cache, randoms=20)
+                samples, rs.BOOTSTRAP_SAMPLES = rs.BOOTSTRAP_SAMPLES, 300
+                try:
+                    r = rs.scout(cache=cache, randoms=20)
+                finally:
+                    rs.BOOTSTRAP_SAMPLES = samples
             finally:
                 rnd_ideas.LEDGER = real
             self.assertEqual(r['randomBaseline']['rules'], 20)

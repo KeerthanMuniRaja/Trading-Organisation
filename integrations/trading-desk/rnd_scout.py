@@ -140,24 +140,38 @@ def sign_p(ahead, behind):
 
 
 def monthly(table, dates, rules, through=None):
-    """Per month: the basket's gross return and each rule's return net of turnover cost (percent)."""
+    """Per month: the basket's gross return and each rule's return net of turnover cost (percent).
+    Timing (fixed 21 Oct 2026 after the backtesting.py/vectorbt review): a decision uses the month's first session, close
+    included, so it trades at the NEXT session's open and is held to the open after the next month's first session, as the
+    paper engine fills. Costs: turnover is measured against the holdings as they DRIFTED over the month, so rebalancing
+    back to unchanged targets costs what it really would; a rule that rebalances only every few months (rnd_ideas._every,
+    marked holdsBetween) does not trade while its decision is unchanged and lets its positions drift."""
     starts = [i for i in range(START, len(dates)) if dates[i][:7] != dates[i - 1][:7]]
-    rows, held = [], {name: {} for name in rules}
+    rows, held, previous = [], {name: {} for name in rules}, {name: None for name in rules}
     for a, b in zip(starts, starts[1:]):
-        ret = {s: table[s][dates[b]]['closePaise'] / table[s][dates[a]]['closePaise'] - 1 for s in table}
+        if b + 1 >= len(dates):
+            break
+        enter, leave = dates[a + 1], dates[b + 1]
+        ret = {s: table[s][leave]['openPaise'] / table[s][enter]['openPaise'] - 1 for s in table}
         row = {'month': dates[a][:7], 'basketPct': 100 * sum(ret.values()) / len(ret), 'rules': {}, 'cash': {}, 'turnover': {}}
         for name, rule in rules.items():
-            weights = rule(table, dates, a)
-            turnover = sum(abs(weights.get(s, 0) - held[name].get(s, 0)) for s in table)
-            held[name] = weights
+            target = rule(table, dates, a)
+            holds = getattr(rule, 'holdsBetween', False) and target == previous[name]
+            weights = held[name] if holds else target
+            turnover = 0.0 if holds else sum(abs(target.get(s, 0) - held[name].get(s, 0)) for s in table)
             row['rules'][name] = 100 * sum(w * ret[s] for s, w in weights.items()) - ONE_WAY_COST_PCT * turnover
             row['cash'][name] = max(0.0, 1 - sum(weights.values()))  # the uninvested share, which earns nothing here
             row['turnover'][name] = turnover
+            # the holdings drift with the month's returns until the next decision
+            value = sum(w * (1 + ret[s]) for s, w in weights.items()) + row['cash'][name]
+            held[name] = {s: w * (1 + ret[s]) / value for s, w in weights.items() if w} if value > 0 else {}
+            previous[name] = target
         rows.append(row)
     return [r for r in rows if through is None or r['month'] <= through]
 
 
 RANDOM_RULES = 100   # random pickers of 3 shares a month: the baseline an edge has to beat (vectorbt)
+BOOTSTRAP_SAMPLES = 5000  # risk-lens resamples; the pass rule also adds the p-value's own sampling error
 CASH_YIELD_PCT = 6.0  # ASSUMED yearly yield on uninvested cash for the risk lens only (a liquid fund or T-bill; not sourced data)
 
 
@@ -207,21 +221,23 @@ def scout(through=None, cache=daily.DAILY, ledger_path=None, universe='desk', ra
         average = sum(excess) / len(excess)
         rule_pct, basket_pct, cash = [r['rules'][name] for r in rows], [r['basketPct'] for r in rows], [r['cash'][name] for r in rows]
         mine, basket_stats = rc.stats(rule_pct, excess), rc.stats(basket_pct, [0.0] * len(rows))
-        sharpe = rc.sharpe_test(rule_pct, basket_pct)
+        sharpe = rc.sharpe_test(rule_pct, basket_pct, samples=BOOTSTRAP_SAMPLES)
         at_yield = rc.stats(rc.with_cash_yield(rule_pct, cash, CASH_YIELD_PCT), excess)
         # RISK LENS (report only; the owner decides whether it may ever pass an idea): a better Sharpe than the basket at
         # the same Bonferroni bar, and a smaller worst fall
         risk_lens = {'sharpeTest': sharpe, 'worstFallPct': mine['maxDrawdownPct'], 'basketWorstFallPct': basket_stats['maxDrawdownPct'],
                      'averageCashPct': round(100 * statistics.fmean(cash), 1),
                      'atAssumedCashYield': {'yieldPct': CASH_YIELD_PCT, 'cagrPct': at_yield['cagrPct'], 'sharpe': at_yield['sharpe']},
-                     'wouldPassRiskBar': bool(sharpe and sharpe['p'] < threshold and mine['maxDrawdownPct'] > basket_stats['maxDrawdownPct'])}
+                     # the bootstrap's own sampling error must not be what carries an idea over the bar
+                     'wouldPassRiskBar': bool(sharpe and sharpe['pUpper'] < threshold and mine['maxDrawdownPct'] > basket_stats['maxDrawdownPct'])}
         # PROOF AND REAL COST: how long a record like this would take to prove at the bar, how much it trades, and what
         # it would keep after an approximate capital-gains tax
         turns = [r['turnover'][name] for r in rows]
         needed = rc.months_to_prove(excess, threshold)
         proof = {'monthsToProve': needed, 'yearsToProve': round(needed / 12, 1) if needed else None,
                  'turnoverPctPerMonth': round(100 * statistics.fmean(turns[1:] or turns), 1),
-                 'afterTaxCagrPct': rc.after_tax_cagr(rule_pct, turns, long_term_sales=(spec or {}).get('rebalance', 1) >= 12)}
+                 # the first month's turnover is the initial purchase, not a sale (fixed 21 Oct 2026)
+                 'afterTaxCagrPct': rc.after_tax_cagr(rule_pct, [0.0] + turns[1:], long_term_sales=(spec or {}).get('rebalance', 1) >= 12)}
         out.append({'name': name, 'description': description, 'specialty': specialty, 'method': method, 'alreadyServedBy': served,
                     'months': len(rows), 'ahead': ahead, 'behind': behind, 'averageExcessPct': round(average, 3),
                     'pValue': round(p, 6), 'halves': halves, 'passes': not reasons, 'reasons': reasons, 'spec': spec, 'source': source,

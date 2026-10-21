@@ -49,6 +49,14 @@ daily 5-year refresh would be rejected by the data steward as shrunk history.
 
 ### The 10-year result (20 October 2026)
 
+> **Re-run 21 Oct 2026 with the corrected scout:** decisions enter at the next open, turnover counts drift, and proof time
+> uses the sign test ([research notes](research-notes/README.md)).
+> - **Momentum 6m top 3:** ahead in 59 months and behind in 46, −0.01% a month, p 0.14.
+> - **Walk-forward:** 31/39, −0.12% a month.
+> - **Nothing passes** (20 ideas, bar 0.0025).
+>
+> The table below is the original 20 Oct run.
+
 The owner approved the download. The data steward held back two real moves until the owner confirmed them: Axis Bank
 −27.9% on 23 Mar 2020 (the COVID crash) and SBI +27.7% on 25 Oct 2017 (the bank recapitalisation). With both confirmed,
 the scout judged **106 months**, 2017-12 to 2026-09. **No idea passes.**

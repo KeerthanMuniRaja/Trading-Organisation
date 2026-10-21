@@ -1,8 +1,12 @@
 """Market regime (REGIME-01): is the market of our eight shares healthy, under pressure or breaking down?
 
-Methods adapted from claude-trading-skills (MIT, github.com/tradermonty/claude-trading-skills): the IBD distribution-day
-monitor, the breadth and uptrend analysers and the exposure coach. Our version is model-free and runs on the desk's own
-daily data for its eight NSE shares, treated as one equal-weight basket (there is no index feed):
+Inspired by claude-trading-skills (MIT, github.com/tradermonty/claude-trading-skills), mainly its IBD distribution-day
+monitor. Our version is a SIMPLER VARIANT, not their specification (their source was read on 21 Oct 2026, see
+docs/research-notes/trading-skills-finance-plugins-a-stock-data.md): they call SEVERE at 6 days and also escalate on
+5- and 15-session clusters, count stalling days and use index volume; our exposure table equals their table for a 3x
+leveraged ETF, and the trend and breadth deductions below are our own design, as is the "breadth" of eight shares (a
+concentration measure, not market breadth). It is model-free and runs on the desk's own daily data for its eight NSE
+shares, treated as one equal-weight basket (there is no index feed):
   - distribution day: the basket falls at least 0.2% on higher volume than the day before (the shares' average volume
     ratio above 1). It counts for 25 sessions, unless the basket later closes 5% above that day's close;
   - risk: NORMAL (0-2 active distribution days), CAUTION (3-4), HIGH (5-6), SEVERE (7 or more);

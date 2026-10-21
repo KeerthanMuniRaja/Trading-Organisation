@@ -43,6 +43,7 @@ class ScoutTests(unittest.TestCase):
         cls.cache = Path(cls.tmp.name)
         import rnd_ideas
         cls.real_ledger, rnd_ideas.LEDGER = rnd_ideas.LEDGER, Path(cls.tmp.name) / 'no-ideas-yet.jsonl'  # never the owner's ledger
+        cls.real_samples, rs.BOOTSTRAP_SAMPLES = rs.BOOTSTRAP_SAMPLES, 300  # the risk lens's resolution is not what these tests check
         for k, symbol in enumerate(SYMBOLS):  # two persistent winners: momentum should find them, month after month
             drift = 0.004 if k < 2 else 0.0
             (cls.cache / f'{symbol}-1d.json').write_text(json.dumps(synthetic_daily(symbol, drift=drift, seed=11 + k)), encoding='utf-8')
@@ -52,6 +53,7 @@ class ScoutTests(unittest.TestCase):
     def tearDownClass(cls):
         import rnd_ideas
         rnd_ideas.LEDGER = cls.real_ledger
+        rs.BOOTSTRAP_SAMPLES = cls.real_samples
         cls.tmp.cleanup()
 
     def test_invented_ideas_are_tested_too_and_raise_the_bar_for_every_idea(self):
@@ -93,7 +95,23 @@ class ScoutTests(unittest.TestCase):
         rows = rs.monthly(table, dates, {'equal': lambda t, d, i: {s: 1 / 8 for s in t}})
         first, later = rows[0], rows[1]
         self.assertAlmostEqual(first['rules']['equal'], first['basketPct'] - rs.ONE_WAY_COST_PCT, places=6)  # buying in costs once
-        self.assertAlmostEqual(later['rules']['equal'], later['basketPct'], places=6)  # holding the same weights costs nothing
+        # rebalancing back to equal weights after the month's drift costs what it really would: a little, never nothing
+        self.assertGreater(later['turnover']['equal'], 0)
+        self.assertLess(later['turnover']['equal'], 0.2)
+        self.assertAlmostEqual(later['rules']['equal'], later['basketPct'] - rs.ONE_WAY_COST_PCT * later['turnover']['equal'], places=6)
+
+    def test_decisions_trade_at_the_next_open_and_a_yearly_rule_holds_without_trading(self):
+        import rnd_ideas
+        dates, table = rs.pd.aligned(daily.load(SYMBOLS, self.cache))
+        rows = rs.monthly(table, dates, {'one': lambda t, d, i: {SYMBOLS[0]: 1.0}})
+        a = next(i for i in range(rs.START, len(dates)) if dates[i][:7] != dates[i - 1][:7])
+        b = next(i for i in range(a + 1, len(dates)) if dates[i][:7] != dates[i - 1][:7])
+        expected = 100 * (table[SYMBOLS[0]][dates[b + 1]]['openPaise'] / table[SYMBOLS[0]][dates[a + 1]]['openPaise'] - 1) - rs.ONE_WAY_COST_PCT
+        self.assertAlmostEqual(rows[0]['rules']['one'], expected, places=6)  # entered at the open after the decision
+        yearly = rnd_ideas.rule_of({'family': 'momentum', 'months': 6, 'keep': 3, 'rebalance': 12})
+        held = rs.monthly(table, dates, {'yearly': yearly})
+        trades = sum(r['turnover']['yearly'] > 0 for r in held)
+        self.assertLessEqual(trades, len(held) // 12 + 1)  # no monthly rebalancing of drift between yearly decisions
 
     def test_a_result_is_reproducible_for_the_months_it_names(self):
         again = rs.scout(self.report['through'], cache=self.cache)

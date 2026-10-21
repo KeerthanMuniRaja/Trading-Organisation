@@ -138,7 +138,7 @@ def _sharpe(xs):
     return mean / math.sqrt(var) if var > 0 else 0.0
 
 
-def sharpe_test(rule_pct, basket_pct, samples=1000, block=6, seed=0):
+def sharpe_test(rule_pct, basket_pct, samples=5000, block=6, seed=0):
     """Risk lens: is the rule's Sharpe really above the basket's? A circular block bootstrap of the paired monthly returns
     (blocks keep runs of months together). Returns the observed difference (annualised) and how often it stays above 0."""
     n = len(rule_pct)
@@ -155,7 +155,11 @@ def sharpe_test(rule_pct, basket_pct, samples=1000, block=6, seed=0):
         idx = idx[:n]
         if _sharpe([rule_pct[i] for i in idx]) > _sharpe([basket_pct[i] for i in idx]):
             above += 1
-    return {'sharpeDifference': round(observed, 3), 'probabilityBetter': round(above / samples, 3), 'p': round(1 - above / samples, 4)}
+    p = 1 - above / samples
+    # the p-value is itself an estimate: its Monte-Carlo error decides whether it is clearly below a strict bar
+    error = math.sqrt(max(p, 1 / samples) * (1 - p) / samples)
+    return {'sharpeDifference': round(observed, 3), 'probabilityBetter': round(above / samples, 4), 'p': round(p, 5),
+            'pUpper': round(min(1.0, p + 2 * error), 5), 'samples': samples}
 
 
 def with_cash_yield(rule_pct, cash_share, yearly_pct):
@@ -163,9 +167,14 @@ def with_cash_yield(rule_pct, cash_share, yearly_pct):
     return [r + c * yearly_pct / 12 for r, c in zip(rule_pct, cash_share)]
 
 
+SIGN_TEST_EFFICIENCY = 2 / math.pi  # the sign test needs about pi/2 = 1.57 times the months of a t-test (normal returns)
+
+
 def months_to_prove(excess_pct, alpha, power=0.8):
-    """How many months of this record it would take to prove the edge at `alpha` (one-sided) with `power`: the normal
-    approximation n = ((z_alpha + z_power) * sd / mean)^2 on the monthly excess. None when there is no edge to prove."""
+    """How many months of this record it would take to prove the edge at `alpha` (one-sided) with `power`, by the scout's
+    own test, the SIGN test: the t-test approximation n = ((z_alpha + z_power) * sd / mean)^2 on the monthly excess,
+    divided by the sign test's efficiency (2/pi under normal returns; corrected 21 Oct 2026 after the backtesting.py/
+    vectorbt review, which found the t-test form understated the wait). None when there is no edge to prove."""
     n = len(excess_pct)
     if n < 2:
         return None
@@ -174,7 +183,7 @@ def months_to_prove(excess_pct, alpha, power=0.8):
     if mean <= 0 or sd == 0:
         return None
     z = statistics.NormalDist().inv_cdf(1 - alpha) + statistics.NormalDist().inv_cdf(power)
-    return math.ceil((z * sd / mean) ** 2)
+    return math.ceil((z * sd / mean) ** 2 / SIGN_TEST_EFFICIENCY)
 
 
 STCG_PCT, LTCG_PCT = 20.0, 12.5   # Indian equity: short-term (held under a year) and long-term capital gains tax, from 23 Jul 2024

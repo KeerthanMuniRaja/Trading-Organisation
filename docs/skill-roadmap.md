@@ -1,5 +1,19 @@
 # Roadmap to proven skill (20 October 2026)
 
+> **Corrected 21 Oct 2026.** A review of backtesting.py and vectorbt's source found defects in our scout:
+> - decisions bought at their own close;
+> - drift was not costed;
+> - the first purchase was taxed as a sale;
+> - proof time used a t-test.
+>
+> All are fixed ([research notes](research-notes/README.md)), and the numbers below have been re-run:
+> - **Basket:** 12.55% after tax.
+> - **Momentum 6m top 3:** 9.8% monthly, 10.9% quarterly, **11.2% yearly**. The yearly version trails the basket and
+>   does not match it.
+> - **Best idea's proof time:** about 490 years.
+>
+> The conclusions stand.
+
 The owner asked how the organisation could come to make money **by skill**: beat holding the eight shares equally,
 after costs, by enough to be sure it is not luck. This page records the evidence, what was built, and the plan with the
 data it needs. Each data item needs the owner's approval.

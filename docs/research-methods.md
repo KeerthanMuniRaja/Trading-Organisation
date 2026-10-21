@@ -1,5 +1,13 @@
 # Research methods, knowledge base and problem playbook (RESEARCH-01, OPS-02)
 
+> **Corrected 21 Oct 2026.** After the source-code review ([research notes](research-notes/README.md)):
+> - the scout now enters at the next open, costs drift, excludes the first purchase from tax, uses the sign test's
+>   proof time, and uses a finer bootstrap;
+> - the figures in the method cards (`knowledge/methods.json`, version 2) are the corrected ones.
+>
+> Older figures on this page are from before the fix. What changed most: walk-forward is now −0.12% a month on the 8
+> shares, and reversal on NIFTY 50 has p 0.14.
+
 On 20 October 2026 the owner asked us to review five open-source trading frameworks and take what helps the agents decide,
 build solutions and handle problems. Their licences allow ideas but not copied code into this project, so everything below
 is our own code, with no new dependencies.

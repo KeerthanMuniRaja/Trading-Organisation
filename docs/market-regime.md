@@ -1,5 +1,17 @@
 # Market regime and the adopted trading-skill methods (REGIME-01)
 
+> **Corrected 21 Oct 2026, after reading claude-trading-skills' source** ([note](research-notes/trading-skills-finance-plugins-a-stock-data.md)).
+> Our methods are **simpler variants**, not their specifications:
+> - **distribution days:** SEVERE at 7 (theirs 6), with no cluster rules, no stalling days, and volume as the mean of
+>   the shares' ratios;
+> - **exposure table:** it equals their table for a 3x leveraged ETF, and our trend and breadth deductions are our own;
+> - **"exposure coach":** theirs is an 8-input composite with no 200-day filter;
+> - **trend template:** ours uses 4 of their 7 criteria;
+> - **pullback:** theirs is mostly a dividend-growth fundamentals screen.
+>
+> The negative results below test our variants, not their methods. A "regime v2" matching their full specification is
+> proposed in the gap analysis.
+
 On 20 October 2026 the owner asked to replicate a new Claude trading tool and train the system on it. We found two candidates:
 
 - **Anthropic's financial-services plugins** (Apache-2.0). They hold research skills such as the morning note, thesis tracker,

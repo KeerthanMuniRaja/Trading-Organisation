@@ -124,6 +124,7 @@ def _every(rule, months):
                 break
             j -= 1
         return rule(table, dates, j) if j > 0 else {}
+    held.holdsBetween = True  # the scout lets its positions drift instead of rebalancing them every month
     return held
 
 
@@ -147,7 +148,8 @@ def _trend_template(table, dates, i, near_high_pct, keep):
 
 
 def rsi(table, symbol, dates, i, window=14):
-    """Wilder's RSI over the last `window` changes (simple averages), or None without enough history."""
+    """RSI over the last `window` changes with simple averages (Cutler's form, not Wilder's smoothing), or None without
+    enough history."""
     c = pd.closes(table, symbol, dates, i, window + 1)
     if len(c) <= window:
         return None
