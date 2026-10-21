@@ -4,6 +4,8 @@ A private organisation of cooperating AI and rule-based bots that research, prop
 
 **Paper only.** All money, prices, orders and fills are simulated. `APP_MODE=live` is rejected, and no broker, bank or exchange is connected.
 
+**Founder: start with [founderReview.md](founderReview.md).** It holds the switch-on checklist and every decision waiting for you.
+
 **Live paper testing** started in October 2026: one rule bot trading with a ₹5,000 budget. The honest, code-checked status is the [audit of 14 October](docs/audit-2026-10-14.md), and day-by-day events are in the [project log](docs/project-log/README.md).
 
 ## How the organisation works
@@ -46,7 +48,7 @@ Every decision waiting on the owner (recommendations, new bots, departments, rel
 - **`momentum-rules`, the rule bot.** Model-free. Once a month it picks the top three shares by momentum, sells before it buys, and keeps its decision for the month. Release v2 is active with a ₹5,000 budget ([trade signals](docs/trade-signals.md#the-rule-bot-a-model-free-member)). On 10 years of history its rule is level with the basket after costs, so it is a paper experiment, not a proven edge ([R&D scout](docs/rnd-scout.md#the-10-year-result-20-october-2026)).
 - **Claim analyst and fact-checker.** The analyst drafts quote-backed news claims with the local model. The independent fact-checker verifies a claim only when two independent sources report the same figure for the same period, and withdraws it if a later report disagrees ([claims](integrations/claims/README.md), [evidence claims](docs/evidence-claims.md)).
 - **Model allocator.** Built and tested, not yet switched on. It needs the local model and its own forward test.
-- **R&D scout.** Every cycle it screens 17 strategy ideas on 10 years of history, against the basket, net of costs and corrected for the number of ideas tried. Every idea also faces lookahead and warm-up checks, full statistics, 100 random pickers and walk-forward validation. It proposes a new specialist only for an idea that passes; none does yet ([R&D scout](docs/rnd-scout.md), [research methods](docs/research-methods.md)). A NIFTY 50 research screen (never traded) widens the search.
+- **R&D scout.** Every cycle it screens 20 strategy ideas on 10 years of history, against the basket, net of costs and corrected for the number of ideas tried. Every idea also faces lookahead and warm-up checks, full statistics, 100 random pickers and walk-forward validation. It proposes a new specialist only for an idea that passes; none does yet ([R&D scout](docs/rnd-scout.md), [research methods](docs/research-methods.md)). A NIFTY 50 research screen (never traded) widens the search.
 - **World news desk.** Central banks, regulators and publishers in India, the US, Europe, the UK and China are in a catalogue, which the owner enables source by source. Each day's items are grouped into stories across countries and linked to the shares through reviewed world drivers, and every link is tested against later moves ([world news](docs/world-news.md)).
 - **Market regime.** Distribution days, breadth and trend of the eight shares give an advisory exposure ceiling. On 10 years it warns of falls but does not time them ([market regime](docs/market-regime.md)).
 - **Scenario panel.** Built; it needs the model. Five personas rehearse the day's biggest linked world stories in shadow, and are scored per persona ([scenario panel](docs/scenario-panel.md)).
@@ -111,13 +113,14 @@ The daily routine and recovery steps are in the [live testing runbook](docs/live
 | Model allocator, learning loop | Built and tested, waiting for the model |
 | Departments, births, hackathons, compute budgets | Backend rules tested, not used by the cycle yet |
 | Intraday monitor (mark-to-market, warnings, crash brake) | Done and tested on 38 replayed days; a live feed adapter waits for the owner's broker choice |
+| Autonomy rehearsal, starter policy, supervisor catch-up and heartbeat, Saturday preflight | Done and tested: 8 rounds of the real trading path under standing approvals, with injected failures; every invariant held |
+| Model evaluation suite and training data | Done: all six model tasks tested with their real prompts. The 4B model is 100% valid and safe, but sensitive to wording. Production calls are journaled and labelled for a future fine-tune |
+| Source-code review of 13 reference projects | Done: [research notes](docs/research-notes/README.md) with a ranked gap analysis; defects found in our scout were fixed |
 | Live money, intraday trading | Not built (paper only, by design) |
 
-**Still needs the owner:**
-- the local model for the learning loop and the allocator;
-- an alert channel;
-- a daily schedule;
-- confirmation of the market-data licence.
+**Still needs the owner:** everything is listed, in order, in [founderReview.md](founderReview.md). It covers the
+switch-on (backup, start, starter policy, model, members, supervisor, alerts, holidays, world sources) and 23 decisions,
+on money, research, the model, data approvals, real-time testing, the frontend and the repository.
 
 ## Run locally
 
@@ -181,6 +184,9 @@ In the full run on 20 October 2026, 636 of 637 tests passed. The one failure was
 | [Roadmap to proven skill](docs/skill-roadmap.md) | Why skill cannot be proven on 8 shares (proof time, tax) and the plan: a broad point-in-time universe, slower tax-aware rules, better data |
 | [World news](docs/world-news.md), [scenario panel](docs/scenario-panel.md) | Sources by country, stories, world drivers and the persona panel |
 | [Intraday monitor](docs/intraday-monitor.md) | Real-time testing: live mark-to-market, crash brake, replay of recorded days; what a live feed still needs |
+| [Founder review](founderReview.md) | Everything that needs the founder: the switch-on checklist and every pending decision |
+| [Research notes and gap analysis](docs/research-notes/README.md) | How 13 reference projects really work (from their source code), where we are ahead, and our ranked gaps |
+| [Model evaluation](docs/model-eval.md), [autonomy](docs/autonomy.md) | The model's measured reliability; standing approvals, the starter policy and the autonomy rehearsal |
 | [Vision and principles](docs/knowledge-base/01-vision-and-principles.md), [bot lifecycle](docs/knowledge-base/11-research-development-and-bot-lifecycle.md) | The organisation we are building |
 | [Architecture](docs/architecture.md), [API](docs/api.md), [security](docs/security-and-operations.md) | Services, roles and authority boundaries |
 | [Documentation index](docs/documentation-index.md) | Every document, including the dated version history |

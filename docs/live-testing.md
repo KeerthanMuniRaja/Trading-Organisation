@@ -6,6 +6,8 @@ The day's work runs **after the close**: decisions use settled daily closes, and
 
 ## One-time setup (before the first day)
 
+The founder's ordered checklist for the switch-on, and every decision waiting, is in [founderReview.md](../founderReview.md).
+
 Start with **`npm.cmd run preflight`**. It is read-only, works with the backend stopped and never prints a setting's
 value. It checks:
 - settings and credentials (names only), the rule bot, and whether the backend is stopped;

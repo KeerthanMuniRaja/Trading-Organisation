@@ -44,6 +44,27 @@ The organisation now manages itself like a firm, with the owner as CEO:
 - **On the next backend start:** migration 052 applies. Take a backup first.
 - **Owner's direction:** agents decide and act, and the system develops itself; the owner approves and oversees. Build towards this.
 
+### Added on 21 October 2026 (read first)
+
+- **Founder review** ([founderReview.md](founderReview.md)): the switch-on checklist (planned for Sat 24 Oct) and all 23 pending decisions. Keep it up to date as items close.
+- **Live operations are paused until Saturday.** The backend has been stopped since 20 Oct. Migration 052 applies on the next start, so take a backup first.
+- **Autonomy:**
+  - **Rehearsal:** `backend/test/rehearsal.test.ts` checks the invariants over 8 rounds, with injected failures.
+  - **Starter policy:** `docs/policies/autonomy-starter.json` is protective only.
+  - **Supervisor:** catches up missed jobs, survives job errors and writes a heartbeat. Readiness and status show it; `scripts/install-supervisor-task.ps1` registers it (owner-run).
+  - **Preflight:** `npm run preflight` gives READY or NOT READY for the switch-on.
+- **Model:**
+  - **Evaluation:** `integrations/model-eval/model_eval.py` tests all six model tasks with their real prompts. The first run on Qwen 3.5-4B: 37/37 valid and safe, claims perfect, sensitive to wording or order ([model evaluation](docs/model-eval.md)).
+  - **Training data:** every production model call is journaled in `.local/model-calls/`; `build_dataset.py` writes SFT and preference data in Soup's formats.
+  - **Soup** is a fine-tuning tool that needs a GPU. It has not been used.
+- **Research:**
+  - **Slower rebalancing:** a `rebalance` interval (1, 3, 6 or 12 months) in the grammar.
+  - **Scout fixes,** found by the source review: next-open entry, drift-aware turnover, no tax on the first purchase, sign-test proof time, and a 5,000-sample bootstrap with an error margin.
+  - **Method cards** are now version 2, with corrected numbers and attributions. Our regime, trend-template and pullback are simplified variants of the originals.
+  - **Result:** nothing passes. Yearly momentum keeps 11.2% after tax, against the basket's 12.55%.
+- **Source-code review of 13 projects:** seven notes and a ranked gap analysis in `docs/research-notes/`. The top gaps are self-expiring loss brakes, unrealised-loss and horizon exits, and broker-readiness items. The cheap fixes the agents can make are listed in Part C of the founder review.
+- **Intraday monitor** (`scripts/intraday-monitor.mjs`): feed-agnostic, tested on 38 replayed days. A broker adapter waits for the founder's choice.
+
 ### Added in the evening of 20 October 2026
 
 - **World news:** a catalogue of 12 sources in 6 regions, all off until the owner enables them. The owner tools are `npm run world -- probe | enable --yes | coverage | stories`. Also:
