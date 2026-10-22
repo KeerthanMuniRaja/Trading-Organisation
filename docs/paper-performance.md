@@ -53,6 +53,7 @@ The worst fall is the measure that matters before trusting a bot with more money
 - **The bot.** Its return on its whole budget, idle cash included, between its first and latest daily snapshot.
 - **The basket.** The equal-weight basket's **total return** over the same days, from verified daily marks. Splits, bonuses and dividends in between are restated, so a dividend counts as return, not as a fall. Every share marked on both days counts equally.
 - **Verdict.** `ahead-of-basket`, `behind-basket` or `level-with-basket`, with the difference in percentage points. Bots with one snapshot show `not-enough-days`.
+- **Late basket marks (22 Oct 2026).** When a bot's snapshots began before the basket's verified closes did, the comparison starts from the first of its snapshot days the basket covers, the same days on both sides. It used to give no comparison at all. The result shows `firstSnapshot` (when the record really starts), and the digest says so.
 
 The owner digest shows the same comparison daily. It is descriptive: a few weeks prove nothing, and fitness reports judge significance.
 

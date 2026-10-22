@@ -203,8 +203,9 @@ export function render(d, world = null, regime = null, known = null, trust = nul
     ...(t.corporateActions ? [`- ${t.corporateActions} corporate action(s) recorded; positions rescaled`] : []), '',
     '## Against holding all shares equally (same days)',
     ...((d.benchmark ?? []).length ? d.benchmark.map(b => b.excessPct === null ? `- ${b.botId}: no basket prices for ${b.from}..${b.to} yet`
-      : `- ${b.botId} ${b.from}..${b.to}: ${b.returnPct > 0 ? '+' : ''}${b.returnPct}% vs basket ${b.basketReturnPct > 0 ? '+' : ''}${b.basketReturnPct}%`
+      : `- ${b.botId} ${b.from}..${b.to}: ${b.returnPct > 0 ? '+' : ''}${Number(b.returnPct.toFixed(2))}% vs basket ${b.basketReturnPct > 0 ? '+' : ''}${b.basketReturnPct}%`
         + ` — ${b.excessPct > 0 ? 'ahead' : b.excessPct < 0 ? 'behind' : 'level'} by ${Math.abs(b.excessPct)} points`
+        + (b.firstSnapshot ? ` (from the first day with basket prices; its record starts ${b.firstSnapshot})` : '')
         + (b.risk?.volatilityPct !== null && b.risk?.volatilityPct !== undefined
           ? `; risk: volatility ${b.risk.volatilityPct}% a year, Sharpe ${b.risk.sharpe ?? 'n/a'}, 1-day 95% VaR ${b.risk.var95Pct}%, worst fall ${b.risk.maxDrawdownPct}%` : ''))
       : ['- No bot has two daily snapshots yet.']), '',

@@ -114,21 +114,29 @@ export async function basketReturn(tx: Sql, fromDay: string, toDay: string) {
   return { returnPct: Number((sum / both.length * 100).toFixed(2)), shares: both.length };
 }
 
+export type Benchmark = { botId: string; days: number; verdict: string; from?: string; to?: string; returnPct?: number | null;
+  basketReturnPct?: number | null; basketShares?: number; excessPct?: number | null; firstSnapshot?: string; risk?: ReturnType<typeof riskStats> };
+
 /** Per bot with at least two snapshots: its return against the basket's over the same days. */
-export async function compare(tx: Sql, botId: string | null) {
+export async function compare(tx: Sql, botId: string | null): Promise<Benchmark[]> {
   const rows = (await tx.query(`SELECT bot_id,to_char(day,'YYYY-MM-DD') AS d,(budget_paise+realised_paise+unrealised_paise)::text AS equity
     FROM paper_performance_snapshots WHERE ($1::text IS NULL OR bot_id=$1) ORDER BY bot_id,day`, [botId])).rows;
   const bots = new Map<string, Row[]>();
   for (const r of rows) bots.set(r.bot_id, [...(bots.get(r.bot_id) ?? []), r]);
-  const out = [];
+  const out: Benchmark[] = [];
   for (const [id, list] of bots) {
     if (list.length < 2) { out.push({ botId: id, days: list.length, verdict: 'not-enough-days' }); continue; }
-    const first = list[0]!, last = list[list.length - 1]!;
-    const own = BigInt(first.equity) > 0n ? Number((BigInt(last.equity) - BigInt(first.equity)) * 1_000_000n / BigInt(first.equity)) / 10_000 : null;
-    const basket = await basketReturn(tx, first.d, last.d);
+    const last = list[list.length - 1]!;
+    // a bot whose snapshots began before the basket's verified closes did is compared from the first of its days the
+    // basket covers (same days on both sides), instead of not at all
+    let start = 0, basket = await basketReturn(tx, list[0]!.d, last.d);
+    while (!basket && start < list.length - 2) basket = await basketReturn(tx, list[++start]!.d, last.d);
+    const first = list[start]!, days = list.slice(start);
+    const own = BigInt(first.equity) > 0n ? Number(((BigInt(last.equity) - BigInt(first.equity)) * 1_000_000n / BigInt(first.equity))) / 10_000 : null;
     const excess = own === null || !basket ? null : Number((own - basket.returnPct).toFixed(2));
-    out.push({ botId: id, from: first.d, to: last.d, days: list.length, returnPct: own, basketReturnPct: basket?.returnPct ?? null,
-      basketShares: basket?.shares ?? 0, excessPct: excess, risk: riskStats(list.map(r => BigInt(r.equity))),
+    out.push({ botId: id, from: first.d, to: last.d, days: days.length, returnPct: own === null ? null : Number(own.toFixed(2)),
+      basketReturnPct: basket?.returnPct ?? null, basketShares: basket?.shares ?? 0, excessPct: excess,
+      ...(start > 0 && basket ? { firstSnapshot: list[0]!.d } : {}), risk: riskStats(days.map(r => BigInt(r.equity))),
       verdict: excess === null ? 'no-basket-marks' : excess > 0 ? 'ahead-of-basket' : excess < 0 ? 'behind-basket' : 'level-with-basket' });
   }
   return out;
