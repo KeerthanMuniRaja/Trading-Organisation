@@ -69,6 +69,10 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     withModel
       ? { id: 'learning-workflows', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'learning-cycle.mjs')], timeoutMs: 3_600_000 }
       : { id: 'learning-workflows', skip: 'model steps not enabled (--with-model)' },
+    // NEWS-04: the model reads each new verified headline once into a strict schema (event, direction, materiality, kind)
+    withModel
+      ? { id: 'headline-reader', cmd: PY, args: [desk('headline_reader.py')], timeoutMs: 1_800_000, requires: join(root, '.local', 'claims', 'auto', 'verified-headlines.json') }
+      : { id: 'headline-reader', skip: 'model steps not enabled (--with-model)' },
     { id: 'chain-links', cmd: PY, args: [desk('chains.py'), 'expand', '--headlines', join('.local', 'claims', 'auto', 'verified-headlines.json')],
       timeoutMs: 120_000, requires: join(root, '.local', 'claims', 'auto', 'verified-headlines.json') },
     { id: 'forward-daily-rules', cmd: PY, args: [desk('daily.py'), 'forward', '--name', 'forward-from-2026-10-09'], timeoutMs: 300_000 },
@@ -323,7 +327,7 @@ export const ESCALATE_AFTER = 3;          // consecutive failed cycles before a 
 // one success closes the circuit. The escalation above still tells the owner.
 export const CIRCUIT_AFTER = 3, CIRCUIT_REST_MS = 2 * 86_400_000;
 export const MODEL_STEPS = new Set(['scenario-panel', 'claims-and-fact-check', 'learning-workflows', 'model-allocator-decide', 'tradingagents-decide',
-  'debate', 'playbook-drafts']);
+  'debate', 'playbook-drafts', 'headline-reader']);
 
 /** Why a model step's circuit is open now (it rests), or null. */
 export function circuitOpen(id, streak, now) {

@@ -71,7 +71,13 @@ class DecideTests(unittest.TestCase):
             self.assertEqual(record['decisions']['HDFCBANK']['rating'], 'BUY')
             self.assertEqual(record['decisions']['ITC']['rating'], 'UNDERWEIGHT')
             self.assertIsNone(record['decisions']['SBIN']['rating'])  # ambiguous: no rating, no trade
+            self.assertTrue(record['decisions']['SBIN']['unreadable'])   # and counted, with what it said
+            self.assertTrue(record['decisions']['SBIN']['excerpt'])
             self.assertIn('TimeoutError', record['decisions']['NTPC']['error'])
+            self.assertNotIn('unreadable', record['decisions']['NTPC'])   # an error is a failure, not an unreadable answer
+            r = record['readability']
+            self.assertEqual((r['decisions'], r['unreadable'], r['errors'], r['rated']), (len(ta_decide.SYMBOLS), 1, 1, len(ta_decide.SYMBOLS) - 2))
+            self.assertEqual(ta_decide.report(Path(tmp))['days'], 1)
             again = StubGraph()
             ta_decide.decide('2026-10-23', ta_decide.SYMBOLS, again, meta, out=Path(tmp), now=NOW)
             self.assertEqual(sorted(t for t, _ in again.calls), ['NTPC.NS', 'SBIN.NS'])  # resumable: only undecided shares rerun

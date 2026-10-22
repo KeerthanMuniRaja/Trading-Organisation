@@ -13,6 +13,7 @@ Three pieces that make the organisation run on its own and stay auditable. They 
 | `news-<feed>` | One poll of every **enabled** feed in `.local/feed-*.json`. Each feed's own poll interval is respected. | internet (approved publishers) |
 | `news-triage` | Sets aside waiting news that names no tracked share or market driver ([relevance triage](evidence-triage.md)) | backend |
 | `claims-and-fact-check` | Claim analyst (model) plus fact-checker (no model), via `autolearn.py --cycles 1` | `--with-model`, local model server, `.local/claims/autolearn.json` |
+| `headline-reader` | The model reads each new verified headline once into a strict schema: event, direction, materiality, fact or opinion or rumour, and a 140-character summary. Results are cached in `.local/trading-desk/headline-reads.json`, at most 40 a run. The model never changes a headline's share links. The debate shows each headline with its reading (NEWS-04, from Anthropic's financial plugins) | `--with-model`, verified headlines exist |
 | `chain-links` | Adds inferred driver links to the verified headlines | verified headlines exist |
 | `forward-daily-rules`, `forward-portfolio` | Scores the pre-registered forward tests on new days | none |
 | `rule-bot` | Once a month, the model-free rule bot proposes its top-3 momentum trades ([trade signals](trade-signals.md#the-rule-bot-a-model-free-member)) | `RULE_BOT_ID` set, the bot qualified, a trader credential bound to it |

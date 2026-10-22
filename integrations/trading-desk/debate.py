@@ -25,6 +25,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import daily  # noqa: E402
 import eod_trader  # noqa: E402
+import headline_reader  # noqa: E402
 import signal_scorer as sc  # noqa: E402
 
 HEADLINES = daily.ROOT / '.local' / 'claims' / 'auto' / 'verified-headlines.json'
@@ -79,7 +80,7 @@ def press_dossier(symbol, as_of, index=None):
             'stories': [f"{x['firstSeen'][:10]} ({', '.join(x['countries'])}) {x['title']}" for x in d['stories'][:3]]}
 
 
-def context(signal, cache, headlines, knowledge=None, record=None, news_status='ok', press='unset'):
+def context(signal, cache, headlines, knowledge=None, record=None, news_status='ok', press='unset', reads=None):
     """What a debater sees. Everything is as of the proposal: no headline published after it was made (so a replay of a
     past day never sees the future), and dataStatus says plainly what is missing (TradingAgents' 'no data' vs
     'unavailable' markers)."""
@@ -96,7 +97,10 @@ def context(signal, cache, headlines, knowledge=None, record=None, news_status='
     # the fact-checker's verified headlines are context; citations are limited to the proposal's own verified evidence
     return {'share': {'symbol': signal['symbol'], 'name': daily.datasets.UNIVERSE.get(signal['symbol'] + '.NS', signal['symbol']), 'exchange': 'NSE'},
             'proposal': {k: signal.get(k) for k in ('symbol', 'action', 'conviction', 'horizonDays', 'targetWeightPct', 'thesis', 'invalidation')},
-            'recentCloses': closes, 'verifiedNews': [{k: h.get(k) for k in ('publishedAt', 'source', 'title')} for h in news],
+            'recentCloses': closes, 'verifiedNews': [{**{k: h.get(k) for k in ('publishedAt', 'source', 'title')},
+                                                      # NEWS-04: the headline reader's structured reading, when there is one
+                                                      **({'read': {k: v for k, v in reads[key].items() if k in ('event', 'direction', 'materiality', 'kind', 'summary')}}
+                                                         if reads and (key := headline_reader.key_of(h)) in reads else {})} for h in news],
             'verifiedEvidenceIds': sorted(set(signal.get('evidenceIds', []))), 'dataStatus': status,
             **({'botRecord': record} if record is not None else {}),
             **({'pressDossier': press} if press not in ('unset', None) else {}),
@@ -131,6 +135,7 @@ def run(llm, env=os.environ, cache=daily.DAILY, opener=None, headlines_path=HEAD
     import live_knowledge
     import reflections
     knowledge = live_knowledge.briefing()  # KNOW-05: today's regime and the decision lessons, the same for every proposal
+    reads = headline_reader.load()         # NEWS-04: readings of the verified headlines (empty until the reader has run)
     try:
         scored = reflections.scored(*checker, opener)  # every scored call, for each bot's own record
     except (RuntimeError, ValueError, OSError):
@@ -140,7 +145,7 @@ def run(llm, env=os.environ, cache=daily.DAILY, opener=None, headlines_path=HEAD
         argued = {c['challengerBotId']: c for c in signal.get('challenges', [])}
         record = bot_record(scored, signal['botId'], signal['symbol']) if scored is not None else None
         press = press_dossier(signal['symbol'], signal.get('createdAt'), index)  # KNOW-06: as of the proposal
-        ctx = context(signal, cache, headlines, knowledge, record, news_status, press)
+        ctx = context(signal, cache, headlines, knowledge, record, news_status, press, reads)
         # a real debate: the bear argues first and the bull answers the bear's case (same two calls as before)
         bear_case = (argued.get(bots['bear']) or {}).get('argument')
         for side in ('bear', 'bull'):

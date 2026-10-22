@@ -109,21 +109,50 @@ def decide(day, symbols=SYMBOLS, graph=None, meta=None, env=os.environ, out=OUT,
         started = (now or datetime.now(timezone.utc)).isoformat()
         try:
             state, decision = graph.propagate(f'{symbol}.NS', day, portfolio=portfolio) if portfolio is not None else graph.propagate(f'{symbol}.NS', day)
-            record['decisions'][symbol] = {'rating': rating_of(decision), 'rationale': rationale_of(state), 'startedAt': started,
-                                           'finishedAt': datetime.now(timezone.utc).isoformat()}
+            rating = rating_of(decision)
+            record['decisions'][symbol] = {'rating': rating, 'rationale': rationale_of(state), 'startedAt': started,
+                                           'finishedAt': datetime.now(timezone.utc).isoformat(),
+                                           # gap 22: TradingAgents does not force its answer schema; on a small model the judge
+                                           # may name no rating or several, so an unreadable answer is kept and counted
+                                           **({} if rating else {'unreadable': True,
+                                                                 'excerpt': (decision if isinstance(decision, str) else json.dumps(decision, default=str))[:300]})}
         except Exception as error:  # noqa: BLE001 - recorded, never guessed; a rerun retries the share
             record['decisions'][symbol] = {'rating': None, 'error': f'{type(error).__name__}: {str(error)[:200]}', 'startedAt': started}
+        record['readability'] = readability([record])
         tmp = path.with_suffix('.tmp')
         tmp.write_text(json.dumps(record, indent=2), encoding='utf-8')
         os.replace(tmp, path)
     return record
 
 
+def readability(records):
+    """How often the member's answers could be read: decisions made, rated, unreadable (no single clear rating) and
+    failed (an error), with the share rated. A member whose answers are often unreadable is not ready to rely on."""
+    decisions = [d for r in records for d in r.get('decisions', {}).values()]
+    rated = sum(1 for d in decisions if d.get('rating'))
+    unreadable = sum(1 for d in decisions if d.get('unreadable'))
+    errors = sum(1 for d in decisions if d.get('error'))
+    return {'decisions': len(decisions), 'rated': rated, 'unreadable': unreadable, 'errors': errors,
+            'ratedPct': round(100 * rated / len(decisions), 1) if decisions else None}
+
+
+def report(out=OUT):
+    """Readability over every decision day so far."""
+    records = [json.loads(p.read_text(encoding='utf-8')) for p in sorted(out.glob('????-??-??.json'))] if out.exists() else []
+    return {'days': len(records), **readability(records)}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--day', required=True, help='the last settled session (YYYY-MM-DD)')
+    parser.add_argument('--day', help='the last settled session (YYYY-MM-DD)')
     parser.add_argument('--symbols', default=','.join(SYMBOLS))
+    parser.add_argument('--report', action='store_true', help='readability over every decision day, and stop')
     args = parser.parse_args(argv)
+    if args.report:
+        print(json.dumps(report(), indent=2))
+        return
+    if not args.day:
+        parser.error('--day is required (or --report)')
     record = decide(args.day, [s for s in args.symbols.split(',') if s in SYMBOLS])
     print(json.dumps({'day': record['day'], 'ratings': {s: d.get('rating') for s, d in record['decisions'].items()},
                       'errors': sum(1 for d in record['decisions'].values() if d.get('error'))}, indent=2))
