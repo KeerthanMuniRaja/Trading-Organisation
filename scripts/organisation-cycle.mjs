@@ -61,6 +61,11 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
       : { id: 'scenario-panel', skip: 'model steps not enabled (--with-model)' },
     { id: 'scenario-score', cmd: PY, args: [desk('scenario_panel.py'), 'score'], timeoutMs: 120_000,
       requires: join(root, '.local', 'trading-desk', 'scenario', 'calls.jsonl') },
+    // MiroFish's after-action question: a persona whose judged call was wrong says once what it missed (model needed)
+    withModel
+      ? { id: 'scenario-reflect', cmd: PY, args: [desk('scenario_panel.py'), 'reflect'], timeoutMs: 900_000,
+          requires: join(root, '.local', 'trading-desk', 'scenario', 'calls.jsonl') }
+      : { id: 'scenario-reflect', skip: 'model steps not enabled (--with-model)' },
     withModel
       ? { id: 'claims-and-fact-check', cmd: PY, args: [join(root, 'integrations', 'claims', 'autolearn.py'), 'run', '--config', join('.local', 'claims', 'autolearn.json'),
           '--cycles', '1'], timeoutMs: 3_600_000, requires: join(root, '.local', 'claims', 'autolearn.json') }
@@ -327,7 +332,7 @@ export const ESCALATE_AFTER = 3;          // consecutive failed cycles before a 
 // one success closes the circuit. The escalation above still tells the owner.
 export const CIRCUIT_AFTER = 3, CIRCUIT_REST_MS = 2 * 86_400_000;
 export const MODEL_STEPS = new Set(['scenario-panel', 'claims-and-fact-check', 'learning-workflows', 'model-allocator-decide', 'tradingagents-decide',
-  'debate', 'playbook-drafts', 'headline-reader']);
+  'debate', 'playbook-drafts', 'headline-reader', 'scenario-reflect']);
 
 /** Why a model step's circuit is open now (it rests), or null. */
 export function circuitOpen(id, streak, now) {

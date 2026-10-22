@@ -84,6 +84,55 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(report['weightedPanel']['right'] + report['weightedPanel']['wrong'], 0)
         self.assertEqual(set(report['personaWeights']), set(sp.PERSONAS))
 
+    def test_in_round_two_personas_see_the_panel_and_may_change_their_minds(self):
+        seen = []
+
+        def llm(system, user, schema):
+            persona = next(p for p, who in sp.PERSONAS.items() if who in system)
+            payload = json.loads(user)
+            seen.append((persona, 'panelFirstRound' in payload))
+            # the retail trader follows the crowd in round 2; everyone else keeps their view
+            first = {'foreign-investor': 'up', 'domestic-fund': 'up', 'retail-trader': 'down', 'central-bank-watcher': 'flat', 'sector-analyst': 'up'}[persona]
+            d = 'up' if persona == 'retail-trader' and 'panelFirstRound' in payload else first
+            return {'calls': [{'symbol': s, 'direction': d, 'why': f'{persona} round'} for s in ('RELIANCE.NS', 'HDFCBANK.NS')]}, {}
+        answers = sp.ask_panel(llm, {'title': 't', 'countries': [], 'drivers': [], 'symbols': ['HDFCBANK.NS', 'RELIANCE.NS']})
+        self.assertEqual(sum(1 for _, second in seen if second), len(sp.PERSONAS))          # everyone who answered joins round 2
+        self.assertEqual(answers['retail-trader']['RELIANCE.NS']['direction'], 'up')
+        self.assertEqual(answers['retail-trader']['RELIANCE.NS']['firstRound'], 'down')      # the first answer is kept
+        calls = sp.panel_calls({'title': 't', 'countries': [], 'symbols': ['RELIANCE.NS']}, answers, '2023-06-01', '2023-06-01')
+        self.assertEqual((calls[0]['direction'], calls[0]['firstRoundDirection']), ('up', 'up'))
+        summary = sp.first_round_summary(answers, ['RELIANCE.NS'])
+        self.assertNotIn('retail-trader', json.dumps(summary))                              # reasons are shown unattributed
+        one = sp.ask_panel(llm, {'title': 't', 'countries': [], 'drivers': [], 'symbols': ['RELIANCE.NS']}, rounds=1)
+        self.assertNotIn('firstRound', one['retail-trader']['RELIANCE.NS'])
+
+    def test_a_wrong_call_becomes_a_lesson_shown_to_that_persona_next_time(self):
+        llm = fake_model({p: {'RELIANCE.NS': 'up', 'HDFCBANK.NS': 'down'} for p in sp.PERSONAS})
+        sp.run(llm, now=datetime(2023, 6, 1, 12, tzinfo=timezone.utc), stories_path=self.stories, out=self.out, cache=self.cache)
+        asked = []
+
+        def teacher(system, user, schema):
+            asked.append(json.loads(user))
+            assert schema == sp.REFLECT_SCHEMA
+            return {'lesson': 'I followed the headline and ignored that the basket was rising faster.'}, {}
+        results = sp.reflect(teacher, out=self.out, cache=self.cache)
+        report = sp.score(out=self.out, cache=self.cache)
+        wrong = sum(v['wrong'] for v in report['personas'].values())
+        self.assertEqual(len([r for r in results if r['state'] == 'learned']), min(wrong, sp.MAX_REFLECT))  # one per wrong call
+        if wrong <= sp.MAX_REFLECT:
+            self.assertEqual(sp.reflect(teacher, out=self.out, cache=self.cache), [])  # each wrong call is asked about once
+        if wrong:
+            self.assertIn('moved', asked[0]['outcome'])
+            lessons = sp.latest_lessons(self.out)
+            self.assertTrue(all(len(v) <= sp.LESSONS_SHOWN for v in lessons.values()))
+            shown = []
+
+            def remembering(system, user, schema):
+                shown.append(json.loads(user).get('yourRecentLessons'))
+                return {'calls': []}, {}
+            sp.ask_panel(remembering, {'title': 't', 'countries': [], 'drivers': [], 'symbols': ['RELIANCE.NS']}, lessons=lessons, rounds=1)
+            self.assertTrue(any(shown))
+
     def test_without_stories_or_with_recent_calls_nothing_is_judged_early(self):
         self.stories.unlink()
         r = sp.run(fake_model({}), now=datetime(2023, 6, 1, tzinfo=timezone.utc), stories_path=self.stories, out=self.out, cache=self.cache)

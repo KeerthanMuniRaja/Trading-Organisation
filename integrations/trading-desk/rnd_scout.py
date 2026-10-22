@@ -137,6 +137,42 @@ def fingerprint(ledger_path=None):
     return hashlib.sha256('\n'.join(parts).encode()).hexdigest()[:16]
 
 
+PLATEAU_STEP = {'months': 1, 'keep': 1, 'window': 20, 'days': 5, 'nearHighPct': 5, 'rsiMax': 5}
+
+
+def plateau(best, table, dates, through=None):
+    """backtesting.py's heatmap question, for the best idea the grammar can express: do its neighbours (each setting one
+    step either side, within bounds) do about as well, or is it a lone lucky peak? Diagnostic only: neighbours are never
+    candidates, so they cannot pass anything or move the bar."""
+    import rnd_ideas
+    spec = best.get('spec')
+    if not spec:
+        return None
+    neighbours = []
+    for field, step in PLATEAU_STEP.items():
+        if field not in spec:
+            continue
+        for delta in (-step, step):
+            candidate = {**spec, field: spec[field] + delta}
+            try:
+                neighbours.append(rnd_ideas.canonical(candidate))
+            except ValueError:
+                continue  # outside the grammar's bounds
+    if not neighbours:
+        return None
+    rules = {rnd_ideas.name_of(n): rnd_ideas.rule_of(n) for n in neighbours}
+    rows = monthly(table, dates, rules, through)
+    results = [{'name': name, 'averageExcessPct': round(statistics.fmean(r['rules'][name] - r['basketPct'] for r in rows), 3),
+                'ahead': sum(r['rules'][name] > r['basketPct'] for r in rows), 'behind': sum(r['rules'][name] < r['basketPct'] for r in rows)}
+               for name in rules] if rows else []
+    if not results:
+        return None
+    return {'idea': best['name'], 'ideaAverageExcessPct': best['averageExcessPct'], 'neighbours': results,
+            'neighboursAboveBasket': sum(r['averageExcessPct'] > 0 for r in results),
+            'medianNeighbourExcessPct': round(statistics.median(r['averageExcessPct'] for r in results), 3),
+            'note': 'Diagnostic only: a real effect sits on a plateau of similar neighbours, a lucky one on a lone peak.'}
+
+
 def sign_p(ahead, behind):
     """One-sided exact sign test: P(X >= ahead) for X ~ Binomial(ahead + behind, 1/2)."""
     n = ahead + behind
@@ -297,6 +333,7 @@ def scout(through=None, cache=daily.DAILY, ledger_path=None, universe='desk', ra
                                                                      'medianExcessPct': round(statistics.median(m['averages']), 3)}
                                                        for k, m in sorted(matched.items())}},
               'walkForward': wf, 'walkForwardExpanding': wfx,
+              'plateau': plateau(next((c for c in out if c.get('spec')), {}), table, dates, through),
               'note': 'Seen history, net of costs, against the equal-weight basket; a screen for ideas, not proof. Live paper fitness decides.'}
     if universe != 'desk':
         report.update({'universe': universe, 'shares': sorted(table), 'leftOut': excluded,

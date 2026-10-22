@@ -77,6 +77,15 @@ is our own code, with no new dependencies.
   - **Result on the 8 shares:** quarterly momentum 75%, monthly momentum 55%, combo 65%. No idea shows that its timing
     matters.
 
+- **Plateau report** (added 22 Oct, from backtesting.py's heatmaps; diagnostic only). The best idea the grammar can express
+  is also run with each setting one step either side. A real effect sits on a plateau of similar neighbours; a lucky one
+  stands on a lone peak. Neighbours are never candidates, so they cannot pass anything or move the bar.
+
+  **Result:** quarterly momentum (6 months, top 3), at +0.056% a month, sits on a plateau. All 4 neighbours (5 or 7
+  months, top 2 or 4) also beat the basket, by +0.07% to +0.14% a month after costs. It is the most consistent lead so
+  far, still far from proof: p 0.10 against a bar of 0.0023, and it beats only 75% of shuffled histories. It bears on the
+  founder's decision B1 (trading the momentum bot less often).
+
 ## The NIFTY 50 research universe
 
 `datasets.NIFTY50` holds the members after the reconstitution effective 30 Sep 2026, taken from Wikipedia's NIFTY 50 page.

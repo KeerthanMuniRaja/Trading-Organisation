@@ -249,6 +249,10 @@ class ScoutIntegrationTests(unittest.TestCase):
             self.assertEqual(set(best['luck']), {'probabilisticSharpe', 'deflatedSharpe'})
             self.assertIn('yearsAheadOfBasket', best['robustness'])
             self.assertIsNotNone(best['beatsMatchedRandomPct'])
+            p = r['plateau']   # the best grammar idea's neighbours, one step either side, never candidates
+            self.assertTrue(p and p['neighbours'] and all(n['name'].startswith('idea-') for n in p['neighbours']))
+            self.assertFalse({n['name'] for n in p['neighbours']} & {c['name'] for c in r['candidates']})
+            self.assertEqual(rs.plateau({'name': 'x', 'spec': None, 'averageExcessPct': 0}, None, None), None)
             shuffled = [c for c in r['candidates'] if 'beatsShuffledPct' in c]
             self.assertEqual(len(shuffled), rs.SHUFFLE_TOP)   # only the best few face the shuffled histories
             self.assertTrue(all(0 <= c['beatsShuffledPct'] <= 100 for c in shuffled))

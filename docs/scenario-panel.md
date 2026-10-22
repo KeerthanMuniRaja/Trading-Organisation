@@ -55,6 +55,15 @@ also judges a weighted panel:
 `record.json` shows `weightedPanel` and each persona's current weight (`personaWeights`). Whether either panel becomes
 a member stays the owner's decision, on a record that beats chance.
 
+**Two rounds and lessons** (added 22 Oct 2026, from MiroFish):
+- **Round 2:** after round 1, every persona that answered sees the panel's votes, and up to two short unattributed
+  reasons for each side, then keeps or changes its call. The first answer is kept as `firstRound`. `record.json` judges
+  both rounds (`panelRound1` against `panel`) and counts the changes (`changedInRound2`), so the record shows whether
+  discussion helps or just herds. This doubles the model calls.
+- **Lessons:** cycle step `scenario-reflect` (model). A persona whose judged call was wrong is asked once what it
+  missed, in at most 200 characters, with at most 10 questions a run. Its 3 latest lessons go into its next prompt as
+  `yourRecentLessons`. They are stored in `lessons.jsonl`.
+
 ## Running it
 
 The cycle runs the panel only with the model on (`npm run cycle -- --with-model`, or the supervisor with `MODEL_AUTOSTART`).

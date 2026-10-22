@@ -71,6 +71,12 @@ Fixed on 21 Oct 2026 (commit 761572b):
 > - **18:** data-status markers and a share identity.
 > - **24:** the regime at entry and exit, and the worst and best price while held (MAE/MFE).
 > - **27:** a limits banner in the digest.
+> - **13:** every statistical guard, including the plateau report (22 Oct).
+> - **14:** a follow-through-day re-entry signal (no edge).
+> - **19:** a headline reader for the debate.
+> - **20:** a weighted panel, two rounds and persona lessons (shadow).
+> - **21:** a circuit breaker for model agents.
+> - **22:** TradingAgents readability counts.
 >
 > **Partly done:**
 > - **13:** deflated and probabilistic Sharpe, a turnover-matched random baseline, years ahead, twice the costs and
