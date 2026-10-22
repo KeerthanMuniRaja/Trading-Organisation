@@ -120,6 +120,27 @@ def run(llm, now=None, stories_path=STORIES, out=OUT, cache=daily.DAILY, limit=2
             'failedVoices': sum(c['failedVoices'] for c in calls)}
 
 
+WEIGHTED_SHARE = 0.6  # the weighted panel calls a direction only with at least this share of the weight behind it
+
+
+def weight(right, wrong):
+    """A persona's say in the weighted panel (gap 20, from MiroFish's trust-weighted agents): its hit rate, smoothed
+    towards a coin flip ((right + 1) / (judged + 2)), above one half, doubled to 0..1. No record or a losing one: no say."""
+    return max(0.0, (right + 1) / (right + wrong + 2) - 0.5) * 2
+
+
+def weighted_direction(call, earned):
+    """up, down or flat by the personas' earned weights; flat while nobody has earned a say."""
+    totals = {'up': 0.0, 'down': 0.0, 'flat': 0.0}
+    for p, v in call['personas'].items():
+        if p in earned and not v.get('failed') and v.get('direction') in totals:
+            totals[v['direction']] += weight(*earned[p])
+    total = sum(totals.values())
+    if total <= 0:
+        return 'flat'
+    return next((d for d in ('up', 'down') if totals[d] / total >= WEIGHTED_SHARE), 'flat')
+
+
 def score(out=OUT, cache=daily.DAILY, horizon=HORIZON):
     """Each directional call judged after `horizon` sessions: right if the share beat (up) or trailed (down) the basket."""
     path = Path(out) / 'calls.jsonl'
@@ -132,20 +153,33 @@ def score(out=OUT, cache=daily.DAILY, horizon=HORIZON):
         basket = sum(table[s][dates[b]]['closePaise'] / table[s][dates[a]]['closePaise'] - 1 for s in table) / len(table)
         return table[symbol][dates[b]]['closePaise'] / table[symbol][dates[a]]['closePaise'] - 1 - basket
 
-    tally = {'panel': [0, 0], **{p: [0, 0] for p in PERSONAS}}
+    tally = {'panel': [0, 0], 'weightedPanel': [0, 0], **{p: [0, 0] for p in PERSONAS}}
     waiting = 0
+    # chronological, so each weighted vote uses only the persona records judged before its day (no hindsight)
+    calls = sorted(calls, key=lambda c: (c['asOf'], c['day'], c['symbol'], c['story']))
+    earned, judged_at = {p: [0, 0] for p in PERSONAS}, []  # judged_at: (exit index, persona, right?) waiting to count
     for c in calls:
         a = index.get(c['asOf'])
+        if a is not None:
+            for item in [j for j in judged_at if j[0] <= a]:
+                earned[item[1]][0 if item[2] else 1] += 1
+                judged_at.remove(item)
+        c = {**c, 'weightedDirection': weighted_direction(c, earned)}
         if a is None or a + horizon >= len(dates) or c['symbol'] not in table:
             waiting += c['direction'] != 'flat'
             continue
         move = excess(c['symbol'], a)
-        for who, direction in [('panel', c['direction']), *((p, v['direction']) for p, v in c['personas'].items() if p in tally and not v.get('failed'))]:
+        for who, direction in [('panel', c['direction']), ('weightedPanel', c['weightedDirection']),
+                               *((p, v['direction']) for p, v in c['personas'].items() if p in tally and not v.get('failed'))]:
             if direction != 'flat' and move != 0:
-                tally[who][0 if (move > 0) == (direction == 'up') else 1] += 1
+                right = (move > 0) == (direction == 'up')
+                tally[who][0 if right else 1] += 1
+                if who in PERSONAS:
+                    judged_at.append((a + horizon, who, right))
     judged = {who: {'right': r, 'wrong': w, 'pValue': round(fitness.sign_test(r, w), 4), 'verdict': fitness.verdict(r, w)} for who, (r, w) in tally.items()}
     failures = {p: sum(1 for c in calls if c['personas'].get(p, {}).get('failed')) for p in PERSONAS}
     report = {'horizonSessions': horizon, 'calls': len(calls), 'waiting': waiting, 'panel': judged['panel'], 'failedVoices': failures,
+              'weightedPanel': judged['weightedPanel'], 'personaWeights': {p: round(weight(*earned[p]), 3) for p in PERSONAS},
               'personas': {p: judged[p] for p in PERSONAS},
               'note': 'Shadow record: calls are judged against the equal-weight basket; nothing was traded.'}
     Path(out).mkdir(parents=True, exist_ok=True)

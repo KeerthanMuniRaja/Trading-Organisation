@@ -43,6 +43,18 @@ The digest's World news section shows the record. Only a record that beats chanc
 for turning the panel, or one persona, into a real member. That decision is the owner's, and the member would then earn a
 release like any other.
 
+**Weighted panel** (added 22 Oct 2026, from MiroFish's trust-weighted agents; shadow). Next to the 3-of-5 vote, `score`
+also judges a weighted panel:
+- each persona's vote counts by its own record, its hit rate smoothed towards a coin flip, `(right + 1) / (judged + 2)`,
+  above one half;
+- the record counts only calls judged before the day being voted, so there is no hindsight;
+- a persona with no record, or a losing one, has no say;
+- the weighted panel calls a direction only with at least 60% of the weight behind it, and stays silent until somebody
+  has earned a say.
+
+`record.json` shows `weightedPanel` and each persona's current weight (`personaWeights`). Whether either panel becomes
+a member stays the owner's decision, on a record that beats chance.
+
 ## Running it
 
 The cycle runs the panel only with the model on (`npm run cycle -- --with-model`, or the supervisor with `MODEL_AUTOSTART`).

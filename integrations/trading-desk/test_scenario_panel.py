@@ -68,6 +68,22 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(report['personas']['retail-trader'], panel)  # everyone agreed, so everyone has the panel's record
         self.assertTrue((self.out / 'record.json').exists())
 
+    def test_the_weighted_panel_listens_only_to_personas_that_earned_it_before_the_day(self):
+        self.assertEqual(sp.weight(0, 0), 0.0)                      # no record: no say
+        self.assertEqual(sp.weight(1, 5), 0.0)                      # a losing record: no say
+        self.assertGreater(sp.weight(8, 2), sp.weight(3, 2))         # a better record: more say
+        call = {'personas': {'foreign-investor': {'direction': 'up'}, 'retail-trader': {'direction': 'down'}, 'sector-analyst': {'direction': 'down', 'failed': True}}}
+        nobody = {p: [0, 0] for p in sp.PERSONAS}
+        self.assertEqual(sp.weighted_direction(call, nobody), 'flat')
+        earned = {**nobody, 'foreign-investor': [9, 1], 'retail-trader': [2, 6], 'sector-analyst': [9, 0]}
+        self.assertEqual(sp.weighted_direction(call, earned), 'up')  # the good record wins; a failed voice never votes
+        # in the record: early calls have no earned weights yet, so the weighted panel is silent on them (no hindsight)
+        llm = fake_model({p: {'RELIANCE.NS': 'up', 'HDFCBANK.NS': 'down'} for p in sp.PERSONAS})
+        sp.run(llm, now=datetime(2023, 6, 1, 12, tzinfo=timezone.utc), stories_path=self.stories, out=self.out, cache=self.cache)
+        report = sp.score(out=self.out, cache=self.cache)
+        self.assertEqual(report['weightedPanel']['right'] + report['weightedPanel']['wrong'], 0)
+        self.assertEqual(set(report['personaWeights']), set(sp.PERSONAS))
+
     def test_without_stories_or_with_recent_calls_nothing_is_judged_early(self):
         self.stories.unlink()
         r = sp.run(fake_model({}), now=datetime(2023, 6, 1, tzinfo=timezone.utc), stories_path=self.stories, out=self.out, cache=self.cache)
