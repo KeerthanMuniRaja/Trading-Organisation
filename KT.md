@@ -44,7 +44,34 @@ The organisation now manages itself like a firm, with the owner as CEO:
 - **On the next backend start:** migrations 052, 053 (refused orders) and 054 (loss brakes) apply. Take a backup first.
 - **Owner's direction:** agents decide and act, and the system develops itself; the owner approves and oversees. Build towards this.
 
-### Added on 21 October 2026 (read first)
+### Added on 22–23 October 2026 (read first)
+
+- **The owner is moving to a new machine** (24 Oct) and working without Claude for three days. Their plan, and what
+  to ask for when they return, is in `founderReview.md` Part 0. Their notes will be in `.local/owner-notes.txt`, which
+  the data export carries to the private data repository.
+- **First live run, 22 Oct:** 35 steps done, migrations 052–054 applied. It found and fixed the benchmark start for
+  bots whose record predates the basket marks.
+- **Model:** 7 of 8 evaluation tasks pass on Qwen 3.5-4B ([model evaluation](docs/model-eval.md)).
+  - The headline reader is on prompt v2.
+  - Debate citations are grounded (MODEL-04): a quote checked in the evidence, or a citation derived from the argument.
+  - Playbook phrases are escaped literals (`playbook_drafts.literal`).
+  - Lesson: keep instructions stable and put self-explaining context in the data. One extra sentence flipped the
+    debate's citations.
+- **New this week:**
+  - news polled all day by the supervisor;
+  - a follow-through-day re-entry signal;
+  - a shuffled-history test and a plateau report;
+  - a circuit breaker for model steps;
+  - a headline reader;
+  - a weighted, two-round scenario panel with persona lessons;
+  - TradingAgents readability counts;
+  - an events calendar (`.local/events.json`);
+  - point-in-time NIFTY 50 research (`.local/trading-desk/datasets/nifty50-membership.json`).
+- **Owner's direction:** useful code may be taken from the reference repositories (personal use) with a one-line source
+  note.
+- **Waiting on the owner:** B1, B3, B4, B6, B10, B11, B14, B16, B25 and B26 (the exposure limit).
+
+### Added on 21 October 2026
 
 - **Founder review** ([founderReview.md](founderReview.md)): the switch-on checklist (planned for Sat 24 Oct) and all pending decisions. Keep it up to date as items close.
 - **Data repository** ([data export](docs/data-export.md)):

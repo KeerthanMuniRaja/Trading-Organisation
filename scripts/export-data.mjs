@@ -21,7 +21,7 @@ export const FOLDERS = ['alerts', 'backups', 'claims', 'cycles', 'digests', 'fee
 // integrations that keep their own state beside their code (exported as state/<name>, restored to integrations/<name>/.state)
 export const STATE_DIRS = ['hermes', 'ruflo', 'skfolio'];
 // single files directly under .local: feed configurations, the holiday file and verification reports
-export const TOP_FILES = [/^feed-[a-z0-9-]+\.json$/, /^nse-holidays\.json$/, /^nifty50-fetch\.json$/, /^[a-z0-9-]+-verification(-[a-z]+)?\.json$/, /^demo-report\.json$/];
+export const TOP_FILES = [/^feed-[a-z0-9-]+\.json$/, /^nse-holidays\.json$/, /^nifty50-fetch\.json$/, /^[a-z0-9-]+-verification(-[a-z]+)?\.json$/, /^demo-report\.json$/, /^owner-notes\.txt$/];
 // never copied, wherever they appear
 export const NEVER = [/(^|\/)\.env/, /credentials/i, /\.pem$/, /signing-key/i, /secret/i, /token/i, /\.log$/, /(^|\/)__pycache__\//, /\.pyc$/,
   /\.lock$/, // a run lock only means "running"; restoring one would block the next run
