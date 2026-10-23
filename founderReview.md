@@ -1,21 +1,71 @@
-# Founder review: what needs you, and the decisions waiting (21 October 2026)
+# Founder review: what needs you, and the decisions waiting (updated 23 October 2026)
 
 This file lists everything only the founder can do or decide. Everything else, the agents and development can do by
 themselves. Each item says what it is, why it matters, the recommendation and where the evidence is. Tick items off by
 answering in a session ("decision 3: yes"). This file is updated as items close.
 
-**Where things stand.**
-- **Trading:** paper only. One live bot (`momentum-rules`, release v2) has a ₹5,000 budget and holds HDFC Bank ×2, Axis
-  Bank ×1 and ICICI Bank ×1, at about −₹102 after fees on 20 Oct.
-- **Backend:** stopped since 20 Oct.
-- **Model:** the local model (Qwen 3.5-4B) is installed but not switched on, so 8 agent roles are idle.
-- **Research:** on 10 years of data, no strategy beats simply holding the 8 shares after costs and tax.
+**Where things stand (23 Oct).**
+- **Trading:** paper only, and two bots.
+  - `momentum-rules` (release v2, ₹5,000 budget) holds HDFC Bank, Axis Bank and ICICI Bank. It is at −₹134 (−2.7%),
+    0.9 points behind simply holding the 8 shares.
+  - `trend-bot` (₹1,000 budget) is +₹48 overall, and 1.8 points ahead of the basket since 16 Oct.
+- **Backend:** one full live cycle ran on 22 Oct, with all 35 steps done. Migrations 052–054 are applied. The backend
+  was stopped again afterwards.
+- **Model:** Qwen 3.5-4B passes **7 of 8** evaluation tasks. R&D invention and the allocator wait on B10 and B11. It
+  is installed but not yet switched on in the cycle (step A5).
+- **Research:** on 10 years of data, no strategy beats simply holding the 8 shares after costs and tax. The most
+  consistent lead is quarterly momentum: all 4 neighbouring settings also beat the basket, but it is not proven (p 0.10).
   - [Research notes and gap analysis](docs/research-notes/README.md)
   - [Roadmap to proven skill](docs/skill-roadmap.md)
+- **Code:** everything is pushed. `main` holds all the work; `dev` is the working branch.
+- **Data:** everything is in the private data repository, with a verified backup taken on 23 Oct.
 
 ---
 
-## Part A: the switch-on (planned for Saturday 24 Oct), in order
+## Part 0: your next three days, without Claude (Sat 24 – Mon 26 Oct)
+
+Follow [STARTUP.md](STARTUP.md) for every command. Keep a notes file as you go, `.local/owner-notes.txt`, with the date, what you did, and anything odd:
+the exact message and which step. It is never committed to the code repository, and the weekly data export carries it
+to your private data repository, where Claude can read it later.
+
+**Day 1 (Saturday): move to the new machine and switch on.** Markets are closed, so nothing trades today.
+1. Set up the new machine: STARTUP.md section 1, steps 1–8. Finish only when `verify` says ALL CHECKS PASSED and
+   `preflight` says READY.
+2. Run Part A below, A3 to A12, in order:
+   - Take the decisions you are sure about now: brakes (A4b, the suggested file is fine) and the model (A5).
+   - On your own machine the supervisor can be registered as a scheduled task (A7).
+3. Optional but useful:
+   - copy [`docs/policies/events-example.json`](docs/policies/events-example.json) to `.local/events.json` and put in
+     the real results, RBI, Budget and FOMC dates you know ([events calendar](docs/events-calendar.md));
+   - create `.local/nse-holidays.json` from NSE's holiday circular (A9).
+4. Check: `npm run status` should show Backend up, Supervisor alive and no failed steps.
+
+**Day 2 (Sunday): let it run, and decide.** Markets are closed again. The supervisor still polls news every 30 minutes.
+1. `npm run status`: the supervisor should be alive, and its next job the readiness check on Monday at 09:00.
+2. Read Part B and write your answers in your notes. The five that unblock the most work: **B1, B3, B4, B6 and the
+   limits (B26)**. "All recommended" is a valid answer.
+3. Optional (B14, the biggest data lever): download NSE's NIFTY 50 reconstitution notices and write the monthly member
+   lists into `.local/trading-desk/datasets/nifty50-membership.json` (format in
+   [research methods](docs/research-methods.md)).
+
+**Day 3 (Monday): the first trading day on the new machine.**
+1. Around 09:00 the readiness check runs by itself. `npm run readiness` shows it.
+2. After 16:05 the cycle runs by itself, with the model if A5 is on. That takes 30–60 minutes.
+3. Read `.local/digests/<today>.md`:
+   - "Needs you" first;
+   - then "Can you trust this digest?": it should say "Yes", or tell you what to check;
+   - then answer `npm run agenda`.
+4. Monday evening, backend stopped: run the backup and the data export (A13), then push `.local/data-repo`.
+
+**When you come back to Claude:** say "Read founderReview.md Part 0 and my notes", and paste your notes and your
+decisions. Development continues from there.
+
+---
+
+## Part A: the switch-on (Saturday 24 Oct, on the new machine), in order
+
+On the new machine, A1 and A2 are already covered by STARTUP.md section 1: the preflight, and the restore of the 23 Oct
+backup.
 
 | # | Step | Command | Why |
 | --- | --- | --- | --- |
@@ -27,7 +77,7 @@ answering in a session ("decision 3: yes"). This file is updated as items close.
 | A4c | **Check the limits banner** | Read "Can you trust this digest?" in the first digest | It shows the limits the running backend actually loaded, and says by name when a setting differs (the stale `MAX_ORDER` problem) |
 | A5 | **Turn on the model** | Add `MODEL_AUTOSTART=qwen3.5-4b-q4km` to `.env` | Switches on the claim analyst, learning, R&D invention, the debate desk, the scenario panel, TradingAgents and playbook drafts |
 | A6 | **Set up the model members** (after A5) | `npm run members -- apply tradingagents --yes` and `npm run members -- apply debaters --yes`, then restart the backend | Gives TradingAgents and the bull/bear debaters their identities and credentials. They start in shadow |
-| A7 | **Keep the organisation running** | `npm run supervisor`, or once: `pwsh -File scripts\install-supervisor-task.ps1` | Readiness at 09:00 IST, the cycle at 16:05 IST and a Friday backup, with catch-up if the laptop slept. **Check your IT policy before registering a scheduled task on the office laptop** |
+| A7 | **Keep the organisation running** | `npm run supervisor`, or once: `pwsh -File scripts\install-supervisor-task.ps1` | Readiness at 09:00 IST, the cycle at 16:05 IST, a Friday backup, and news every 30 minutes on any day, with catch-up if the machine slept. While the supervisor runs, let it start the backend; don't also run `npm start`. On an office laptop, check your IT policy before registering a scheduled task |
 | A8 | **An alert channel** | `ALERT_WEBHOOK_URL=` in `.env` (an ntfy topic works) | Alerts go only to a local file today |
 | A9 | **NSE holiday file** | Copy this year's dates from NSE's circular into `.local/nse-holidays.json` | Otherwise holidays look like missing data |
 | A10 | **World news sources** (optional) | `npm run world -- probe --all`, then `npm run world -- enable <ids> --yes` | Adds central banks, regulators and publishers from the US, Europe, the UK and China ([world news](docs/world-news.md)) |
@@ -51,6 +101,7 @@ with `npm run agenda`.
 | B2 | **The basket as the default home for money** | Bots get budget only by beating holding the 8 shares after tax on their live record | **Yes.** It is the honest benchmark, and no strategy beats it yet | [roadmap](docs/skill-roadmap.md) |
 | B3 | **Self-expiring loss brakes: the thresholds** | The mechanism is **built and off** (21 Oct, migration 054). You choose the numbers, or `{}` for none, with one command (step A4b) | **Yes, the suggested file:** pause at 2% of budget lost in a day, 5% in a week or 8% in a month, and for a day after 2 losing exits in a row. Optional: a per-share cooldown after an exit | [protections](docs/protections.md) |
 | B4 | **Unrealised-loss protection and horizon exits** | A portfolio drawdown halt on marked value; optional trailing stops; close or renew a position when its horizon passes | **Yes to the drawdown halt and horizon renewal;** stops optional | [gap analysis A2](docs/research-notes/README.md) |
+| B26 | **The organisation exposure limit** | Today it equals the order limit (₹5,000). momentum-rules holds about ₹4,139, so trend-bot can barely use its ₹1,000 budget, and we learn little from it | **Raise it, for example `MAX_EXPOSURE_PAISE=1000000` (₹10,000) in `.env`,** then restart the backend. The digest's limits banner shows the loaded value | Found in the 22 Oct run |
 | B5 | **The regime as a sizing input** | Today the regime is advice only. Option: size new buys down at HIGH or SEVERE | **Not yet.** Regime v2 (closer to the original specification) was tested on 21 Oct: it warns of falls less sharply than v1 and calls SEVERE on 42% of days. A re-entry signal is still untested | [market regime](docs/market-regime.md) |
 
 ### Research and scoring
@@ -99,7 +150,7 @@ with `npm run agenda`.
 
 | # | Decision | Note |
 | --- | --- | --- |
-| B23 | **Merge `dev` into `main`** with a pull request | `main` was last merged on 20 Oct |
+| B23 | ~~Merge `dev` into `main`~~ **Done 23 Oct** (pull request #2, then again before the move) | Your commits now count on GitHub on the days you made them |
 | B25 | **The code repository is public** | Trading-Organisation can be read by anyone, including this file, your portfolio size and the docs. It holds no secrets (a secret scan runs before every push), and the data is in the private repository. **Recommendation: make it private** (GitHub → Settings → Danger zone → Change visibility), unless you want it public. The public results page `trading-desk-results` is separate and unaffected |
 
 ### Running all the time
@@ -143,18 +194,35 @@ These are fixes from the gap analysis that need no decision.
 - **Loss brakes:** the mechanism is built and switched off; only the thresholds wait on you (B3, step A4b). The review
   rules are now `signal-risk-v3`, which is identical to v2 until brakes are set.
 
+**Done 22–23 Oct** (see the [project log](docs/project-log/2026-10-21.md)):
+- **News all day:** the supervisor polls news every 30 minutes, on any day.
+- **Research:**
+  - the follow-through-day re-entry signal (no edge);
+  - a shuffled-history test (no idea shows that its timing matters);
+  - a plateau report (quarterly momentum sits on a plateau);
+  - point-in-time NIFTY 50 research, once you provide the membership file (B14).
+- **Agents:**
+  - a circuit breaker for failing model steps;
+  - a headline reader;
+  - a weighted, two-round scenario panel with persona lessons;
+  - TradingAgents readability counts;
+  - an events calendar for the debate, the panel and the digest.
+- **Debate citations are now grounded:** a citation counts only when its quote is found in the evidence, or the code
+  derives it from the argument's own words.
+- **Model:** **7 of 8 tasks pass** on Qwen 3.5-4B ([model evaluation](docs/model-eval.md)).
+- **The first live run (22 Oct):** clean. It found and fixed a missing basket comparison for trend-bot.
+
 **Still to do, no decision needed:**
-- the research guards still missing: the plateau report (only useful once an idea passes) and a shuffled-history
-  null. The expanding walk-forward and the warm-up sweep were added: still no edge, and every idea is stable from 300
-  sessions;
-- the replay clock for the whole backend. The brakes already take an injectable clock.
+- the replay clock for the whole backend (fast-forward testing). The brakes already take an injectable clock;
+- the NSE bhavcopy price cross-check, which stays off until you approve the source (B16).
 
 ## Part D: things you should know
 
 - **The system tells the truth, including bad news.** It found no proven edge, corrected its own earlier over-optimistic
   numbers on 21 Oct, and labels everything paper, unverified, inferred or seen history.
-- **Reference projects:**
-  - **FinceptTerminal** may only be run for non-business use under its licence. We take ideas only.
-  - **MiroFish and backtesting.py** are AGPL. We took ideas, never code.
+- **Reference projects:** on your instruction (21 Oct), useful code may be taken from them for this personal project,
+  with a one-line source note. Because the code repository is public, making it private (B25) avoids any licence
+  question for the copyleft ones (FinceptTerminal, MiroFish, backtesting.py, freqtrade).
 - **The office laptop:** nothing is downloaded, installed, run in the background or pushed without your OK, except
   what you have authorised (pushes to `dev` when asked).
+- **The new machine:** run the organisation there only, from 24 Oct. Don't run it on the office laptop as well.

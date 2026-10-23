@@ -15,21 +15,52 @@ orders fill at verified prices; every result is scored and audited. It is paper 
 | Daily cycle | `scripts/organisation-cycle.mjs` | Runs every daily step in order, resumable |
 | Local model (optional) | `.local/models/` (Qwen 3.5-4B) | Claims, debate, scenario panel, R&D ideas |
 
-## 1. First-time setup (new machine)
+## 1. First-time setup (new machine), about an hour
 
-1. Clone the code repository (`Trading-Organisation`) and the private data repository (`trading-organisation-data`).
-2. Copy the data repository's `local/` folder to `.local/`, and each `state/<name>/` folder to
-   `integrations/<name>/.state/`.
-3. Put back your safe copies of `.env`, `.local/credentials.json` and `.local/owner-signing-key.pem`.
-4. Install the software:
-   - Node.js: `npm ci --ignore-scripts`, then `npm run build`.
-   - Python 3.12: `python -m venv .local/replay-venv`, then
-     `.local\replay-venv\Scripts\python.exe -m pip install -r integrations/trading-desk/requirements-replay.lock`.
-   - The model, only if you use it: see [docs/local-model.md](docs/local-model.md).
-5. Restore the newest backup into an empty folder:
-   `node scripts/backup.mjs restore .local/backups/<newest> .data/paper`
-6. Rebuild the knowledge index: `npm run knowledge -- build`
-7. Check everything: `npm run preflight`. It reads only, and says READY or NOT READY, with the command for each gap.
+**Before you start, you need:**
+- **Node.js 24.x** (the project requires 24 or later, below 25);
+- **Python 3.12**;
+- **Git**, and the **GitHub CLI** signed in as KeerthanMuniRaja (`gh auth login`);
+- your three secret files (`.env`, `credentials.json`, `owner-signing-key.pem`);
+- about 10 GB free disk.
+
+The commands below are for Windows PowerShell. On Linux, use `/` in paths and `.local/replay-venv/bin/python`.
+
+1. **Get the code and the data:**
+   ```
+   gh repo clone KeerthanMuniRaja/Trading-Organisation
+   cd Trading-Organisation
+   git checkout dev
+   gh repo clone KeerthanMuniRaja/trading-organisation-data .local\data-repo
+   ```
+2. **Put the data in place.**
+   - Copy everything inside `.local\data-repo\local\` into `.local\`.
+   - Copy `.local\data-repo\state\hermes\` to `integrations\hermes\.state\`, and do the same for `ruflo` and `skfolio`.
+3. **Put your secrets back:**
+   - `.env` goes in the project folder;
+   - `credentials.json` and `owner-signing-key.pem` go in `.local\`.
+
+   If `.env` has a `DATABASE_PATH` line pointing at the old machine's folder, change it to `.data/paper`.
+4. **Install:**
+   ```
+   npm ci --ignore-scripts
+   npm run build
+   python -m venv .local\replay-venv
+   .local\replay-venv\Scripts\python.exe -m pip install -r integrations\trading-desk\requirements-replay.lock
+   ```
+5. **Restore the database** from the newest folder in `.local\backups\` (it must go into a new, empty folder). It is
+   verified first, and nothing is written if any check fails:
+   ```
+   node scripts\backup.mjs restore .local\backups\<newest-backup-folder> .data\paper
+   ```
+6. **Rebuild the knowledge index:** `npm run knowledge -- build`
+7. **Install the model** (a 2.6 GB download): `npm run model:local -- install qwen3.5-4b-q4km`. Details are in
+   [docs/local-model.md](docs/local-model.md).
+8. **Check everything:**
+   - `npm run verify -- --quick`: every line should say `passed`, ending with `ALL CHECKS PASSED`.
+   - `npm run preflight`: it should say READY, and it gives a command for any gap.
+
+**Run the organisation on one machine only.** Two machines would grow two databases that cannot be merged.
 
 ## 2. Every day
 
@@ -54,6 +85,8 @@ orders fill at verified prices; every result is scored and audited. It is paper 
 | `npm run members -- apply <member> --yes` | Model members: TradingAgents and the debaters |
 | `npm run verify -- --quick` | The full check gate: tests, build and secret scan |
 | `npm run scan:secrets` | Run before every push |
+| `npm run export-data` / `-- --write` | See, then copy, the data into `.local/data-repo` for the private data repository |
+| `node scripts/backup.mjs verify .local/backups/<folder>` | Re-check a backup without restoring it |
 
 ## 4. Who calls the API (roles)
 
@@ -93,7 +126,26 @@ Each request carries `Authorization: Bearer <token>` from `PRINCIPALS_JSON` in `
 | Learning and academy | `/learning/*`, `/skills/*`, `/development/*`, `/experiments`, `/jobs/*`, `/portfolio/*`, `/workers/*` | Learning workflows, exams, experiments and worker sessions |
 | Alerts | `POST /alerts/query`, `/alerts/cycles`, `/alerts/deliveries`, `/alerts/acknowledgments` | Alert rules, delivery and acknowledgement |
 
-## 6. Safety rules built in
+## 6. When something goes wrong
+
+| What you see | What to do |
+| --- | --- |
+| `npm start` says the port is in use | The backend is already running (maybe started by the supervisor). Check `npm run status`; don't start a second one |
+| The digest says "the running backend loaded different limits" | A setting changed in `.env` after the backend started, or a variable was set in your terminal. Close the terminal, open a new one and restart the backend |
+| `npm run preflight` says NOT READY | Run the command it prints next to each gap |
+| The backup restore refuses | The target folder must be new or empty. Pick a new name, then set `DATABASE_PATH` to it |
+| A cycle step failed | The digest and `npm run status` name the step, with the playbook's cause and safe fix. Run `npm run cycle` again: finished steps are skipped |
+| The model does not start | Check `.local\models\server-qwen3.5-4b-q4km.log`. The cycle still runs without the model; model steps are skipped |
+| "Can you trust this digest?" lists a problem | Fix that first, before reading the money and trading sections |
+| Anything else | Write it down with the date and the exact message, and keep the files. Don't delete `.data` or `.local` |
+
+**Never:**
+- edit or delete files in `.data/`;
+- commit `.env` or `.local/`;
+- use `git stash`;
+- run the organisation on two machines at once.
+
+## 7. Safety rules built in
 
 - **Paper only:** `APP_MODE` must be `paper`. There is no broker connection.
 - **Limits come from `.env`:** max order, exposure and realised loss. The digest shows the limits the backend actually

@@ -140,7 +140,7 @@ def fingerprint(ledger_path=None):
 PLATEAU_STEP = {'months': 1, 'keep': 1, 'window': 20, 'days': 5, 'nearHighPct': 5, 'rsiMax': 5}
 
 
-def plateau(best, table, dates, through=None):
+def plateau(best, table, dates, through=None, universe_at=None):
     """backtesting.py's heatmap question, for the best idea the grammar can express: do its neighbours (each setting one
     step either side, within bounds) do about as well, or is it a lone lucky peak? Diagnostic only: neighbours are never
     candidates, so they cannot pass anything or move the bar."""
@@ -161,7 +161,7 @@ def plateau(best, table, dates, through=None):
     if not neighbours:
         return None
     rules = {rnd_ideas.name_of(n): rnd_ideas.rule_of(n) for n in neighbours}
-    rows = monthly(table, dates, rules, through)
+    rows = monthly(table, dates, rules, through, universe_at)
     results = [{'name': name, 'averageExcessPct': round(statistics.fmean(r['rules'][name] - r['basketPct'] for r in rows), 3),
                 'ahead': sum(r['rules'][name] > r['basketPct'] for r in rows), 'behind': sum(r['rules'][name] < r['basketPct'] for r in rows)}
                for name in rules] if rows else []
@@ -181,7 +181,27 @@ def sign_p(ahead, behind):
     return min(1.0, sum(math.comb(n, k) for k in range(ahead, n + 1)) / 2 ** n)
 
 
-def monthly(table, dates, rules, through=None):
+MEMBERSHIP = OUT.parent / 'datasets' / 'nifty50-membership.json'
+
+
+def membership(path=MEMBERSHIP):
+    """B14 point-in-time index membership, kept by the owner from NSE's reconstitution notices:
+    {"source": "...", "months": {"2018-03": ["RELIANCE", ...], ...}}. Returns members_at(day) -> set of '<SYMBOL>.NS' (the
+    latest list on or before that month; None before the first), or None when there is no file."""
+    if not Path(path).exists():
+        return None
+    months = json.loads(Path(path).read_text(encoding='utf-8')).get('months', {})
+    keys = sorted(k for k in months if len(k) == 7)
+    lists = {k: {s if s.endswith('.NS') else s + '.NS' for s in months[k]} for k in keys}
+
+    def members_at(day):
+        known = [k for k in keys if k <= day[:7]]
+        return lists[known[-1]] if known else None
+    members_at.months = keys
+    return members_at
+
+
+def monthly(table, dates, rules, through=None, universe_at=None):
     """Per month: the basket's gross return and each rule's return net of turnover cost (percent).
     Timing (fixed 21 Oct 2026 after the backtesting.py/vectorbt review): a decision uses the month's first session, close
     included, so it trades at the NEXT session's open and is held to the open after the next month's first session, as the
@@ -195,9 +215,18 @@ def monthly(table, dates, rules, through=None):
             break
         enter, leave = dates[a + 1], dates[b + 1]
         ret = {s: table[s][leave]['openPaise'] / table[s][enter]['openPaise'] - 1 for s in table}
-        row = {'month': dates[a][:7], 'basketPct': 100 * sum(ret.values()) / len(ret), 'rules': {}, 'cash': {}, 'turnover': {}}
+        # point in time (B14): the month's index members only, for the rules' choice and the basket; shares still held
+        # from earlier months keep their returns until they are sold
+        members = universe_at(dates[a]) if universe_at else None
+        if universe_at and members is None:
+            continue  # before the first membership list: not judged
+        universe = {s: table[s] for s in table if s in members} if members is not None else table
+        if not universe:
+            continue
+        row = {'month': dates[a][:7], 'basketPct': 100 * sum(ret[s] for s in universe) / len(universe), 'rules': {}, 'cash': {}, 'turnover': {},
+               **({'coverage': round(len(universe) / len(members), 3)} if members is not None else {})}
         for name, rule in rules.items():
-            target = rule(table, dates, a)
+            target = rule(universe, dates, a)
             holds = getattr(rule, 'holdsBetween', False) and target == previous[name]
             weights = held[name] if holds else target
             turnover = 0.0 if holds else sum(abs(target.get(s, 0) - held[name].get(s, 0)) for s in table)
@@ -240,13 +269,15 @@ def scout(through=None, cache=daily.DAILY, ledger_path=None, universe='desk', ra
     dates, table = pd.aligned(loaded)
     tried = entries(ledger_path)
     rules = {name: e[3] for name, e in tried.items()}
-    rows = monthly(table, dates, rules, through)
+    # B14: with the owner's membership file, the NIFTY 50 screen is point-in-time (the desk's 8 shares never change)
+    pit = membership() if universe == 'nifty50' else None
+    rows = monthly(table, dates, rules, through, pit)
     if not rows:
         raise ValueError('Not enough daily history for the catalogue')
     last_index = max(i for i, d in enumerate(dates) if d[:7] <= rows[-1]['month'])
     checks = rc.check_rules(rules, table, dates, [i for i in rc.decision_days(dates, START) if i <= last_index])
     pickers = {f'random-{k}': rc.random_rule(k, 3) for k in range(randoms)}
-    random_rows = monthly(table, dates, pickers, through) if randoms else []
+    random_rows = monthly(table, dates, pickers, through, pit) if randoms else []
     random_avg = sorted(statistics.fmean(r['rules'][n] - r['basketPct'] for r in random_rows) for n in pickers) if randoms else []
     # random pickers that re-pick every 3, 6 or 12 months: a slow rule is compared with equally slow luck (vectorbt review)
     matched = {}
@@ -254,7 +285,7 @@ def scout(through=None, cache=daily.DAILY, ledger_path=None, universe='desk', ra
         per = max(10, randoms // 4)
         for every in (3, 6, 12):
             slow = {f'random-{every}-{k}': rc.random_rule(k, 3, every) for k in range(per)}
-            slow_rows = monthly(table, dates, slow, through)
+            slow_rows = monthly(table, dates, slow, through, pit)
             matched[every] = {'turnoverPct': 100 * statistics.fmean(r['turnover'][n] for r in slow_rows[1:] for n in slow),
                               'averages': sorted(statistics.fmean(r['rules'][n] - r['basketPct'] for r in slow_rows) for n in slow)}
         matched[1] = {'turnoverPct': 100 * statistics.fmean(r['turnover'][n] for r in random_rows[1:] for n in pickers), 'averages': random_avg}
@@ -313,7 +344,7 @@ def scout(through=None, cache=daily.DAILY, ledger_path=None, universe='desk', ra
         for c in out[:SHUFFLE_TOP]:
             averages = []
             for t in histories:
-                r = monthly(t, dates, {c['name']: rules[c['name']]}, through)
+                r = monthly(t, dates, {c['name']: rules[c['name']]}, through, pit)
                 averages.append(statistics.fmean(x['rules'][c['name']] - x['basketPct'] for x in r) if r else 0.0)
             c['beatsShuffledPct'] = rc.percentile(c['averageExcessPct'], sorted(averages))
     last = rows[-1]['month']
@@ -333,11 +364,17 @@ def scout(through=None, cache=daily.DAILY, ledger_path=None, universe='desk', ra
                                                                      'medianExcessPct': round(statistics.median(m['averages']), 3)}
                                                        for k, m in sorted(matched.items())}},
               'walkForward': wf, 'walkForwardExpanding': wfx,
-              'plateau': plateau(next((c for c in out if c.get('spec')), {}), table, dates, through),
+              'plateau': plateau(next((c for c in out if c.get('spec')), {}), table, dates, through, pit),
               'note': 'Seen history, net of costs, against the equal-weight basket; a screen for ideas, not proof. Live paper fitness decides.'}
     if universe != 'desk':
+        covered = [r['coverage'] for r in rows if 'coverage' in r]
         report.update({'universe': universe, 'shares': sorted(table), 'leftOut': excluded,
-                       'warning': 'RESEARCH ONLY, never traded. Today\'s NIFTY 50 members over past years: survivorship bias flatters every rule.'})
+                       'pointInTime': {'months': len(covered), 'averageCoveragePct': round(100 * statistics.fmean(covered), 1),
+                                       'minimumCoveragePct': round(100 * min(covered), 1),
+                                       'note': 'Each month ranks and judges only that month\'s index members; members whose prices we lack are left out.'}
+                       if covered else None,
+                       'warning': ('RESEARCH ONLY, never traded. Point-in-time membership; former members without price data are still missing.'
+                                   if covered else 'RESEARCH ONLY, never traded. Today\'s NIFTY 50 members over past years: survivorship bias flatters every rule.')})
     return report
 
 

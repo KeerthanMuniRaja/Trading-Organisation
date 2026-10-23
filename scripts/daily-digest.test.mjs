@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { arithmeticProblems, render, run, trustCheck } from './daily-digest.mjs';
+import { arithmeticProblems, render, run, trustCheck, upcomingEvents } from './daily-digest.mjs';
 
 const digest = { windowHours: 24, generatedAt: '2026-10-14T18:00:00.000Z', mode: 'paper', halted: false,
   money: { realisedPaise: '25000', unrealisedPaise: '-1200', totalPaise: '23800', realisedInWindowPaise: '25000', byBot: [{ botId: 'bot-one', totalPaise: '23800', returnOnBudgetPct: 2.38 }] },
@@ -114,6 +114,23 @@ test('the limits banner shows what the backend loaded and flags settings that di
   assert.match(render({ ...digest, protections: { policySet: true, paused: [{ botId: 'momentum-rules', pauses: [{ code: 'protection-daily-loss', until: null },
     { code: 'protection-losing-streak', until: '2026-10-15T10:30:00.000Z' }] }] } }),
   /- Loss brakes: momentum-rules paused \(daily-loss, losing-streak until 2026-10-15 10:30 UTC\); new buys only, each lifts by itself/);
+});
+
+test('the digest shows what is coming up from the owner\'s calendar, and nothing when there is none', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'events-'));
+  try {
+    await mkdir(join(root, '.local'), { recursive: true });
+    assert.equal(await upcomingEvents(root, Date.parse('2026-10-23T06:00:00Z')), null);
+    await writeFile(join(root, '.local', 'events.json'), JSON.stringify({ events: [
+      { date: '2026-10-28', kind: 'results', symbols: ['SBIN'], title: 'SBI Q2 results' }, { date: '2026-10-27', kind: 'fomc', title: 'Fed decision' },
+      { date: '2026-12-05', kind: 'rbi-policy', title: 'RBI policy' }, { date: 'soon', title: 'bad' }] }));
+    const events = await upcomingEvents(root, Date.parse('2026-10-23T06:00:00Z'));
+    assert.deepEqual(events.map(e => e.title), ['Fed decision', 'SBI Q2 results']);
+    const text = render(digest, null, null, { events });
+    assert.match(text, /## Coming up \(next 7 days, from your events calendar\)\n- 2026-10-27 fomc: Fed decision\n- 2026-10-28 results: SBI Q2 results \(SBIN\)/);
+    assert.match(render(digest, null, null, { events: [] }), /Nothing scheduled in the calendar/);
+    assert.doesNotMatch(render(digest), /Coming up/);
+  } finally { await rm(root, { recursive: true, force: true }); }
 });
 
 test('the review scorecard shows how taken and turned-down calls went', () => {

@@ -51,7 +51,24 @@ export async function knowledgeSummary(root = join(dirname(fileURLToPath(import.
   let drafts = 0, review = null;
   try { drafts = JSON.parse(await readFile(join(root, '.local', 'trading-desk', 'knowledge', 'playbook-drafts.json'), 'utf8')).drafts.length; } catch { /* none */ }
   try { review = JSON.parse(await readFile(join(root, '.local', 'trading-desk', 'review-scorecard.json'), 'utf8')); } catch { /* not made yet */ }
-  return live || unknown.length || drafts || review ? { live, unknown, drafts, review } : null;
+  const events = await upcomingEvents(root, now);
+  return live || unknown.length || drafts || review || events ? { live, unknown, drafts, review, events } : null;
+}
+
+/** NEWS-05: the owner's events calendar (.local/events.json), the next `days` days; null when there is no calendar. */
+export async function upcomingEvents(root = join(dirname(fileURLToPath(import.meta.url)), '..'), now = Date.now(), days = 7) {
+  let raw;
+  try { raw = JSON.parse(await readFile(join(root, '.local', 'events.json'), 'utf8')).events; } catch { return null; }
+  const today = new Date(now + 330 * 60_000).toISOString().slice(0, 10), end = new Date(now + 330 * 60_000 + days * 86_400_000).toISOString().slice(0, 10);
+  return (Array.isArray(raw) ? raw : []).filter(e => e && /^\d{4}-\d{2}-\d{2}$/.test(String(e.date)) && e.date >= today && e.date <= end && e.title)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
+export function eventLines(events) {
+  if (events === null || events === undefined) return [];
+  return ['## Coming up (next 7 days, from your events calendar)',
+    ...(events.length ? events.map(e => `- ${e.date} ${String(e.kind ?? 'other')}: ${String(e.title).slice(0, 120)}${e.symbols?.length ? ` (${e.symbols.join(', ')})` : ''}`)
+      : ['- Nothing scheduled in the calendar.']), ''];
 }
 
 /** TRUST-02: how the calls the risk review took and turned down went (the backend's own scores). */
@@ -195,6 +212,7 @@ export function render(d, world = null, regime = null, known = null, trust = nul
     ...m.byBot.map(b => `- ${b.botId}: ${rupees(b.totalPaise)}${b.returnOnBudgetPct !== null ? ` (${b.returnOnBudgetPct}% of budget)` : ''}`),
     ...(m.stalePositions ? [`- ${m.stalePositions} open position(s) without a recent verified price: their value is unreliable`] : []), '',
     ...(regime ? ['## Market regime (advice)', `- ${regimeLine(regime)}`, ''] : []),
+    ...eventLines(known?.events),
     '## Trading',
     `- ${t.proposed} proposed, ${t.accepted} accepted, ${t.rejected} rejected, ${t.executed} executed, ${t.challenges} challenges`,
     `- ${t.scored} outcomes scored${t.accuracy !== null ? `, ${Math.round(t.accuracy * 100)}% right` : ''}`,

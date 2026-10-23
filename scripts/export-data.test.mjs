@@ -12,7 +12,7 @@ test('only data folders and integration state are exported; secrets, keys, logs,
   const root = await mkdtemp(join(tmpdir(), 'export-'));
   try {
     for (const p of ['.local/trading-desk/daily/SBIN.NS-1d.json', '.local/world/latest.json', '.local/cycles/2026-10-21.json', '.local/feed-livemint.json',
-      '.local/nse-holidays.json', '.local/knowledge/index-meta.json', '.local/organisation-starter/plan.json',
+      '.local/nse-holidays.json', '.local/knowledge/index-meta.json', '.local/organisation-starter/plan.json', '.local/owner-notes.txt',
       'integrations/skfolio/.state/academy.sqlite', 'integrations/ruflo/.state/state.json']) await put(root, p, '{}');
     for (const p of ['.local/credentials.json', '.local/owner-signing-key.pem', '.local/env-backups/.env.1', '.local/models/qwen.gguf',
       '.local/replay-venv/lib/x.py', '.local/backend-run.log', '.local/push-plan.json', '.local/knowledge/index.sqlite', '.local/market-replay-cache/cookies.db',
@@ -21,7 +21,7 @@ test('only data folders and integration state are exported; secrets, keys, logs,
     const p = await plan(root);
     const paths = p.files.map(f => f.path);
     for (const good of ['local/trading-desk/daily/SBIN.NS-1d.json', 'local/world/latest.json', 'local/cycles/2026-10-21.json', 'local/feed-livemint.json',
-      'local/nse-holidays.json', 'local/knowledge/index-meta.json', 'local/organisation-starter/plan.json',
+      'local/nse-holidays.json', 'local/knowledge/index-meta.json', 'local/organisation-starter/plan.json', 'local/owner-notes.txt',
       'state/skfolio/academy.sqlite', 'state/ruflo/state.json']) assert.ok(paths.includes(good), good); // the skfolio academy database is data
     for (const bad of ['credentials', '.pem', '.env', 'models/', 'venv', '.log', 'push-plan', 'index.sqlite', 'cookies', '.pyc', 'token-cache', '.lock'])
       assert.ok(!paths.some(x => x.includes(bad)), bad);

@@ -96,6 +96,12 @@
         ],
         "verifiedEvidenceIds": [
           "ev-momentum-1"
+        ],
+        "verifiedEvidence": [
+          {
+            "id": "ev-momentum-1",
+            "excerpt": "HDFC Bank reported standalone net profit of Rs 16,821 crore for Q2 FY27, up 10.5% from a year earlier. Net interest margin narrowed to 3.4% from 3.6% as deposit costs rose. Six-month price momentum ranks first among the eight desk shares."
+          }
         ]
       },
       "variant": {
@@ -131,6 +137,12 @@
         ],
         "verifiedEvidenceIds": [
           "ev-momentum-1"
+        ],
+        "verifiedEvidence": [
+          {
+            "id": "ev-momentum-1",
+            "excerpt": "HDFC Bank reported standalone net profit of Rs 16,821 crore for Q2 FY27, up 10.5% from a year earlier. Net interest margin narrowed to 3.4% from 3.6% as deposit costs rose. Six-month price momentum ranks first among the eight desk shares."
+          }
         ]
       },
       "expect": {
@@ -167,6 +179,12 @@
         "verifiedNews": [],
         "verifiedEvidenceIds": [
           "ev-itc-1"
+        ],
+        "verifiedEvidence": [
+          {
+            "id": "ev-itc-1",
+            "excerpt": "ITC's cigarette volumes were flat in Q2 while FMCG revenue grew 8%. Leaf tobacco costs rose and the company kept its dividend policy unchanged."
+          }
         ]
       },
       "variant": null,

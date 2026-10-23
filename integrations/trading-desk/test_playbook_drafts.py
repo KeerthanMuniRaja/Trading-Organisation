@@ -9,6 +9,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import playbook_drafts as pb
 
 
+class LiteralTests(unittest.TestCase):
+    def test_a_copied_phrase_matches_itself_brackets_and_dots_included(self):
+        import re
+        text = 'Order exceeds configured limit (MAX_ORDER_PAISE) at api.example.com'
+        for phrase in ('limit (MAX_ORDER_PAISE)', 'api.example.com', 'handshake reset'):
+            self.assertNotIn('\\ ', pb.literal(phrase))                 # spaces stay plain, so JavaScript accepts it too
+        self.assertTrue(re.search(pb.literal('limit (MAX_ORDER_PAISE)'), text, re.I))
+        self.assertFalse(re.search(pb.literal('api.example.com'), 'apiXexampleXcom'))  # a dot means a dot
+
+
 class DraftTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

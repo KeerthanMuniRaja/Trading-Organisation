@@ -96,6 +96,38 @@ The model also ignored an instruction planted inside a weather headline, both ti
 
 The training-data builder now recognises and labels both new tasks.
 
+## Where the model stands, 23 Oct 2026 (Qwen 3.5-4B, laptop CPU)
+
+**7 of 8 tasks pass** (against 2 of 6 on 21 Oct):
+
+| Task | 21 Oct | 23 Oct | What changed |
+| --- | --- | --- | --- |
+| claims | SHIP | SHIP | - |
+| scenario | SHIP | SHIP (83% consistent) | - |
+| headline (new) | - | SHIP | prompt v2: each event type defined |
+| reflect (new) | - | SHIP | - |
+| debate | DON'T SHIP (50% consistent) | **SHIP (100%)** | an exact citation rule: cite only when the argument uses a fact stated in that evidence |
+| playbook | DON'T SHIP (67% correct) | **SHIP (100%)** | the model copies a phrase from the failure text, and the code escapes it (`playbook_drafts.literal`). The model had copied "limit (MAX_ORDER_PAISE)" exactly; our code then read the brackets as regex symbols |
+| R&D invention | DON'T SHIP (0% consistent) | DON'T SHIP | owner decision B10: variety is expected when inventing ideas |
+| allocator | DON'T SHIP (0% consistent) | DON'T SHIP | owner decision B11: a fixed share order needs a new forward test |
+
+**A lesson about small models:** one extra sentence in the debate instructions, about the new events calendar, flipped
+its citations again (50% consistent). The calendar now explains itself inside the data, and the instructions stay as
+tested.
+
+**The structural fix, done the same day (MODEL-04):**
+- **Context:** debaters now see an excerpt of each verified evidence item. Before, they saw only its id, so a citation
+  was a guess.
+- **A quote to cite:** to cite, a debater copies a phrase from the excerpt (`evidenceQuote`). The code keeps the
+  citation only when that phrase is in the evidence; otherwise the argument stands without it (`citationDropped`).
+- **Derived citations:** when a debater uses a fact but forgets to cite it, the code derives the citation from the
+  argument's own words (`citationDerived`). That needs a shared run of at least 20 characters and 3 words, so generic
+  phrases never count. An explicit grounded citation always wins, and a false quote is never rescued.
+- **On Qwen 3.5-4B:** debate SHIP, 100% valid, correct and consistent over 3 repeats and the reworded variant.
+  - The bear cites the narrowing net interest margin with an exact quote.
+  - In the reworded case the same citation is derived from its argument.
+  - The bull ignored an injected fake evidence id.
+
 ## Training data from our own work (`build_dataset.py`)
 
 **The source.** Every production model call is now recorded locally in `.local/model-calls/<day>.jsonl` by the shared

@@ -1,0 +1,8 @@
+{
+  "note": "Example events calendar. Copy to .local/events.json and keep it current by hand (results dates from the companies' exchange filings, RBI and Budget dates from their announcements, FOMC from the Federal Reserve calendar). Kinds: results, rbi-policy, budget, fomc, macro-data, holiday, other. Leave symbols out for an event that concerns the whole market. The dates below are placeholders, not real schedules.",
+  "events": [
+    { "date": "2026-11-05", "kind": "results", "symbols": ["SBIN"], "title": "SBI quarterly results (placeholder date)" },
+    { "date": "2026-12-04", "kind": "rbi-policy", "title": "RBI monetary policy decision (placeholder date)" },
+    { "date": "2026-12-09", "kind": "fomc", "title": "US Federal Reserve rate decision (placeholder date)" }
+  ]
+}
