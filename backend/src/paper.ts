@@ -1,3 +1,4 @@
+import { HttpException } from '@nestjs/common';
 import { z } from 'zod';
 import { Config } from './config.js';
 import { Actor, bounded, ceilBps, id, parse, permit, positiveMoney, requireThat, symbol, timestamp, uuid } from './core.js';
@@ -7,10 +8,14 @@ import { available, balance, journal, tradingLoss } from './treasury.js';
 import { verifiedPrice } from './price-evidence.js';
 import { liveReleases } from './bot-releases.js';
 import { isSuspended } from './bot-control.js';
+import { activePauses } from './protections.js';
 
 const priceEvidence=z.object({evidenceId:z.uuid(),pricePaise:z.string().regex(/^[1-9][0-9]{0,13}$/),observedAt:timestamp}).strict();
 /** Set only by TradeSignals.execute (never from a request body): the reviewed proposal this order carries out. */
 export type SignalLink = { signalId: string };
+type Refused = { botId?: string; symbol?: string; side?: 'buy' | 'sell'; quantity?: number; orderId?: string; signalId?: string | null };
+const refusalQuery = z.object({ hours: z.number().int().min(1).max(24 * 31).default(24), botId: id.optional(),
+  limit: z.number().int().min(1).max(200).default(50) }).strict();
 
 export class PaperTrading {
   constructor(private readonly db:Database,private readonly config:Config) {}
@@ -46,17 +51,46 @@ export class PaperTrading {
     requireThat(quote&&Math.abs(Date.now()-new Date(quote.observed_at).getTime())<=60000,'Fresh approved quote required');
     return side==='buy'?BigInt(quote.a)+ceilBps(BigInt(quote.a),this.config.slippageBps):BigInt(quote.b)*(10000n-BigInt(this.config.slippageBps))/10000n;
   }
-  private async permitNewRisk(tx:Sql,botId:string) {
+  private async permitNewRisk(tx:Sql,botId:string,symbol:string) {
     requireThat(!(await tx.query('SELECT halted FROM system_lock WHERE id=1')).rows[0]!.halted,'New risk is halted');
     requireThat(await tradingLoss(tx) < this.config.maxLoss,'Realised loss limit reached');
+    const pauses=await activePauses(tx,botId,symbol);
+    requireThat(!pauses.length,`New buys are paused by protection (${pauses.map(p=>p.code).join(', ')}); exits stay allowed and the pause lifts by itself`);
     const invalidLessons=await tx.query("SELECT c.lesson_id FROM bot_curriculum c JOIN lessons l ON l.id=c.lesson_id JOIN evidence e ON e.id=l.evidence_id JOIN sources s ON s.id=e.source_id WHERE c.bot_id=$1 AND (l.status<>'verified' OR e.status<>'verified' OR s.approved=false)",[botId]);
     const invalidEvaluation=await tx.query("SELECT x.id FROM experiments x JOIN datasets d ON d.id=x.dataset_id JOIN evidence e ON e.id=d.evidence_id JOIN sources s ON s.id=e.source_id WHERE x.bot_id=$1 AND x.state='passed' AND (e.status<>'verified' OR s.approved=false)",[botId]);
     requireThat(!invalidLessons.rows.length&&!invalidEvaluation.rows.length,'Qualification evidence has been revoked');
   }
+  // TRUST-03: a business refusal (403, 404, 409) rolls its transaction back, so it is kept by a separate small write and
+  // the same error is raised again; a malformed request (400) or a crash is not a refusal, and recording never changes
+  // the answer
+  private async refusing<T>(actor:Actor,stage:'reserve'|'fill',key:string,what:Refused,run:()=>Promise<T>):Promise<T> {
+    try { return await run(); } catch(error) {
+      const status=error instanceof HttpException?error.getStatus():0;
+      if(status===403||status===404||status===409) {
+        try {
+          await this.db.transaction(tx=>tx.query(`INSERT INTO order_refusals(id,actor_id,stage,idempotency_key,bot_id,symbol,side,quantity,order_id,signal_id,status,message)
+            SELECT $1,$2,$3,$4,COALESCE($5,o.bot_id),COALESCE($6,o.symbol),COALESCE($7,o.side),COALESCE($8::bigint,o.quantity),$9::uuid,COALESCE($10::uuid,o.signal_id),$11,$12
+            FROM (SELECT 1) one LEFT JOIN orders o ON o.id=$9::uuid ON CONFLICT (actor_id,stage,idempotency_key) DO NOTHING`,
+            [uuid(),actor.id,stage,key,what.botId??null,what.symbol??null,what.side??null,what.quantity??null,what.orderId??null,what.signalId??null,status,
+              String((error as Error).message||'refused').slice(0,300)]),false);
+        } catch { /* the refusal itself is the answer */ }
+      }
+      throw error;
+    }
+  }
+  refusals(actor:Actor,raw:unknown) {
+    permit(actor,'owner','evaluator');const input=parse(refusalQuery,raw);
+    return this.db.transaction(async tx=>({refusals:(await tx.query(`SELECT id,actor_id,stage,bot_id,symbol,side,quantity::text AS quantity,order_id,signal_id,status,message,created_at
+      FROM order_refusals WHERE created_at >= now() - ($1::int * interval '1 hour') AND ($2::text IS NULL OR bot_id=$2) ORDER BY created_at DESC,id LIMIT $3`,
+      [input.hours,input.botId??null,input.limit])).rows.map(r=>({id:String(r.id),actorId:r.actor_id,stage:r.stage,botId:r.bot_id,symbol:r.symbol,side:r.side,
+        quantity:r.quantity,orderId:r.order_id?String(r.order_id):null,signalId:r.signal_id?String(r.signal_id):null,status:r.status,message:r.message,
+        at:new Date(r.created_at).toISOString()}))}),false);
+  }
   reserve(actor:Actor,key:string,raw:unknown,link?:SignalLink) {
     permit(actor,'trader');const input=parse(z.object({botId:id,symbol,side:z.enum(['buy','sell']),quantity:z.number().int().min(1).max(1000000),evidenceId:z.uuid(),
       priceEvidence:priceEvidence.optional()}).strict(),raw);
-    return this.db.command(actor,'reserve-order',key,{...input,...(link?{signalId:link.signalId}:{})},async tx=>{
+    return this.refusing(actor,'reserve',key,{botId:input.botId,symbol:input.symbol,side:input.side,quantity:input.quantity,signalId:link?.signalId??null},
+      ()=>this.db.command(actor,'reserve-order',key,{...input,...(link?{signalId:link.signalId}:{})},async tx=>{
       const bot=await this.tradingBot(tx,actor,input.botId);await verifiedEvidence(tx,input.evidenceId);
       // a bot under release control (RELEASE-01) trades only through reviewed proposals: no direct orders around review
       if(!link)requireThat(!(await liveReleases(tx,bot.id)).registered,'This bot trades only through reviewed proposals (POST /v1/trading/signals/executions)',403);
@@ -64,7 +98,7 @@ export class PaperTrading {
       const price=await this.price(tx,input.symbol,input.side,input.priceEvidence,link?.signalId??null);
       let quantity=BigInt(input.quantity),reserved=0n;
       if(input.side==='buy') {
-        await this.permitNewRisk(tx,bot.id);
+        await this.permitNewRisk(tx,bot.id,input.symbol);
         requireThat(!(await isSuspended(tx,bot.id)),'The bot is suspended: it may only reduce risk',403);
         const allReserved=BigInt((await tx.query("SELECT COALESCE(SUM(reserved_paise),0)::text AS value FROM orders WHERE status='reserved'")).rows[0]!.value);
         const ownCost=BigInt((await tx.query('SELECT COALESCE(SUM(cost_paise),0)::text AS value FROM positions WHERE bot_id=$1',[bot.id])).rows[0]!.value);
@@ -87,18 +121,18 @@ export class PaperTrading {
       }
       const orderId=uuid();await tx.query("INSERT INTO orders(id,bot_id,symbol,side,quantity,reserved_paise,evidence_id,status,signal_id) VALUES($1,$2,$3,$4,$5,$6,$7,'reserved',$8)",[orderId,bot.id,input.symbol,input.side,quantity.toString(),reserved.toString(),input.evidenceId,link?.signalId??null]);
       await audit(tx,actor,'paper.order.reserved',orderId,{...input,quantity:Number(quantity),reservedPaise:reserved.toString()});return {id:orderId,state:'reserved',reservedPaise:reserved.toString(),quantity:quantity.toString()};
-    });
+    }));
   }
   fill(actor:Actor,key:string,raw:unknown) {
     permit(actor,'trader');const input=parse(z.object({orderId:z.uuid(),priceEvidence:priceEvidence.optional()}).strict(),raw);
-    return this.db.command(actor,'fill-order',key,input,async tx=>{
+    return this.refusing(actor,'fill',key,{orderId:input.orderId},()=>this.db.command(actor,'fill-order',key,input,async tx=>{
       const order=(await tx.query('SELECT *,quantity::text AS qty,reserved_paise::text AS reserved FROM orders WHERE id=$1',[input.orderId])).rows[0];requireThat(order,'Order not found',404);
       const bot=await this.tradingBot(tx,actor,order.bot_id);requireThat(order.status==='reserved','Order is not reserved');await verifiedEvidence(tx,order.evidence_id);
       const price=await this.price(tx,order.symbol,order.side,input.priceEvidence,order.signal_id?String(order.signal_id):null),quantity=BigInt(order.qty),gross=bounded(price*quantity),fee=ceilBps(gross,this.config.feeBps);
       const position=(await tx.query('SELECT quantity::text,cost_paise::text FROM positions WHERE bot_id=$1 AND symbol=$2',[order.bot_id,order.symbol])).rows[0];
       let positionQty=BigInt(position?.quantity??0),positionCost=BigInt(position?.cost_paise??0),journalId:string;
       if(order.side==='buy') {
-        await this.permitNewRisk(tx,bot.id);requireThat(!(await isSuspended(tx,bot.id)),'The bot is suspended: it may only reduce risk',403);
+        await this.permitNewRisk(tx,bot.id,order.symbol);requireThat(!(await isSuspended(tx,bot.id)),'The bot is suspended: it may only reduce risk',403);
         requireThat(gross+fee<=BigInt(order.reserved),'Price moved beyond reservation; cancel and re-propose');
         requireThat(gross+fee<=this.config.maxOrder,'Order exceeds current configured limit');
         const allReserved=BigInt((await tx.query("SELECT COALESCE(SUM(reserved_paise),0)::text AS value FROM orders WHERE status='reserved'")).rows[0]!.value);
@@ -117,7 +151,7 @@ export class PaperTrading {
       const fillId=uuid();await tx.query('INSERT INTO fills(id,order_id,price_paise,quantity,fee_paise,journal_id) VALUES($1,$2,$3,$4,$5,$6)',[fillId,order.id,price.toString(),quantity.toString(),fee.toString(),journalId]);
       await tx.query("UPDATE orders SET status='filled' WHERE id=$1",[order.id]);await audit(tx,actor,'paper.order.filled',order.id,{fillId,journalId,pricePaise:price.toString(),feePaise:fee.toString()});
       return {id:order.id,state:'filled',fillId,pricePaise:price.toString(),feePaise:fee.toString(),mode:'paper'};
-    });
+    }));
   }
   cancel(actor:Actor,key:string,raw:unknown) {
     permit(actor,'trader','owner');const input=parse(z.object({orderId:z.uuid()}).strict(),raw);

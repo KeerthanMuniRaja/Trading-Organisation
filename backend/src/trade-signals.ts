@@ -7,6 +7,7 @@ import { PaperTrading } from './paper.js';
 import { liveReleases } from './bot-releases.js';
 import { restated } from './corporate-actions.js';
 import { isSuspended } from './bot-control.js';
+import { activePauses } from './protections.js';
 import { Allow } from './security.js';
 import { available, balance, tradingLoss } from './treasury.js';
 import { verifiedPrice } from './price-evidence.js';
@@ -20,7 +21,8 @@ import { verifiedPrice } from './price-evidence.js';
 // builds a calibrated track record (accuracy by conviction, Brier score of its stated probabilities).
 
 // v2 (SPECIALIST-01): an opposing challenge citing verified evidence sizes a high-conviction long as medium.
-export const RULES_VERSION = 'signal-risk-v2';
+// v3 (21 Oct 2026) = v2 plus the owner's self-expiring protections (PROTECT-01); identical to v2 while no policy is set
+export const RULES_VERSION = 'signal-risk-v3';
 export const COST_BPS = 30; // round-trip trading cost: a long call must beat it to count as right
 const QUOTE_FRESH_MS = 60_000;
 const SIZE = { high: 1, medium: 0.5, low: 0.25 } as const;
@@ -172,7 +174,10 @@ export class TradeSignals {
       if (input.action === 'enter-long') requireThat(!(await isSuspended(tx, input.botId)), 'The bot is suspended: only exits and no-action calls are accepted', 403);
       // release control (RELEASE-01): once a bot has releases, only its active release or a canary may propose
       const { registered, releases } = await liveReleases(tx, input.botId);
-      const release = releases.find(r => r.model === input.model && r.prompt_version === input.promptVersion);
+      // a code fix under the same rule shares model and prompt version with the release it replaces; only the newest code
+      // can run (the cycle's release gate checks the fingerprint), so the call belongs to the newest matching release
+      const release = releases.filter(r => r.model === input.model && r.prompt_version === input.promptVersion)
+        .sort((a, b) => Number(b.version) - Number(a.version))[0];
       if (registered) requireThat(release, 'This model and prompt version is not an authorised release of the bot', 403);
       const verified = await verifiedEvidenceIds(tx, input.evidenceIds);
       requireThat(verified.length === input.evidenceIds.length, 'Every cited evidence must be verified and from an approved source');
@@ -228,6 +233,8 @@ export class TradeSignals {
           if (signal.probability_pct !== null && signal.probability_pct < 50) reasons.push('stated-probability-below-even');
           if (await isSuspended(tx, signal.bot_id)) reasons.push('bot-suspended');
           if (await tradingLoss(tx) >= this.config.maxLoss) reasons.push('realised-loss-limit-reached');
+          // PROTECT-01 (v3): the owner's self-expiring brakes; each holding pause is its own recorded reason
+          for (const p of await activePauses(tx, signal.bot_id, signal.symbol)) reasons.push(p.code);
           if (fresh && !reasons.length) {
             const price = BigInt(quote.ask) + ceilBps(BigInt(quote.ask), this.config.slippageBps);
             const perShare = price + ceilBps(price, this.config.feeBps);

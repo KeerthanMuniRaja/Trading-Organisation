@@ -2,7 +2,8 @@
 
 The 5-minute work showed that ~30 bps per round trip swamps every intraday signal. Daily bars move far more than
 costs and give years of history, so results can mean something. This module mirrors the 5-minute tournament:
-  fetch     owner-run, one-time: up to 5 years of adjusted daily bars per universe share (the only network step)
+  fetch     owner-run: 5 years of adjusted daily bars per universe share by default, up to 10 with --years 10 (the only
+            network step); a refresh keeps at least the history a file already holds
   run       scores every entrant on chronological training and validation periods; selects one winner on
             validation only, and only if it beat BOTH holding cash and buy-and-hold there
   finalise  judges that winner once on the sealed final period, next to cash and buy-and-hold
@@ -30,6 +31,8 @@ import datasets  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 DAILY = ROOT / '.local' / 'trading-desk' / 'daily'
+RESEARCH = ROOT / '.local' / 'trading-desk' / 'daily-research'   # NIFTY 50 files for research only, never traded
+UNIVERSES = {'desk': (lambda: datasets.UNIVERSE, DAILY), 'nifty50': (lambda: datasets.NIFTY50, RESEARCH)}
 TOURNAMENTS = ROOT / '.local' / 'trading-desk' / 'daily-tournaments'
 CAPITAL = 5_000_000           # Rs 50,000 notional per share, so the fixed depository charge is realistic
 SLIPPAGE_BPS = 5
@@ -54,7 +57,7 @@ def sell_costs(value):
 
 # ---------- data ----------
 def validate(dataset):
-    if (dataset.get('schemaVersion') != 1 or dataset.get('symbol') not in datasets.UNIVERSE or dataset.get('interval') != '1d'
+    if (dataset.get('schemaVersion') != 1 or dataset.get('symbol') not in datasets.KNOWN or dataset.get('interval') != '1d'
             or dataset.get('priceBasis') != 'adjusted' or dataset.get('source') not in ('yahoo-via-yfinance', 'synthetic-test')):
         raise ValueError('INVALID_DAILY_METADATA')
     bars = dataset.get('bars')
@@ -83,9 +86,23 @@ def settled_only(bars, now):
     return bars
 
 
+MAX_YEARS = 10
+
+
+def years_to_fetch(path, years, today=None):
+    """A refresh never asks for less history than the file already holds: a shorter download would be rejected by the
+    data steward as shrunk history and leave the prices stale. Capped at MAX_YEARS."""
+    if not path.exists():
+        return min(years, MAX_YEARS)
+    first = date.fromisoformat(json.loads(path.read_text(encoding='utf-8'))['bars'][0]['date'])
+    held = math.ceil(((today or date.today()) - first).days / 365.25)
+    return min(MAX_YEARS, max(years, held))
+
+
 def fetch(symbols, years=5, cache=DAILY, refresh=False):
     """Owner-run download of adjusted daily bars. Existing files are kept unless `refresh` re-downloads them
-    (needed to score forward tests on new days; adjusted history may shift slightly after new dividends)."""
+    (needed to score forward tests on new days; adjusted history may shift slightly after new dividends). A refresh
+    keeps at least the span a file already covers, so a longer history, once fetched, stays long."""
     import yfinance as yf
     cache.mkdir(parents=True, exist_ok=True)
     yf.set_tz_cache_location(str(ROOT / '.local' / 'market-replay-cache'))
@@ -96,7 +113,7 @@ def fetch(symbols, years=5, cache=DAILY, refresh=False):
             results.append({'symbol': symbol, 'state': 'cached', 'bars': len(validate(json.loads(path.read_text(encoding='utf-8'))))})
             continue
         ticker = yf.Ticker(symbol)
-        frame = ticker.history(period=f'{years}y', interval='1d', auto_adjust=True, actions=False, timeout=20)
+        frame = ticker.history(period=f'{years_to_fetch(path, years)}y', interval='1d', auto_adjust=True, actions=False, timeout=20)
         if frame.empty:
             results.append({'symbol': symbol, 'state': 'skipped', 'reason': 'EMPTY_PROVIDER_DATA'})
             continue
@@ -129,9 +146,10 @@ def accepted_moves(cache=DAILY):
 def accept_move(symbol, day, cache=DAILY):
     """Owner step after a refresh was kept back for an extreme move: confirm the move is real (results, news, a crash)
     so the next refresh is accepted. Only that one session is confirmed."""
-    if symbol not in datasets.UNIVERSE:
+    if symbol not in datasets.KNOWN:
         raise ValueError('SYMBOL_NOT_IN_UNIVERSE')
     date.fromisoformat(day)
+    cache.mkdir(parents=True, exist_ok=True)
     moves = accepted_moves(cache)
     moves[symbol] = sorted(set(moves.get(symbol, [])) | {day})
     (cache / 'accepted-moves.json').write_text(json.dumps(moves, indent=2), encoding='utf-8')
@@ -420,19 +438,22 @@ def main(argv=None):
     f = sub.add_parser('fetch')
     f.add_argument('--years', type=int, default=5, choices=range(2, 11))
     f.add_argument('--refresh', action='store_true', help='Re-download cached shares to include the newest days')
+    f.add_argument('--universe', choices=sorted(UNIVERSES), default='desk', help='nifty50: research-only files in daily-research')
     for name in ('run', 'finalise', 'register', 'forward'):
         p = sub.add_parser(name)
         p.add_argument('--name', required=True)
     a = sub.add_parser('accept-move', help='Owner: confirm a large move the steward kept back is real (checked against the news)')
     a.add_argument('--symbol', required=True, help='e.g. RELIANCE.NS')
     a.add_argument('--date', required=True, help='The session date of the move, YYYY-MM-DD')
+    a.add_argument('--universe', choices=sorted(UNIVERSES), default='desk')
     args = parser.parse_args(argv)
     symbols = sorted(datasets.UNIVERSE)
     if args.command == 'fetch':
-        print(json.dumps(fetch(symbols, args.years, refresh=args.refresh), indent=2))
+        members, cache = UNIVERSES[args.universe]
+        print(json.dumps(fetch(sorted(members()), args.years, cache=cache, refresh=args.refresh), indent=2))
         return
     if args.command == 'accept-move':
-        print(json.dumps({'symbol': args.symbol, 'acceptedMoves': accept_move(args.symbol, args.date)}))
+        print(json.dumps({'symbol': args.symbol, 'acceptedMoves': accept_move(args.symbol, args.date, UNIVERSES[args.universe][1])}))
         return
     if args.command in ('register', 'forward'):
         if not re.fullmatch(r'[A-Za-z0-9_-]{1,60}', args.name):

@@ -4,6 +4,8 @@ A private organisation of cooperating AI and rule-based bots that research, prop
 
 **Paper only.** All money, prices, orders and fills are simulated. `APP_MODE=live` is rejected, and no broker, bank or exchange is connected.
 
+**Founder: start with [founderReview.md](founderReview.md).** It holds the switch-on checklist and every decision waiting for you.
+
 **Live paper testing** started in October 2026: one rule bot trading with a ₹5,000 budget. The honest, code-checked status is the [audit of 14 October](docs/audit-2026-10-14.md), and day-by-day events are in the [project log](docs/project-log/README.md).
 
 ## How the organisation works
@@ -36,13 +38,25 @@ flowchart LR
 
 Every decision waiting on the owner (recommendations, new bots, departments, releases ready to activate, bots ready to trade) is in one **owner agenda**: `npm run agenda`, then `npm run agenda -- accept <id>` or `decline <id>`.
 
+**Agents act, the owner oversees.** With **standing approvals** (`npm run autonomy`, [autonomy](docs/autonomy.md)), the owner approves classes of decisions once, with limits:
+- **What agents can then do:** suspend a flagged bot, accept small budget raises within a monthly total, approve births, activate evaluated releases, qualify bots, and give a new bot a starting budget.
+- **How:** the agents carry these out every cycle, as the visible identity `autonomy-policy`.
+- **Never automatic:** retirement, departments, limits, permissions and real money.
+
 ### Members working today
 
-- **`momentum-rules`, the rule bot.** Model-free. Once a month it picks the top three shares by momentum, sells before it buys, and keeps its decision for the month. Release v1 is active with a ₹5,000 budget ([trade signals](docs/trade-signals.md#the-rule-bot-a-model-free-member)).
+- **`momentum-rules`, the rule bot.** Model-free. Once a month it picks the top three shares by momentum, sells before it buys, and keeps its decision for the month. Release v2 is active with a ₹5,000 budget ([trade signals](docs/trade-signals.md#the-rule-bot-a-model-free-member)). On 10 years of history its rule is level with the basket after costs, so it is a paper experiment, not a proven edge ([R&D scout](docs/rnd-scout.md#the-10-year-result-20-october-2026)).
 - **Claim analyst and fact-checker.** The analyst drafts quote-backed news claims with the local model. The independent fact-checker verifies a claim only when two independent sources report the same figure for the same period, and withdraws it if a later report disagrees ([claims](integrations/claims/README.md), [evidence claims](docs/evidence-claims.md)).
 - **Model allocator.** Built and tested, not yet switched on. It needs the local model and its own forward test.
-- **R&D scout.** Every cycle it screens 13 strategy ideas against the basket, net of costs and corrected for the number of ideas tried. It proposes a new specialist only for an idea that passes; none does yet ([R&D scout](docs/rnd-scout.md)).
+- **R&D scout.** Every cycle it screens 20 strategy ideas on 10 years of history, against the basket, net of costs and corrected for the number of ideas tried. Every idea also faces lookahead and warm-up checks, full statistics, 100 random pickers and walk-forward validation. It proposes a new specialist only for an idea that passes; none does yet ([R&D scout](docs/rnd-scout.md), [research methods](docs/research-methods.md)). A NIFTY 50 research screen (never traded) widens the search.
+- **World news desk.** Central banks, regulators and publishers in India, the US, Europe, the UK and China are in a catalogue, which the owner enables source by source. Each day's items are grouped into stories across countries and linked to the shares through reviewed world drivers, and every link is tested against later moves ([world news](docs/world-news.md)).
+- **Market regime.** Distribution days, breadth and trend of the eight shares give an advisory exposure ceiling. On 10 years it warns of falls but does not time them ([market regime](docs/market-regime.md)).
+- **Scenario panel.** Built; it needs the model. Five personas rehearse the day's biggest linked world stories in shadow, and are scored per persona ([scenario panel](docs/scenario-panel.md)).
+- **Knowledge and playbook.** Method cards (what each method is, how we test it, what our data said), a live knowledge file refreshed every cycle and fed to the model agents, and a problem playbook that gives every failing step its cause, safe fix and decider ([research methods](docs/research-methods.md#knowledge-the-agents-use)).
 - **Management review.** Every cycle it reviews each working bot and files recommendations for the owner agenda ([management](docs/management.md)).
+- **TradingAgents member.** Built; it needs the model and an approved install. The open-source TradingAgents firm (analysts, debate, trader, risk team, portfolio manager) is reused as one governed bot. It decides weekly, proposes in shadow until it has earned a release on its own scored calls, and then trades under the same rules as everyone ([TradingAgents member](integrations/tradingagents/README.md)).
+- **Debate desk.** Built; it needs the model and a one-time `scripts/debate-setup.mjs`. A bull and a bear researcher argue every proposal before review, citing only verified evidence, and are scored on whether they were right.
+- **Reflections.** Every scored call becomes a verified factual lesson for its bot: what it did, the share's move, the basket's move and the alpha. So each bot remembers its own results ([reference review](docs/reference-review-2026-10-20.md)).
 
 ### A bot's life
 
@@ -71,17 +85,17 @@ All amounts are integer paise in balanced double-entry journals ([financial mode
 
 | Stage | Steps |
 | --- | --- |
-| Check | Health, then market-data refresh (settled bars only; moves over 20% wait for the owner's confirmation) |
-| Learn | News feeds, then relevance triage, then claims and fact-check (needs the model), then learning workflows (needs the model), then chain links |
+| Check | Health, then market-data refresh (settled bars only; moves over 20% wait for the owner's confirmation), then the market regime and its study |
+| Learn | News feeds, relevance triage (`scope-v2`, world terms), world stories and the link study, the scenario panel (needs the model) and its scoring, claims and fact-check (needs the model), learning workflows (needs the model), then chain links |
 | Test | Forward tests |
 | Academy | Exams, remediation, lifecycle (school to college, reputation, retirement requests), research dispatch, experiments and reviewed memory. Each does nothing until you enable its policy |
-| Research | The R&D scout's screen of strategy ideas |
+| Research | The R&D scout's screen of strategy ideas, then the live knowledge refresh |
 | Propose | Rule bot, then R&D-born bots (onboarded and gated by their release), then the model allocator (needs the model) |
 | Trade | Review at the verified close, fill at the next verified open (at most 1% of that session's volume), then score signals and live fitness |
-| Manage | After the paper snapshot: the management review of every working bot (recommendations for the owner agenda) |
+| Manage | After the paper snapshot: the management review of every working bot, then the agents carry out what the standing approvals cover |
 | Report | Paper snapshot, then alerts, then the owner digest |
 
-The daily routine and recovery steps are in the [live testing runbook](docs/live-testing.md).
+The daily routine and recovery steps are in the [live testing runbook](docs/live-testing.md). A failed or degraded step is matched to the problem playbook, so the console, the journal, the escalation and the morning readiness check say the cause, the safe fix and who decides.
 
 ## Status
 
@@ -93,15 +107,20 @@ The daily routine and recovery steps are in the [live testing runbook](docs/live
 | Daily cycle, readiness check, digest, alerts, backup | Done and tested. There is no built-in schedule, and alerts go to a local outbox for now |
 | Rule bot | Live in paper testing |
 | News feeds, triage and automatic fact-checking | Done. Drafting claims needs the local model |
+| World news catalogue, stories, world drivers and link study | Done. World sources stay off until the owner enables them |
+| Market regime, research checks, NIFTY 50 research screen, knowledge and playbook | Done and run on 10 years of history |
+| Scenario panel, debate desk, TradingAgents | Built and tested, waiting for the model |
 | Model allocator, learning loop | Built and tested, waiting for the model |
 | Departments, births, hackathons, compute budgets | Backend rules tested, not used by the cycle yet |
-| Live money, partial fills, intraday trading | Not built (paper only, by design) |
+| Intraday monitor (mark-to-market, warnings, crash brake) | Done and tested on 38 replayed days; a live feed adapter waits for the owner's broker choice |
+| Autonomy rehearsal, starter policy, supervisor catch-up and heartbeat, Saturday preflight | Done and tested: 8 rounds of the real trading path under standing approvals, with injected failures; every invariant held |
+| Model evaluation suite and training data | Done: all six model tasks tested with their real prompts. The 4B model is 100% valid and safe, but sensitive to wording. Production calls are journaled and labelled for a future fine-tune |
+| Source-code review of 13 reference projects | Done: [research notes](docs/research-notes/README.md) with a ranked gap analysis; defects found in our scout were fixed |
+| Live money, intraday trading | Not built (paper only, by design) |
 
-**Still needs the owner:**
-- the local model for the learning loop and the allocator;
-- an alert channel;
-- a daily schedule;
-- confirmation of the market-data licence.
+**Still needs the owner:** everything is listed, in order, in [founderReview.md](founderReview.md). It covers the
+switch-on (backup, start, starter policy, model, members, supervisor, alerts, holidays, world sources) and 23 decisions,
+on money, research, the model, data approvals, real-time testing, the frontend and the repository.
 
 ## Run locally
 
@@ -161,6 +180,13 @@ In the full run on 20 October 2026, 636 of 637 tests passed. The one failure was
 | [Project log](docs/project-log/README.md) | What happened each day |
 | [Trade signals](docs/trade-signals.md), [bot control](docs/bot-control.md), [releases](docs/releases.md) | Proposals, review, owner controls and release management |
 | [Paper performance](docs/paper-performance.md), [corporate actions](docs/corporate-actions.md) | P&L, the basket benchmark, splits and dividends |
+| [R&D scout](docs/rnd-scout.md), [research methods](docs/research-methods.md), [market regime](docs/market-regime.md) | How ideas are tested, what 10 years said, the knowledge base and the problem playbook |
+| [Roadmap to proven skill](docs/skill-roadmap.md) | Why skill cannot be proven on 8 shares (proof time, tax) and the plan: a broad point-in-time universe, slower tax-aware rules, better data |
+| [World news](docs/world-news.md), [scenario panel](docs/scenario-panel.md) | Sources by country, stories, world drivers and the persona panel |
+| [Intraday monitor](docs/intraday-monitor.md) | Real-time testing: live mark-to-market, crash brake, replay of recorded days; what a live feed still needs |
+| [Founder review](founderReview.md) | Everything that needs the founder: the switch-on checklist and every pending decision |
+| [Research notes and gap analysis](docs/research-notes/README.md) | How 13 reference projects really work (from their source code), where we are ahead, and our ranked gaps |
+| [Model evaluation](docs/model-eval.md), [autonomy](docs/autonomy.md) | The model's measured reliability; standing approvals, the starter policy and the autonomy rehearsal |
 | [Vision and principles](docs/knowledge-base/01-vision-and-principles.md), [bot lifecycle](docs/knowledge-base/11-research-development-and-bot-lifecycle.md) | The organisation we are building |
 | [Architecture](docs/architecture.md), [API](docs/api.md), [security](docs/security-and-operations.md) | Services, roles and authority boundaries |
 | [Documentation index](docs/documentation-index.md) | Every document, including the dated version history |

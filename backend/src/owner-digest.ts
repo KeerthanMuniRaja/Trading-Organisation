@@ -1,7 +1,10 @@
 import { Body, Controller, Post, Req } from '@nestjs/common';
 import { z } from 'zod';
+import { Config } from './config.js';
 import { Actor, parse, permit } from './core.js';
 import { Database } from './database.js';
+import { tradingLoss } from './treasury.js';
+import { activePauses, currentProtections } from './protections.js';
 import { compare as againstBasket, compute as paperPerformance } from './paper-performance.js';
 import { usageByBot } from './compute-usage.js';
 import { Allow } from './security.js';
@@ -12,7 +15,7 @@ import { Allow } from './security.js';
 const schema = z.object({ hours: z.number().int().min(1).max(24 * 31).default(24) }).strict();
 
 export class OwnerDigest {
-  constructor(private readonly db: Database) {}
+  constructor(private readonly db: Database, private readonly config: Config | null = null) {}
 
   digest(actor: Actor, raw: unknown) {
     permit(actor, 'owner', 'evaluator');
@@ -71,8 +74,26 @@ export class OwnerDigest {
           (SELECT COUNT(*) FROM departments WHERE status='active')::int AS "departmentsActive",
           (SELECT COUNT(*) FROM departments WHERE status='closed')::int AS "departmentsClosed",
           (SELECT COUNT(*) FROM hackathons WHERE status='open')::int AS "hackathonsOpen",
-          (SELECT COUNT(*) FROM hackathons WHERE status='judging')::int AS "hackathonsJudging"`, []);
+          (SELECT COUNT(*) FROM hackathons WHERE status='judging')::int AS "hackathonsJudging",
+          (SELECT COUNT(*) FROM autonomy_actions WHERE created_at >= now() - ($1::int * interval '1 hour'))::int AS "automaticDecisions"`, p);
       const halted = (await one('SELECT halted FROM system_lock WHERE id=1', [])).halted as boolean;
+      // TRUST-03: orders refused in the window (each kept after its rollback), the most common reasons first
+      const refusals = (await tx.query(`SELECT message,COUNT(*)::int AS n FROM order_refusals WHERE created_at >= ${since}
+        GROUP BY message ORDER BY n DESC,message LIMIT 3`, p)).rows.map(r => ({ message: String(r.message), count: r.n as number }));
+      const refused = (await one(`SELECT COUNT(*)::int AS n FROM order_refusals WHERE created_at >= ${since}`)).n as number;
+      // PROTECT-01: which bots' new buys are paused by the owner's brakes now (each lifts by itself)
+      const protectionPolicy = await currentProtections(tx);
+      const paused = [];
+      for (const botId of protectionPolicy ? (await tx.query("SELECT id FROM bots WHERE state='paper' ORDER BY id", [])).rows.map(r => String(r.id)) : []) {
+        const pauses = await activePauses(tx, botId);
+        if (pauses.length) paused.push({ botId, pauses: pauses.map(x => ({ code: x.code, until: x.until })) });
+      }
+      // TRUST-03 limits banner: the limits this running backend actually loaded, so a stale setting shows
+      const loss = this.config ? await tradingLoss(tx) : 0n;
+      const limits = this.config ? { maxOrderPaise: this.config.maxOrder.toString(), maxExposurePaise: this.config.maxExposure.toString(),
+        maxRealisedLossPaise: this.config.maxLoss.toString(), feeBps: this.config.feeBps, slippageBps: this.config.slippageBps,
+        realisedLossPaise: (loss > 0n ? loss : 0n).toString(),
+        lossLimitUsedPct: this.config.maxLoss > 0n ? Number((loss > 0n ? loss : 0n) * 1000n / this.config.maxLoss) / 10 : null } : null;
       const needsOwner = [
         ...(halted ? ['New risk is HALTED.'] : []),
         ...topAlerts.filter(a => a.severity !== 'info').map(a => `${a.severity}: ${a.message}`),
@@ -88,7 +109,8 @@ export class OwnerDigest {
           byBot: perf.filter(b => b.totalPaise !== '0').map(b => ({ botId: b.botId, totalPaise: b.totalPaise, returnOnBudgetPct: b.returnOnBudgetPct })) },
         trading: { proposed: trading.proposed, accepted: trading.accepted, rejected: trading.rejected, executed: trading.executed,
           challenges: trading.challenges, scored: trading.scored, accuracy: trading.scored ? Number((trading.right / trading.scored).toFixed(3)) : null,
-          lapsed: trading.lapsed, releasedPaise: trading.released, corporateActions: trading.corporate_actions },
+          lapsed: trading.lapsed, releasedPaise: trading.released, corporateActions: trading.corporate_actions, refusedOrders: refused, topRefusals: refusals },
+        limits, protections: { policySet: protectionPolicy !== null, paused },
         liveFitness: live,
         organisation: { suspendedBots: suspended, ...org },
         // BENCH-01: each bot against simply holding the basket over the same days

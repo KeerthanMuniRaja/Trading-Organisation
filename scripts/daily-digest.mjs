@@ -1,47 +1,232 @@
 // Daily owner digest (OBS-01): fetch /v1/owner/digest with the evaluator credential, write a readable Markdown note to
 // .local/digests/<day>.md, and, when ALERT_WEBHOOK_URL is set, post a short summary there too.
 //   node --env-file=.env scripts/daily-digest.mjs
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { settings } from './deliver-alerts.mjs';
+import { dataManifest } from './organisation-cycle.mjs';
+import { describeStory, worldSummary } from './world-news.mjs';
 
 const rupees = paise => {
   const n = Number(BigInt(paise)) / 100;
   return (n < 0 ? '−₹' : '₹') + Math.abs(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 };
 
-export function render(d) {
+/** NEWS-02: the world section, from the feeds' coverage and the latest story groups (unverified press). */
+export function worldLines(world) {
+  if (!world || world.error) return world?.error ? ['## World news', `- Not available: ${world.error}`, ''] : [];
+  const c = world.coverage, s = world.stories;
+  const working = c.sources.filter(r => r.state === 'working').length, enabled = c.sources.filter(r => r.state !== 'off').length;
+  return ['## World news (unverified press; links are inferred)',
+    `- Feeds working: ${working} of ${enabled} enabled; countries covered: ${c.countriesCovered.join(', ') || 'none yet'}`,
+    ...(s ? [`- Last ${s.windowHours} hours: ${s.items} items in ${s.stories} stories; ${s.crossBorder} across countries, ${s.reachingShares} reach the shares`,
+      ...s.top.filter(x => x.directShares.length || x.drivers.length).slice(0, 8).map(x => `- ${describeStory(x)}`)]
+      : ['- No stories grouped yet (cycle step world-stories).']),
+    ...(world.links ? [`- Driver links tested on ${world.links.headlines} headlines: ${world.links.carrying.length} of ${world.links.drivers} carry information`
+      + (world.links.carrying.length ? ` (${world.links.carrying.join(', ')})` : '') + `; ${world.links.verdicts['insufficient-evidence'] ?? 0} need more events`] : []),
+    ...(world.scenario ? [`- Scenario panel (shadow): ${world.scenario.panel.right} right, ${world.scenario.panel.wrong} wrong after ${world.scenario.horizonSessions} sessions`
+      + ` (${world.scenario.panel.verdict}); ${world.scenario.waiting} call(s) waiting`] : []), ''];
+}
+
+/** REGIME-01: the latest market regime and its study, from the desk's files; null when the cycle has not made them. */
+export async function marketRegime(root = join(dirname(fileURLToPath(import.meta.url)), '..')) {
+  const read = async name => { try { return JSON.parse(await readFile(join(root, '.local', 'trading-desk', 'regime', name), 'utf8')); } catch { return null; } };
+  const latest = await read('latest.json');
+  if (!latest) return null;
+  // an old or partial regime is labelled as such, never shown as today's (same rule as live_knowledge.regime_state)
+  const age = (Date.now() - Date.parse(latest.date + 'T00:00:00Z')) / 86_400_000;
+  const state = latest.inputsComplete === false ? 'incomplete' : age > 5 ? 'stale' : 'fresh';
+  return { ...latest, state, study: await read('study.json') };
+}
+
+/** KNOW-05: the live knowledge (.local/trading-desk/knowledge/live.json) and failures the playbook does not know yet. */
+export async function knowledgeSummary(root = join(dirname(fileURLToPath(import.meta.url)), '..'), now = Date.now()) {
+  let live = null, unknown = [];
+  try { live = JSON.parse(await readFile(join(root, '.local', 'trading-desk', 'knowledge', 'live.json'), 'utf8')); } catch { /* not made yet */ }
+  try {
+    unknown = (await readFile(join(root, '.local', 'cycles', 'unknown-problems.jsonl'), 'utf8')).split('\n').filter(l => l.trim()).map(l => JSON.parse(l))
+      .filter(u => now - Date.parse(u.at) < 7 * 86_400_000);
+  } catch { /* none */ }
+  let drafts = 0, review = null;
+  try { drafts = JSON.parse(await readFile(join(root, '.local', 'trading-desk', 'knowledge', 'playbook-drafts.json'), 'utf8')).drafts.length; } catch { /* none */ }
+  try { review = JSON.parse(await readFile(join(root, '.local', 'trading-desk', 'review-scorecard.json'), 'utf8')); } catch { /* not made yet */ }
+  return live || unknown.length || drafts || review ? { live, unknown, drafts, review } : null;
+}
+
+/** TRUST-02: how the calls the risk review took and turned down went (the backend's own scores). */
+export function reviewLines(card) {
+  if (!card?.calls) return [];
+  const pct = t => (t.rightPct === null ? 'none scored' : `${t.right} of ${t.scored} right (${t.rightPct}%)`);
+  const reasons = Object.entries(card.byRejectionReason ?? {}).slice(0, 3).map(([r, t]) => `${r} ${t.right}/${t.scored}`);
+  const regimes = Object.entries(card.byRegimeAtCall ?? {}).map(([r, t]) => `${r} ${t.right}/${t.scored}`);
+  return ['## Review scorecard (scored calls)',
+    `- Taken: ${pct(card.accepted)}; turned down: ${pct(card.rejected)} — ${card.verdict}`,
+    ...(reasons.length ? [`- Turned down, by reason (right/scored): ${reasons.join(', ')}`] : []),
+    ...(regimes.length ? [`- By the regime when the call was made: ${regimes.join(', ')}`] : []),
+    ...(card.accepted?.buysWithPath ? [`- Buys taken, while held: average worst ${card.accepted.averageWorstPct}%, average best ${card.accepted.averageBestPct}%, `
+      + `deepest ${card.accepted.worstPct}% (${card.accepted.buysWithPath} buys)`] : []), ''];
+}
+
+const PRICES_STALE_DAYS = 5, KNOWLEDGE_STALE_DAYS = 2;
+const ageDays = (iso, now) => (iso ? (now - Date.parse(iso.length === 10 ? iso + 'T00:00:00Z' : iso)) / 86_400_000 : null);
+
+/** TRUST-01: what today's digest rests on — today's cycle journal, the prices, the knowledge files and the code each
+ *  run used (the run manifests) — so the owner can see whether to trust it. Read-only. */
+export async function trustCheck(root = join(dirname(fileURLToPath(import.meta.url)), '..'), now = Date.now(), prices = dataManifest) {
+  const read = async p => { try { return JSON.parse(await readFile(p, 'utf8')); } catch { return null; } };
+  const cycles = join(root, '.local', 'cycles'), day = new Date(now).toISOString().slice(0, 10);
+  let journals = [];
+  try { journals = (await readdir(cycles)).filter(n => /^\d{4}-\d{2}-\d{2}\.json$/.test(n)).sort(); } catch { /* no cycle yet */ }
+  const today = journals.includes(day + '.json') ? await read(join(cycles, day + '.json')) : null;
+  const runs = [], crashed = [];
+  for (const name of journals.slice(-2)) {
+    const all = (await read(join(cycles, name)))?.runs ?? [];
+    runs.push(...all.filter(r => r.code));
+    // a run that never finished crashed or was killed (the newest one may be this very cycle, still running)
+    crashed.push(...all.filter(r => !r.finishedAt && r.startedAt).map(r => r.startedAt));
+  }
+  if (crashed.at(-1) === runs.at(-1)?.startedAt) crashed.pop();
+  const [before, latest] = runs.slice(-2).length === 2 ? runs.slice(-2) : [null, runs.at(-1) ?? null];
+  const steps = Object.entries(today?.steps ?? {});
+  const p = await prices({ root }).catch(() => null);
+  return {
+    day, crashedRuns: crashed,
+    cycle: today ? { failed: steps.filter(([, s]) => s.status === 'failed').map(([id]) => id), degraded: steps.filter(([, s]) => s.status === 'degraded').map(([id]) => id),
+      done: steps.filter(([, s]) => s.status === 'done').length } : null,
+    prices: p ? { newest: p.newestLastSession, ageDays: ageDays(p.newestLastSession, now), behind: Object.entries(p.prices).filter(([, s]) => s.lastSession && s.lastSession < p.newestLastSession).map(([sym]) => sym) } : null,
+    liveAgeDays: ageDays((await read(join(root, '.local', 'trading-desk', 'knowledge', 'live.json')))?.generatedAt, now),
+    indexAgeDays: ageDays((await read(join(root, '.local', 'knowledge', 'index-meta.json')))?.builtAt, now),
+    code: latest ? { commit: latest.code.commit, fingerprint: latest.code.fingerprint,
+      changedFrom: before && before.code.fingerprint !== latest.code.fingerprint ? before.code.commit ?? before.code.fingerprint : null } : null,
+  };
+}
+
+// TRUST-03: the limit settings, by the name the backend reads them from (values are limits, not secrets)
+export const LIMIT_SETTINGS = { MAX_ORDER_PAISE: 'maxOrderPaise', MAX_EXPOSURE_PAISE: 'maxExposurePaise', MAX_REALISED_LOSS_PAISE: 'maxRealisedLossPaise',
+  PAPER_FEE_BPS: 'feeBps', PAPER_SLIPPAGE_BPS: 'slippageBps' };
+
+/** Settings in this script's environment that differ from what the running backend loaded: a stale shell variable or a
+ *  backend not restarted after a change. Only names are reported. */
+export function limitMismatches(limits, env = {}) {
+  if (!limits) return [];
+  return Object.entries(LIMIT_SETTINGS).filter(([name, field]) => env[name] !== undefined && String(env[name]).trim() !== String(limits[field])).map(([name]) => name);
+}
+
+export function limitsLine(l) {
+  if (!l) return null;
+  return `Max order ${rupees(l.maxOrderPaise)} · organisation exposure ${rupees(l.maxExposurePaise)} · realised-loss limit ${rupees(l.maxRealisedLossPaise)}`
+    + ` (${rupees(l.realisedLossPaise)} used${l.lossLimitUsedPct !== null ? `, ${l.lossLimitUsedPct}%` : ''}) · fees ${l.feeBps} bps, slippage ${l.slippageBps} bps`;
+}
+
+/** The digest's own arithmetic: figures that must agree with each other (paise as integers, shares of one). */
+export function arithmeticProblems(d) {
+  const m = d.money, t = d.trading, out = [];
+  try {
+    if (BigInt(m.totalPaise) !== BigInt(m.realisedPaise) + BigInt(m.unrealisedPaise)) out.push('total P&L is not realised plus open');
+  } catch { out.push('P&L figures are not whole paise'); }
+  if (t.accuracy !== null && t.accuracy !== undefined && !(t.accuracy >= 0 && t.accuracy <= 1)) out.push(`accuracy ${t.accuracy} is outside 0..1`);
+  if (['proposed', 'accepted', 'rejected', 'executed', 'scored'].some(k => !Number.isInteger(t[k]) || t[k] < 0)) out.push('a trading count is not a whole number');
+  return out;
+}
+
+export function trustLines(t, regime = null, d = null) {
+  if (!t) return [];
+  const stale = d ? limitMismatches(d.limits, t.env) : [];
+  const problems = [
+    ...(d ? arithmeticProblems(d).map(x => `the digest does not add up: ${x}`) : []),
+    ...(stale.length ? [`the running backend loaded different limits from this digest's settings (${stale.join(', ')}): restart the backend after a change, `
+      + 'and clear stale shell variables'] : []),
+    ...(t.crashedRuns?.length ? [`${t.crashedRuns.length} cycle run(s) never finished (started ${t.crashedRuns.join(', ')}): they crashed or were stopped`] : []),
+    ...(!t.cycle ? [`no organisation cycle has run today (${t.day})`] : []),
+    ...(t.cycle?.failed.length ? [`cycle steps failed: ${t.cycle.failed.join(', ')}`] : []),
+    ...(t.cycle?.degraded.length ? [`cycle steps degraded: ${t.cycle.degraded.join(', ')}`] : []),
+    ...(!t.prices?.newest ? ['no price data found'] : t.prices.ageDays > PRICES_STALE_DAYS ? [`prices are stale: last session ${t.prices.newest}`] : []),
+    ...(t.prices?.behind.length ? [`prices behind the others for ${t.prices.behind.join(', ')}`] : []),
+    ...(regime && regime.state !== 'fresh' ? [`the market regime is ${regime.state}`] : []),
+    ...(t.liveAgeDays === null ? ['no live knowledge yet'] : t.liveAgeDays > KNOWLEDGE_STALE_DAYS ? [`live knowledge is ${Math.floor(t.liveAgeDays)} days old`] : []),
+    ...(t.indexAgeDays === null ? ['no knowledge index yet'] : t.indexAgeDays > KNOWLEDGE_STALE_DAYS ? [`the knowledge index is ${Math.floor(t.indexAgeDays)} days old`] : []),
+  ];
+  return ['## Can you trust this digest?',
+    ...(problems.length ? problems.map(x => `- Check first: ${x}`)
+      : [`- Yes: today's cycle has ${t.cycle.done} step(s) done and none failed; prices to ${t.prices.newest}; knowledge rebuilt within ${KNOWLEDGE_STALE_DAYS} days.`]),
+    ...(d?.limits ? [`- Limits the backend loaded: ${limitsLine(d.limits)}`] : []),
+    ...(t.code ? [`- Code: commit ${t.code.commit ?? 'unknown'} (fingerprint ${t.code.fingerprint})`
+      + (t.code.changedFrom ? `; changed since the previous run (${t.code.changedFrom}), so results before and after come from different code` : '')] : []), ''];
+}
+
+export function researchLines(k) {
+  if (!k?.live?.research) return [];
+  const r = k.live.research, wf = r.walkForward, safe = r.lowestRisk;
+  return ['## Research (seen history, net of costs)',
+    `- ${r.ideasTried} ideas tried on ${r.from}..${r.through}; passing: ${r.passing.join(', ') || 'none'} (bar ${r.bar})`,
+    ...r.best.slice(0, 2).map(b => `- ${b.name}: ${b.ahead}/${b.behind} months vs the basket, ${b.averageExcessPct}% a month, beats ${b.beatsRandomPct ?? '?'}% of random pickers`),
+    ...(safe ? [`- Lowest risk: ${safe.name}, worst fall ${safe.maxDrawdownPct}% (basket ${r.basket.maxDrawdownPct}%), Sharpe ${safe.sharpe} (basket ${r.basket.sharpe})`] : []),
+    ...(wf ? [`- Choosing the best past idea each year (walk-forward): ${wf.ahead}/${wf.behind} months, ${wf.averageExcessPct}% a month`] : []),
+    ...(r.bestAfterTax && r.basket?.afterTaxCagrPct !== undefined ? [`- After an approximate capital-gains tax: best idea ${r.bestAfterTax.name} `
+      + `${r.bestAfterTax.afterTaxCagrPct}% a year, holding the basket ${r.basket.afterTaxCagrPct}% a year`] : []), ''];
+}
+
+export function regimeLine(r) {
+  if (!r) return null;
+  const s = r.study, severe = s?.levels?.SEVERE, normal = s?.levels?.NORMAL;
+  return `${r.state && r.state !== 'fresh' ? `${r.state.toUpperCase()} (do not rely on it): ` : ''}${r.risk} on ${r.date}: ${r.distributionDays} distribution day(s) in 25 sessions; ${r.breadth50d ?? '?'}/${r.shares} shares above their 50-day `
+    + `and ${r.breadth200d ?? '?'}/${r.shares} above their 200-day average; basket ${r.aboveTrend200d === false ? 'below' : r.aboveTrend200d ? 'above' : '?'} its 200-day trend. `
+    + `Advisory exposure ceiling ${r.exposureCeilingPct}% (not applied to any limit)`
+    + (s ? `. On our history: ${s.verdict}; falls over 5% within ${s.horizonSessions} sessions followed ${Math.round(100 * (severe?.fallOver5PctShare ?? 0))}% of SEVERE days and ${Math.round(100 * (normal?.fallOver5PctShare ?? 0))}% of NORMAL days` : '');
+}
+
+export function render(d, world = null, regime = null, known = null, trust = null) {
   const t = d.trading, k = d.knowledge, m = d.money;
+  const unknown = known?.unknown ?? [];
+  const needs = [...d.needsOwner, ...(world?.coverage?.advice ?? []),
+    ...(unknown.length ? [`${unknown.length} cycle failure(s) the problem playbook does not know (${[...new Set(unknown.map(u => u.step))].join(', ')}): `
+      + 'find the cause and add an entry to integrations/trading-desk/knowledge/problems.json (log: .local/cycles/unknown-problems.jsonl)'] : []),
+    ...(known?.drafts ? [`${known.drafts} playbook entr${known.drafts === 1 ? 'y' : 'ies'} drafted by the agents, waiting for you: `
+      + 'playbook_drafts.py list, then accept <id> --yes'] : [])];
   const lines = [
     `# Organisation digest — ${d.generatedAt.slice(0, 10)}`, '',
     `Window: last ${d.windowHours} hours · mode: ${d.mode}${d.halted ? ' · **NEW RISK HALTED**' : ''}`, '',
     '## Needs you',
-    ...(d.needsOwner.length ? d.needsOwner.map(n => `- ${n}`) : ['- Nothing right now.']), '',
+    ...(needs.length ? needs.map(n => `- ${n}`) : ['- Nothing right now.']), '',
+    ...trustLines(trust, regime, d),
     '## Money (paper)',
     `- Total P&L ${rupees(m.totalPaise)} (realised ${rupees(m.realisedPaise)}, open ${rupees(m.unrealisedPaise)}); realised in window ${rupees(m.realisedInWindowPaise)}`,
     ...m.byBot.map(b => `- ${b.botId}: ${rupees(b.totalPaise)}${b.returnOnBudgetPct !== null ? ` (${b.returnOnBudgetPct}% of budget)` : ''}`),
     ...(m.stalePositions ? [`- ${m.stalePositions} open position(s) without a recent verified price: their value is unreliable`] : []), '',
+    ...(regime ? ['## Market regime (advice)', `- ${regimeLine(regime)}`, ''] : []),
     '## Trading',
     `- ${t.proposed} proposed, ${t.accepted} accepted, ${t.rejected} rejected, ${t.executed} executed, ${t.challenges} challenges`,
     `- ${t.scored} outcomes scored${t.accuracy !== null ? `, ${Math.round(t.accuracy * 100)}% right` : ''}`,
     ...(t.lapsed ? [`- ${t.lapsed} accepted proposal(s) expired unexecuted; ${rupees(t.releasedPaise ?? '0')} of reservations released`] : []),
+    ...(t.refusedOrders ? [`- ${t.refusedOrders} order(s) refused: ${(t.topRefusals ?? []).map(r => `${r.message} ×${r.count}`).join('; ')}`] : []),
     ...(t.corporateActions ? [`- ${t.corporateActions} corporate action(s) recorded; positions rescaled`] : []), '',
     '## Against holding all shares equally (same days)',
     ...((d.benchmark ?? []).length ? d.benchmark.map(b => b.excessPct === null ? `- ${b.botId}: no basket prices for ${b.from}..${b.to} yet`
-      : `- ${b.botId} ${b.from}..${b.to}: ${b.returnPct > 0 ? '+' : ''}${b.returnPct}% vs basket ${b.basketReturnPct > 0 ? '+' : ''}${b.basketReturnPct}%`
-        + ` — ${b.excessPct > 0 ? 'ahead' : b.excessPct < 0 ? 'behind' : 'level'} by ${Math.abs(b.excessPct)} points`)
+      : `- ${b.botId} ${b.from}..${b.to}: ${b.returnPct > 0 ? '+' : ''}${Number(b.returnPct.toFixed(2))}% vs basket ${b.basketReturnPct > 0 ? '+' : ''}${b.basketReturnPct}%`
+        + ` — ${b.excessPct > 0 ? 'ahead' : b.excessPct < 0 ? 'behind' : 'level'} by ${Math.abs(b.excessPct)} points`
+        + (b.firstSnapshot ? ` (from the first day with basket prices; its record starts ${b.firstSnapshot})` : '')
+        + (b.risk?.volatilityPct !== null && b.risk?.volatilityPct !== undefined
+          ? `; risk: volatility ${b.risk.volatilityPct}% a year, Sharpe ${b.risk.sharpe ?? 'n/a'}, 1-day 95% VaR ${b.risk.var95Pct}%, worst fall ${b.risk.maxDrawdownPct}%` : ''))
       : ['- No bot has two daily snapshots yet.']), '',
     '## Organisation',
     `- Suspended bots: ${(d.organisation?.suspendedBots ?? []).join(', ') || 'none'}`,
     ...(d.organisation ? [`- Departments: ${d.organisation.departmentsActive} active, ${d.organisation.departmentsClosed} closed; `
-      + `hackathons: ${d.organisation.hackathonsOpen} open, ${d.organisation.hackathonsJudging} being judged`] : []), '',
+      + `hackathons: ${d.organisation.hackathonsOpen} open, ${d.organisation.hackathonsJudging} being judged`] : []),
+    ...(d.organisation?.automaticDecisions ? [`- Decisions the agents carried out under your standing approvals: ${d.organisation.automaticDecisions} (npm run autonomy)`] : []),
+    ...(d.protections ? [d.protections.policySet
+      ? `- Loss brakes: ${d.protections.paused.length ? d.protections.paused.map(b => `${b.botId} paused (${b.pauses.map(x => x.code.replace(/^protection-/, '')
+        + (x.until ? ` until ${x.until.slice(0, 16).replace('T', ' ')} UTC` : '')).join(', ')})`).join('; ') + '; new buys only, each lifts by itself' : 'set; nothing paused'}`
+      : '- Loss brakes: not set, so losses never pause a bot (founderReview B3; npm run protections)'] : []), '',
     '## Live fitness (paper calls on new days)',
     ...((d.liveFitness ?? []).length ? d.liveFitness.map(f => `- ${f.botId} (${f.scope}): ${f.verdict}, ${f.right} of ${f.judged} right`)
       : ['- No bot has scored live calls yet.']), '',
+    ...reviewLines(known?.review),
     '## Knowledge',
     `- ${k.received} items received, ${k.verified} verified, ${k.rejected} rejected; ${k.backlog} waiting for review`
       + (k.setAside ? ` (${k.setAside} more set aside as out of scope)` : ''), '',
+    ...worldLines(world),
+    ...researchLines(known),
     '## Bots (90-day scored accuracy, 5+ calls)',
     ...(d.bots.best.length ? d.bots.best.map(b => `- best: ${b.botId} ${Math.round(b.accuracy * 100)}% of ${b.scored}`) : ['- No bot has 5 scored calls yet.']),
     ...d.bots.weakest.map(b => `- weakest: ${b.botId} ${Math.round(b.accuracy * 100)}% of ${b.scored}`), '',
@@ -50,13 +235,15 @@ export function render(d) {
   return lines.join('\n');
 }
 
-export async function run(env = process.env, { fetchImpl = fetch, outDir = join(dirname(fileURLToPath(import.meta.url)), '..', '.local', 'digests') } = {}) {
+export async function run(env = process.env, { fetchImpl = fetch, outDir = join(dirname(fileURLToPath(import.meta.url)), '..', '.local', 'digests'),
+  world = worldSummary, regime = marketRegime, knowledge = knowledgeSummary, trust = trustCheck } = {}) {
   const s = settings(env);
   const response = await fetchImpl(s.base + '/v1/owner/digest', { method: 'POST', redirect: 'error', body: '{}',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + s.token } });
   if (!response.ok) throw new Error(`digest refused (HTTP ${response.status})`);
   const digest = await response.json();
-  const text = render(digest);
+  const text = render(digest, world ? await world() : null, regime ? await regime() : null, knowledge ? await knowledge() : null,
+    trust ? { ...await trust(), env: Object.fromEntries(Object.keys(LIMIT_SETTINGS).filter(k => env[k] !== undefined).map(k => [k, env[k]])) } : null);
   await mkdir(outDir, { recursive: true });
   const path = join(outDir, digest.generatedAt.slice(0, 10) + '.md');
   await writeFile(path, text);

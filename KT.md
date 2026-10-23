@@ -25,7 +25,110 @@ The organisation now manages itself like a firm, with the owner as CEO:
   - **Learning:** the cycle advances open learning workflows (with the model).
   - **Academy:** exams, lifecycle, dispatch, experiments and memory cycles run daily, and stay disabled until their policies are on.
   - **Credential backups:** `npm run env:prune` prunes old `.env` backups (owner, `--yes`).
-- **On the next backend start:** migration 051 applies. Take a backup first.
+- **Live, 20 October:**
+  - **Rule bot:** release v2 (current code) is active.
+  - **Fills:** the three buys filled at the 19 October open.
+  - **Migration:** 051 is applied.
+- **Standing approvals** (migration 052, [autonomy](docs/autonomy.md)): the owner approves classes of decisions once, with `npm run autonomy -- set <policy.json> --reason "..."`. The cycle's `autonomy` step then carries them out as `autonomy-policy`. With no policy, nothing is automatic.
+- **Self-development** (all owner opt-in through the policy):
+  - **Ideas:** R&D invents new ideas as grammar specs (`rnd_ideas.py`, `--invent model`), recorded in an append-only ledger, with a Bonferroni bar over every idea ever tried.
+  - **Live keep or revert:** `promoteCanaries` keeps a version that wins live; `rollbackFailingReleases` drops one that loses live.
+  - **Code fixes:** `trialNewReleases`, with `release-renewal.mjs`, turns a same-rule code fix into a trial release by itself.
+- **Supervisor:** `npm run supervisor` (built, not installed) runs readiness, the cycle and the Friday backup on trading days.
+- **Reference review** (TradingAgents, FinceptTerminal; `docs/reference-review-2026-10-20.md`), and what was adopted from it:
+  - post-trade reflections (cycle step `reflections`);
+  - the debate desk (`debate.py`, model plus `debate-setup.mjs`);
+  - risk metrics (volatility, Sharpe, VaR) in the benchmark and digest.
+
+  No code was copied from either project.
+- **On the next backend start:** migrations 052, 053 (refused orders) and 054 (loss brakes) apply. Take a backup first.
+- **Owner's direction:** agents decide and act, and the system develops itself; the owner approves and oversees. Build towards this.
+
+### Added on 21 October 2026 (read first)
+
+- **Founder review** ([founderReview.md](founderReview.md)): the switch-on checklist (planned for Sat 24 Oct) and all pending decisions. Keep it up to date as items close.
+- **Data repository** ([data export](docs/data-export.md)):
+  - the collected data and backups live in the **private** repository `KeerthanMuniRaja/trading-organisation-data`;
+  - its clone is at `.local/data-repo`, and `npm run export-data -- --write` refreshes it;
+  - secrets and the model file are never exported.
+
+  The code repository is **public** (B25).
+- **Live operations are paused until Saturday.** The backend has been stopped since 20 Oct. Migrations 052–054 apply on the next start, so take a backup first.
+- **Autonomy:**
+  - **Rehearsal:** `backend/test/rehearsal.test.ts` checks the invariants over 8 rounds, with injected failures.
+  - **Starter policy:** `docs/policies/autonomy-starter.json` is protective only.
+  - **Supervisor:** catches up missed jobs, survives job errors and writes a heartbeat. Readiness and status show it; `scripts/install-supervisor-task.ps1` registers it (owner-run).
+  - **Preflight:** `npm run preflight` gives READY or NOT READY for the switch-on.
+- **Model:**
+  - **Evaluation:** `integrations/model-eval/model_eval.py` tests all six model tasks with their real prompts. The first run on Qwen 3.5-4B: 37/37 valid and safe, claims perfect, sensitive to wording or order ([model evaluation](docs/model-eval.md)).
+  - **Training data:** every production model call is journaled in `.local/model-calls/`; `build_dataset.py` writes SFT and preference data in Soup's formats.
+  - **Soup** is a fine-tuning tool that needs a GPU. It has not been used.
+- **Research:**
+  - **Slower rebalancing:** a `rebalance` interval (1, 3, 6 or 12 months) in the grammar.
+  - **Scout fixes,** found by the source review: next-open entry, drift-aware turnover, no tax on the first purchase, sign-test proof time, and a 5,000-sample bootstrap with an error margin.
+  - **Method cards** are now version 2, with corrected numbers and attributions. Our regime, trend-template and pullback are simplified variants of the originals.
+  - **Result:** nothing passes. Yearly momentum keeps 11.2% after tax, against the basket's 12.55%.
+- **Source-code review of 13 projects:** seven notes and a ranked gap analysis in `docs/research-notes/`. The top gaps are self-expiring loss brakes, unrealised-loss and horizon exits, and broker-readiness items. The cheap fixes the agents can make are listed in Part C of the founder review.
+- **Intraday monitor** (`scripts/intraday-monitor.mjs`): feed-agnostic, tested on 38 replayed days. A broker adapter waits for the founder's choice.
+- **Gap fixes that need no owner decision** (commits 761572b to fb9da65; see the [project log](docs/project-log/2026-10-21.md)):
+  - **Debate:**
+    - it sees only headlines and prices from before the signal;
+    - the bull answers the bear;
+    - it sees the bot's own scored record, data-status markers and a press dossier.
+  - **Scenario panel:** failed voices are left out of votes and scoring (`failedVoices`).
+  - **Model gate:** `--baseline` regression, judge fingerprints, and exit 1 on DON'T SHIP. Evaluation rows never enter training data.
+  - **Knowledge index** (`knowledge_index.py`, cycle step `knowledge-index`, `npm run knowledge`): one SQLite file with
+    FTS5, holding shares, sources, drivers, items, stories, daily regimes, ideas, method cards, problems and panel calls.
+    `dossier(symbol, as_of)` is point-in-time ([knowledge index](docs/knowledge-index.md)).
+  - **Luck guards** (`research_checks.py`):
+    - every idea gets a probabilistic and a deflated Sharpe ratio, robustness (years ahead, twice the costs, India's
+      stress windows) and `beatsMatchedRandomPct`;
+    - the best deflated Sharpe is 0.22 on the 8 shares and 0.31 for NIFTY 50 reversal, against a bar of 0.95.
+  - **Regime v2** (`market_regime.risk_v2`): studied beside v1; it warns less sharply, so v1 stays.
+  - **Trust checks** ([operations cycle](docs/operations-cycle.md)):
+    - a run manifest in every cycle journal (`runs`: code commit and fingerprint, switches, prices);
+    - the digest's "Can you trust this digest?" section;
+    - `review_scorecard.py` (cycle step `review-scorecard`), comparing calls the review took with calls it turned
+      down.
+  - **Refused orders** (migration 053, `order_refusals`, `POST /v1/paper/refusals/query`): every 403, 404 or 409 refusal
+    of a reserve or fill is kept after its rollback, once per request; the caller's error is unchanged.
+  - **Digest:** a limits banner (what the running backend loaded, with a name-only warning when settings differ),
+    arithmetic checks, crashed runs, refused-order counts and the loss-brake state.
+  - **Loss brakes** (migration 054, `protections.ts`, `npm run protections`, [protections](docs/protections.md)):
+    - daily, weekly and monthly realised-loss pauses, a losing-streak pause and a per-share cooldown;
+    - they pause new buys only and lift by themselves;
+    - they are set by the owner only, and are off until then (founder review B3);
+    - the review rules are now `signal-risk-v3`, identical to v2 with no policy.
+
+### Added in the evening of 20 October 2026
+
+- **World news:** a catalogue of 12 sources in 6 regions, all off until the owner enables them. The owner tools are `npm run world -- probe | enable --yes | coverage | stories`. Also:
+  - 8 world drivers in `impact_links.json`;
+  - triage `scope-v2`, with world terms;
+  - cycle steps `world-stories` and `link-study` (links tested on every collected headline). See [world news](docs/world-news.md).
+- **Market regime** (`market_regime.py`), with the cycle steps `market-regime` and `regime-study`. It is advice only. On 10 years it warns of falls, but as a cash filter it loses return ([market regime](docs/market-regime.md)).
+- **R&D:**
+  - **History:** 10 years of prices for the 8 shares. The owner confirmed Axis Bank on 23 Mar 2020 and SBI on 25 Oct 2017. `daily.years_to_fetch` keeps the long history on refresh.
+  - **Catalogue:** 17 ideas, with new families `trend-template` and `pullback` and the filter `distribution-days`.
+  - **Checks on every idea:** lookahead and warm-up, statistics, 100 random pickers and walk-forward (`research_checks.py`).
+  - **Result:** no idea passes. Momentum 6m top 3 has 0.00% average excess over 106 months. Walk-forward selection loses (−0.35% a month).
+- **NIFTY 50 research universe** (research only, never traded):
+  - `datasets.NIFTY50`, with files in `.local/trading-desk/daily-research`;
+  - `rnd_scout.py --universe nifty50` (37 shares);
+  - 7 shares are kept back until the owner confirms their large moves.
+- **Scenario panel** (`scenario_panel.py`, in shadow, needs the model): five personas, scored per persona ([scenario panel](docs/scenario-panel.md)).
+- **Knowledge:**
+  - `knowledge/methods.json`: 17 method cards, fed to R&D invention;
+  - `knowledge/problems.json` with `scripts/playbook.mjs`: the cause, fix and decider for failed steps, shown in the journal, the escalation and readiness. Unknown failures are logged to `.local/cycles/unknown-problems.jsonl`;
+  - `live_knowledge.py`: the cycle step `knowledge-refresh` writes `live.json`, and the briefing goes to the debate desk and the scenario panel.
+
+  See [research methods](docs/research-methods.md).
+- **Licences:** none of the reference projects' code was copied (freqtrade, backtesting.py, vectorbt, Lean, nautilus_trader, MiroFish, claude-trading-skills, a-stock-data, FinnewsHunter).
+- **Open owner decisions:**
+  - whether R&D should also judge ideas on risk, not only return (the trend filter's only route to a bot);
+  - which of the 7 NIFTY 50 moves are real;
+  - which world sources to enable.
+- **Push:** this evening's commits wait until the 5-day push plan finishes on 25 Oct (`.local/push-due.ps1`).
 
 ### State on 14 October 2026
 

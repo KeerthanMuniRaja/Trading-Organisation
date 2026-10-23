@@ -29,6 +29,7 @@ import daily  # noqa: E402
 import portfolio_daily as pd  # noqa: E402
 
 LINKS = Path(__file__).resolve().parent / 'impact_links.json'
+REGIONS = {'IN', 'US', 'CN', 'EU', 'GB', 'JP', 'WORLD'}  # where a driver originates; absent means India
 OUT = daily.ROOT / '.local' / 'trading-desk' / 'chains'
 HORIZON = 5  # sessions
 
@@ -38,7 +39,7 @@ def load_links(path=LINKS):
     universe = set(daily.datasets.UNIVERSE)
     for link in data['links']:
         if not (re.fullmatch(r'[a-z0-9-]{1,40}', link['driver']) and link['keywords'] and set(link['symbols']) <= universe
-                and link['basis']):
+                and link['basis'] and link.get('region', 'IN') in REGIONS):
             raise ValueError(f"Invalid link {link.get('driver')!r}")
     return data['links']
 

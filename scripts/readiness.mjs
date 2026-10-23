@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const UNIVERSE = ['AXISBANK', 'HDFCBANK', 'ICICIBANK', 'INFY', 'ITC', 'NTPC', 'RELIANCE', 'SBIN'];
 const RULE_MODEL = 'rules:top3-momentum-6m';
-const LEARNING_STEPS = ['claims-and-fact-check', 'learning-workflows', 'chain-links', 'model-allocator-decide'];
+const LEARNING_STEPS = ['claims-and-fact-check', 'learning-workflows', 'chain-links', 'model-allocator-decide', 'debate'];
 const DAY = 86_400_000;
 
 /** The latest NSE session whose daily bar should be settled by `now` (15:30 IST close + 30 min); weekends skipped, and
@@ -81,11 +81,14 @@ export function assess(f, now) {
   else if (!rb.credential) out.push(check('rule-bot', 'NO-GO', `RULE_BOT_ID=${rb.id} has no trader credential bound to it`, 'activate-rule-bot.mjs credential --yes, then restart'));
   else if (rb.state !== 'paper') out.push(check('rule-bot', 'NO-GO', `${rb.id} is ${rb.state ?? 'not created'}, not qualified for paper`, 'activate-rule-bot.mjs apply --yes'));
   else if (rb.activeModel !== RULE_MODEL) out.push(check('rule-bot', 'NO-GO', `${rb.id} has no active release of ${RULE_MODEL}`, 'activate-rule-bot.mjs apply --yes'));
+  // RELEASE-01: the cycle will refuse to run code that is not the authorised release; say so before the day starts
+  else if (rb.gate) out.push(check('rule-bot', 'WARN', `${rb.id}: ${rb.gate}`, 'npm.cmd run rulebot -- apply --yes (registers, evaluates and activates a release for the current code)'));
   else out.push(check('rule-bot', 'GO', `${rb.id} qualified, release active, credential bound`));
 
   const failed = f.lastCycle?.failed ?? [], degraded = f.lastCycle?.degraded ?? [];
   out.push(!f.lastCycle ? check('last-cycle', 'WARN', 'no cycle has run yet', 'npm.cmd run cycle')
-    : failed.length ? check('last-cycle', 'WARN', `${f.lastCycle.day}: failed ${failed.join(', ')}`, 'Read .local/cycles/' + f.lastCycle.day + '.json and rerun: npm.cmd run cycle')
+    : failed.length ? check('last-cycle', 'WARN', `${f.lastCycle.day}: failed ${failed.join(', ')}`, (f.lastCycle.fixes?.length ? f.lastCycle.fixes.join('; ') + '. Then rerun: npm.cmd run cycle'
+      : 'Read .local/cycles/' + f.lastCycle.day + '.json and rerun: npm.cmd run cycle'))
       : check('last-cycle', 'GO', `${f.lastCycle.day}: no failed steps`));
   // learning that silently did not happen is still not happening: say so (no model, or its setup missing)
   const unlearned = (f.lastCycle?.skipped ?? []).filter(s => LEARNING_STEPS.includes(s.id));
@@ -94,6 +97,13 @@ export function assess(f, now) {
   // a degraded step finished but needs a person: e.g. data kept back by the steward, or a split to record
   for (const d of degraded) out.push(check('needs-owner', 'WARN', `${d.id}: ${d.note}`, d.note.includes('corporate-actions')
     ? 'Check the exchange notice, then record it: POST /v1/corporate-actions' : 'Read .local/cycles/' + f.lastCycle.day + '.json'));
+  // OPS-04: a supervisor that was started but stopped beating is the organisation silently not running
+  if (f.supervisor?.at) {
+    const age = now - Date.parse(f.supervisor.at);
+    out.push(age > 5 * 60_000 ? check('supervisor', 'WARN', `no heartbeat for ${Math.round(age / 60_000)} minutes: the supervisor is not running`,
+      'Start it again: npm.cmd run supervisor (or let the scheduled task restart it)')
+      : check('supervisor', 'GO', `alive${f.supervisor.next ? `, next ${f.supervisor.next}` : ''}`));
+  }
   out.push(f.backupAt === null ? check('backup', 'WARN', 'no backup yet', 'Stop the API, npm.cmd run backup -- create, restart')
     : now - f.backupAt > 2 * DAY ? check('backup', 'WARN', `last backup ${new Date(f.backupAt).toISOString().slice(0, 16)}Z (over 2 days)`, 'Stop the API, npm.cmd run backup -- create, restart')
       : check('backup', 'GO', `last backup ${new Date(f.backupAt).toISOString().slice(0, 16)}Z`));
@@ -103,7 +113,7 @@ export function assess(f, now) {
 export const verdict = checks => checks.some(c => c.status === 'NO-GO') ? 'NO-GO' : checks.some(c => c.status === 'WARN') ? 'GO WITH WARNINGS' : 'GO';
 
 /** Collects the facts: backend answers plus local files. Network failures become missing facts, never crashes. */
-export async function gather(env, { fetchImpl = fetch, root = ROOT } = {}) {
+export async function gather(env, { fetchImpl = fetch, root = ROOT, gate = null } = {}) {
   const base = (env.API_URL || 'http://127.0.0.1:3000').replace(/\/$/, '');
   if (!/^(https:\/\/[^/@?#]+|http:\/\/(127\.0\.0\.1|localhost)(:\d+)?)$/.test(base)) throw new Error('Invalid backend API origin');
   const principals = JSON.parse(env.PRINCIPALS_JSON || '[]');
@@ -120,6 +130,12 @@ export async function gather(env, { fetchImpl = fetch, root = ROOT } = {}) {
   const [audit, digest, bots, view] = health ? await Promise.all([ask('owner', 'GET', '/v1/audit/integrity'), ask('evaluator', 'POST', '/v1/owner/digest', {}),
     ask('owner', 'GET', '/v1/bots'), ruleId ? ask('owner', 'POST', '/v1/releases/view', { botId: ruleId }) : null]) : [];
   const active = view?.releases?.find(r => r.id === view.active);
+  // the same release check the cycle runs before the rule bot (its identity from its own code): null when allowed
+  const gateNote = health && ruleId && active ? await (gate ?? (async botId => {
+    const { releaseCheck } = await import('./organisation-cycle.mjs');
+    const py = env.CYCLE_PYTHON || join(root, '.local', 'replay-venv', ...(process.platform === 'win32' ? ['Scripts', 'python.exe'] : ['bin', 'python']));
+    return releaseCheck({ botId, cmd: py, args: [join(root, 'integrations', 'trading-desk', 'rule_bot.py'), '--describe'] }, { env, fetchImpl });
+  }))(ruleId) : null;
 
   const prices = {};
   for (const s of UNIVERSE) {
@@ -135,6 +151,7 @@ export async function gather(env, { fetchImpl = fetch, root = ROOT } = {}) {
     const journal = JSON.parse(await readFile(join(cycles, days.at(-1)), 'utf8'));
     const steps = Object.entries(journal.steps ?? {});
     lastCycle = { day: days.at(-1).slice(0, 10), failed: steps.filter(([, s]) => s.status === 'failed').map(([id]) => id),
+      fixes: steps.filter(([, s]) => s.status === 'failed' && s.playbook).map(([id, s]) => `${id}: ${s.playbook.fix} (${s.playbook.decidedBy})`),
       degraded: steps.filter(([, s]) => s.status === 'degraded').map(([id, s]) => ({ id, note: String(s.reason ?? 'finished with a caveat') })),
       skipped: steps.filter(([, s]) => s.status === 'skipped').map(([id, s]) => ({ id, reason: String(s.reason ?? 'skipped') })) };
   }
@@ -145,17 +162,19 @@ export async function gather(env, { fetchImpl = fetch, root = ROOT } = {}) {
   if (existsSync(backups)) for (const n of await readdir(backups)) {
     if (n.startsWith('backup-') && existsSync(join(backups, n, 'manifest.json'))) backupAt = Math.max(backupAt ?? 0, (await stat(join(backups, n, 'manifest.json'))).mtimeMs);
   }
+  let supervisor = null;
+  try { supervisor = JSON.parse(await readFile(join(root, '.local', 'supervisor', 'heartbeat.json'), 'utf8')); } catch { /* never started */ }
   return {
-    health, audit, digest, prices, lastCycle, backupAt, holidays,
+    health, audit, digest, prices, lastCycle, backupAt, holidays, supervisor,
     credentials: { missing: ['owner', 'researcher', 'evaluator'].filter(r => !token(r)) },
     limits: { maxOrderPaise: env.MAX_ORDER_PAISE || '100000', feeBps: Number(env.PAPER_FEE_BPS || 10), slippageBps: Number(env.PAPER_SLIPPAGE_BPS || 5) },
     ruleBot: { id: ruleId, credential: !!ruleId && principals.some(p => p.role === 'trader' && p.botId === ruleId && p.token),
-      state: Array.isArray(bots) ? bots.find(b => b.id === ruleId)?.state ?? null : null, activeModel: active?.model ?? null },
+      state: Array.isArray(bots) ? bots.find(b => b.id === ruleId)?.state ?? null : null, activeModel: active?.model ?? null, gate: gateNote },
   };
 }
 
-export async function run(env = process.env, { fetchImpl = fetch, root = ROOT, now = Date.now() } = {}) {
-  const checks = assess(await gather(env, { fetchImpl, root }), now);
+export async function run(env = process.env, { fetchImpl = fetch, root = ROOT, now = Date.now(), gate = null } = {}) {
+  const checks = assess(await gather(env, { fetchImpl, root, gate }), now);
   const report = { at: new Date(now).toISOString(), verdict: verdict(checks), checks };
   await mkdir(join(root, '.local', 'readiness'), { recursive: true });
   await writeFile(join(root, '.local', 'readiness', report.at.slice(0, 10) + '.json'), JSON.stringify(report, null, 2) + '\n');

@@ -144,7 +144,7 @@ test('an independent challenger argues before review; an evidenced objection hal
     await assert.rejects(() => f.signals.challenge(skeptic, key(), { signalId: high.id, stance: 'oppose', argument: 'Again' }), says(/already challenged/));
     const reviewed = await f.signals.review(evaluator, key(), { signalId: high.id });
     assert.deepEqual([reviewed.quantity, reviewed.reasons], ['25', ['evidenced-objection-sized-as-medium', 'sized-by-available-capital', 'conviction-medium']]);
-    assert.equal(reviewed.rulesVersion, 'signal-risk-v2');
+    assert.equal(reviewed.rulesVersion, 'signal-risk-v3');
     await assert.rejects(() => f.signals.challenge({ ...skeptic, id: 'other', botId: 'bot-two' }, key(), { signalId: high.id, stance: 'oppose', argument: 'Late' }),
       says(/before the review/));
 

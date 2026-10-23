@@ -3,7 +3,20 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { planSteps, runCycle, runHttp, escalate, releaseCheck, computeCheck, verifyMarketData, verifyFeed, ESCALATE_AFTER } from './organisation-cycle.mjs';
+import { planSteps, runCycle, runHttp, escalate, releaseCheck, computeCheck, taSteps, verifyMarketData, verifyFeed, ESCALATE_AFTER,
+  runManifest, dataManifest, fingerprint, circuitOpen, CIRCUIT_AFTER, CIRCUIT_REST_MS } from './organisation-cycle.mjs';
+
+test('TradingAgents decides only weekly with the model and its own environment; its member proposes every cycle', () => {
+  const friday = Date.parse('2026-10-23T11:00:00Z'), tuesday = Date.parse('2026-10-20T11:00:00Z');
+  const ids = s => s.map(x => [x.id, x.skip ? 'skip' : 'run']);
+  assert.deepEqual(ids(taSteps({ withModel: true, root: '/r', desk: x => x, now: friday, env: {} })), [['tradingagents', 'skip']]);
+  const env = { TA_BOT_ID: 'tradingagents' };
+  assert.deepEqual(ids(taSteps({ withModel: true, root: '/r', desk: x => x, now: friday, env })), [['tradingagents-decide', 'run'], ['tradingagents-propose', 'run']]);
+  const decide = taSteps({ withModel: true, root: '/r', desk: x => x, now: friday, env })[0];
+  assert.deepEqual([decide.args.slice(-2), decide.computeGate.botId, /tradingagents-venv/.test(decide.requires)], [['--day', '2026-10-23'], 'tradingagents', true]);
+  assert.match(taSteps({ withModel: true, root: '/r', desk: x => x, now: tuesday, env })[0].skip, /weekly/);
+  assert.match(taSteps({ withModel: false, root: '/r', desk: x => x, now: friday, env })[0].skip, /model steps/);
+});
 
 const steps = [
   { id: 'backend-health', critical: true, kind: 'http', path: '/v1/health' },
@@ -33,6 +46,68 @@ test('a cycle runs each step once a day, resumes after failures and skips what i
     assert.equal(journal.steps.alerts.attempts, 2);
     await runCycle({ steps, journalPath, run, http, force: true });
     assert.equal(calls.filter(c => c === 'market-data').length, 2); // --force reruns everything
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('every run keeps a manifest: the code and switches it started with and the prices it left', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'manifest-'));
+  try {
+    const put = async (path, text) => { await mkdir(join(root, ...path.slice(0, -1)), { recursive: true }); await writeFile(join(root, ...path), text); };
+    await put(['scripts', 'a.mjs'], 'one\r\ntwo\r\n');
+    await put(['integrations', 'desk', 'b.py'], 'x = 1\n');
+    await put(['integrations', 'desk', '__pycache__', 'b.pyc.json'], 'ignored');
+    await put(['.git', 'HEAD'], 'ref: refs/heads/dev\n');
+    await put(['.git', 'refs', 'heads', 'dev'], '0123456789abcdef0123\n');
+    await put(['.local', 'trading-desk', 'daily', 'A.NS-1d.json'], JSON.stringify({ symbol: 'A.NS', retrievedAt: 'r', bars: [{ date: '2026-10-13' }, { date: '2026-10-14' }] }));
+    await put(['.local', 'trading-desk', 'daily', 'B.NS-1d.json'], JSON.stringify({ symbol: 'B.NS', bars: [{ date: '2026-10-12' }] }));
+    const env = { RULE_BOT_ID: 'momentum-rules', PRINCIPALS_JSON: '[{"token":"secret"}]', HERMES_MODEL: 'qwen' };
+    const m = await runManifest({ root, env, withModel: true, now: new Date('2026-10-14T12:00:00Z') });
+    assert.deepEqual({ ...m, code: { ...m.code, fingerprint: typeof m.code.fingerprint } }, { startedAt: '2026-10-14T12:00:00.000Z', withModel: true, force: false,
+      code: { commit: '0123456789ab', fingerprint: 'string', files: 2 }, switches: { RULE_BOT_ID: 'momentum-rules', HERMES_MODEL: 'qwen' } }); // never a credential
+    // the same code gives the same fingerprint whatever the line ends
+    await put(['scripts', 'a.mjs'], 'one\ntwo\n');
+    assert.equal((await runManifest({ root, env })).code.fingerprint, m.code.fingerprint);
+    await put(['scripts', 'a.mjs'], 'one\ntwo changed\n');
+    assert.notEqual((await runManifest({ root, env })).code.fingerprint, m.code.fingerprint);
+    const d = await dataManifest({ root });
+    assert.deepEqual({ ...d, fingerprint: d.fingerprint.length }, { prices: { 'A.NS': { bars: 2, lastSession: '2026-10-14', retrievedAt: 'r' },
+      'B.NS': { bars: 1, lastSession: '2026-10-12', retrievedAt: null } }, oldestLastSession: '2026-10-12', newestLastSession: '2026-10-14', fingerprint: 16 });
+    assert.equal(await fingerprint([], root), (await fingerprint([], root))); // stable on nothing
+    // the cycle appends one manifest per run, completed with the data at the end; a failing description never stops it
+    const journalPath = join(root, 'day.json'), steps = [{ id: 'one', cmd: 'x' }];
+    await runCycle({ steps, journalPath, run: async () => ({ code: 0 }), manifest: async () => ({ code: { fingerprint: 'f' } }), data: async () => ({ newestLastSession: 'd' }) });
+    await runCycle({ steps, journalPath, run: async () => ({ code: 0 }), manifest: async () => { throw new Error('unreadable'); } });
+    const runs = JSON.parse(await readFile(journalPath, 'utf8')).runs;
+    assert.equal(runs.length, 2);
+    assert.deepEqual([runs[0].code, runs[0].data, typeof runs[0].finishedAt], [{ fingerprint: 'f' }, { newestLastSession: 'd' }, 'string']);
+    assert.equal(runs[1].error, 'unreadable');
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('a model step that keeps failing rests behind an open circuit, tries again later, and one success closes it', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'circuit-'));
+  try {
+    let clock = Date.parse('2026-10-10T12:00:00Z'), ok = false;
+    const ran = [];
+    const steps = [{ id: 'debate', cmd: 'x' }, { id: 'market-data', cmd: 'x' }];
+    const day = n => runCycle({ steps, journalPath: join(dir, `${n}.json`), now: () => new Date(clock), escalateStep: async () => 'incident',
+      run: async s => { ran.push(s.id); return { code: ok || s.id !== 'debate' ? 0 : 1, tail: 'MODEL_TIMEOUT' }; } });
+    for (let n = 1; n <= CIRCUIT_AFTER; n++) { await day(n); clock += 86_400_000; }  // three failed days: the circuit opens
+    ran.length = 0;
+    const resting = await day(4);
+    assert.equal(resting.find(r => r.id === 'debate').status, 'skipped');
+    assert.match(resting.find(r => r.id === 'debate').reason, /circuit open after 3 failed runs/);
+    assert.deepEqual(ran, ['market-data']);                          // other steps are unaffected; the model is not called
+    clock += CIRCUIT_REST_MS;                                          // the rest is over: one try, which fails and re-opens
+    await day(5);
+    clock += 86_400_000;
+    assert.equal((await day(6)).find(r => r.id === 'debate').status, 'skipped');
+    clock += CIRCUIT_REST_MS; ok = true;                               // the next try succeeds and closes the circuit
+    assert.equal((await day(7)).find(r => r.id === 'debate').status, 'done');
+    clock += 86_400_000; ok = false;
+    assert.equal((await day(8)).find(r => r.id === 'debate').status, 'failed'); // closed again: a single failure just fails
+    // a step that is not a model agent never rests
+    assert.equal(circuitOpen('market-data', { failures: 9, openedAt: new Date(clock).toISOString() }, clock), null);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

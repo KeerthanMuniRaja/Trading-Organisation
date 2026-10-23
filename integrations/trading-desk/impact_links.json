@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "note": "Reviewed starting links from economic drivers to the eight shares. Every link is INFERRED: it says a driver may affect a share, never the direction or size. Edit with care; chains.py study tests whether each link carries information.",
+  "note": "Reviewed starting links from economic drivers, in India and worldwide ('region'; Indian when absent), to the eight shares. Every link is INFERRED: it says a driver may affect a share, never the direction or size. Edit with care; chains.py study tests whether each link carries information.",
   "links": [
     {"driver": "crude-oil", "keywords": ["crude", "brent", "oil price", "opec"], "symbols": ["RELIANCE.NS"],
      "basis": "Refining and petrochemicals are a large part of the business; crude prices move margins and inventory values."},
@@ -22,6 +22,30 @@
      "basis": "Generation volumes, plant load and fuel availability drive earnings."},
     {"driver": "market-flows", "keywords": ["fii", "fpi", "foreign investors", "sensex", "nifty"],
      "symbols": ["RELIANCE.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS", "SBIN.NS", "ITC.NS", "AXISBANK.NS", "NTPC.NS"],
-     "basis": "Market-wide flows and index moves affect every large constituent."}
+     "basis": "Market-wide flows and index moves affect every large constituent."},
+    {"driver": "us-fed-rates", "region": "US", "keywords": ["federal reserve", "fomc", "fed chair", "fed rate", "us treasury yields", "treasury yields"],
+     "symbols": ["HDFCBANK.NS", "ICICIBANK.NS", "SBIN.NS", "AXISBANK.NS", "INFY.NS"],
+     "basis": "US rates move foreign money into or out of Indian banks and set the dollar, which converts Infosys's revenue."},
+    {"driver": "global-central-banks", "region": "WORLD", "keywords": ["ecb", "european central bank", "bank of england", "bank of japan", "yen carry", "pboc", "people's bank of china"],
+     "symbols": ["RELIANCE.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS", "SBIN.NS", "ITC.NS", "AXISBANK.NS", "NTPC.NS"],
+     "basis": "Major central banks set global liquidity, which moves foreign flows into large Indian shares."},
+    {"driver": "us-tech-demand", "region": "US", "keywords": ["nasdaq", "big tech", "cloud spending", "ai spending", "tech layoffs", "it budgets"],
+     "symbols": ["INFY.NS"],
+     "basis": "US and European clients' technology budgets drive most of the demand for Indian IT services."},
+    {"driver": "energy-geopolitics", "region": "WORLD", "keywords": ["opec+", "strait of hormuz", "red sea", "oil supply", "oil sanctions", "saudi aramco"],
+     "symbols": ["RELIANCE.NS"],
+     "basis": "Supply shocks and sanctions move crude prices and refining margins."},
+    {"driver": "china-economy", "region": "CN", "keywords": ["china stimulus", "china's economy", "chinese economy", "china exports", "china pmi", "yuan", "beijing stimulus"],
+     "symbols": ["RELIANCE.NS", "NTPC.NS"],
+     "basis": "Chinese demand sets world prices for petrochemicals and coal."},
+    {"driver": "global-coal", "region": "WORLD", "keywords": ["coal price", "coal prices", "thermal coal", "indonesia coal", "newcastle coal"],
+     "symbols": ["NTPC.NS"],
+     "basis": "Imported coal prices feed generation costs."},
+    {"driver": "global-trade", "region": "WORLD", "keywords": ["trade war", "tariffs on india", "reciprocal tariffs", "import tariffs", "wto"],
+     "symbols": ["RELIANCE.NS", "INFY.NS", "ITC.NS"],
+     "basis": "Tariffs change export demand, input costs and the rupee."},
+    {"driver": "global-risk", "region": "WORLD", "keywords": ["wall street", "global selloff", "global sell-off", "recession", "risk-off", "emerging markets", "s&p 500", "vix"],
+     "symbols": ["RELIANCE.NS", "HDFCBANK.NS", "ICICIBANK.NS", "INFY.NS", "SBIN.NS", "ITC.NS", "AXISBANK.NS", "NTPC.NS"],
+     "basis": "Global risk appetite moves foreign flows into and out of emerging-market large caps."}
   ]
 }

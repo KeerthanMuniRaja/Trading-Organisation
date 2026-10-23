@@ -45,11 +45,16 @@ BOT_ID = re.compile(r'^[a-zA-Z0-9_-]{1,80}$')
 # ---------- owner configuration ----------
 def load_config(path):
     value = json.loads(Path(path).read_text(encoding='utf-8'))
-    allowed = {'recipientBotIds', 'primarySourceIds', 'holdDays', 'maxModelCallsPerCycle', 'looseCorroborationVerifies'}
+    allowed = {'recipientBotIds', 'primarySourceIds', 'holdDays', 'maxModelCallsPerCycle', 'looseCorroborationVerifies', 'analystBotId'}
     if not isinstance(value, dict) or set(value) - allowed or 'recipientBotIds' not in value:
         raise ValueError(f'Config keys: {sorted(allowed)}; recipientBotIds is required')
     config = {'recipientBotIds': value['recipientBotIds'], 'primarySourceIds': value.get('primarySourceIds', []),
               'holdDays': value.get('holdDays', 7), 'maxModelCallsPerCycle': value.get('maxModelCallsPerCycle', 20)}
+    # optional: the bot that stands for the claim analyst, so its model calls count against its department's budget
+    if 'analystBotId' in value:
+        if not (isinstance(value['analystBotId'], str) and BOT_ID.match(value['analystBotId'])):
+            raise ValueError('analystBotId: an organisation bot id')
+        config['analystBotId'] = value['analystBotId']
     # Retired with the loose rule it governed; still accepted so an existing configuration keeps loading.
     if not isinstance(value.get('looseCorroborationVerifies', False), bool):
         raise ValueError('looseCorroborationVerifies: no longer used; remove it or set true or false')
@@ -208,8 +213,27 @@ def factcheck_queue(api, state, max_pages=10):
     return {'pending': len(queue), 'invalidRows': invalid}
 
 
-def analyst_extract(llm, model, state, config):
-    """Researcher with the model: draft claims for snapshots that have none yet."""
+def analyst_extract(llm, model, state, config, api=None, now=None):
+    """Researcher with the model: draft claims for snapshots that have none yet. With analystBotId configured, the model
+    calls count against that bot's department budget: the allowance is asked first, and the tokens used are reported."""
+    bot = config.get('analystBotId')
+    if bot and api:
+        allowance = api('POST', '/v1/compute/allowance', {'botId': bot})
+        if not allowance.get('allowed'):
+            return {'skipped': f"compute budget: department {allowance.get('departmentId')} used {allowance.get('usedTodayTokens')} "
+                               f"of its {allowance.get('budgetTokensPerDay')} tokens today", 'callsThisRun': 0}
+    started = time.monotonic()
+    result = _extract(llm, model, state, config)
+    if bot and api and result['callsThisRun']:
+        day = (now or datetime.now(timezone.utc)).date().isoformat()
+        api('POST', '/v1/compute/usage/reports', {'botId': bot, 'model': model, 'runLabel': f"autolearn {(now or datetime.now(timezone.utc)).isoformat()}"[:160],
+            'periodFrom': day, 'periodTo': day, 'calls': result['callsThisRun'], 'promptTokens': result['tokensThisRun'][0],
+            'completionTokens': result['tokensThisRun'][1], 'latencyMs': int((time.monotonic() - started) * 1000)})
+        result['computeReported'] = True
+    return result
+
+
+def _extract(llm, model, state, config):
     queue = [{k: v for k, v in o.items() if k != 'blockers'} for o in read(state, 'queue.json', []) if not o.get('blockers')]
     current = read(state, 'extracted.json', None)
     if current and (current.get('model') != model or current.get('contractVersion') != claims.CONTRACT_VERSION):
@@ -494,7 +518,7 @@ def step_main(args):
     if args.step == 'analyst-extract':
         llm, endpoint = claims.model_client({k: env.get(k) for k in ('HERMES_MODEL', 'HERMES_MODEL_BASE_URL', 'HERMES_MODEL_API_KEY')},
                                             args.timeout_seconds, args.allow_remote_cost)
-        return analyst_extract(llm, endpoint.model, args.state, config)
+        return analyst_extract(llm, endpoint.model, args.state, config, api=child_backend(env, 'researcher') if config.get('analystBotId') else None)
     api = child_backend(env, STEPS[args.step])
     if args.step == 'factcheck-queue':
         return factcheck_queue(api, args.state)

@@ -109,6 +109,27 @@ test('each bot is compared with holding the basket over the same days, with a di
   } finally { await f.db.close(); }
 });
 
+test('a bot whose snapshots began before the basket marks is compared from the first day both exist', async () => {
+  const f = await fixture(); try {
+    const e = await f.evidence();
+    await f.org.bot(owner, key(), { id: 'early', name: 'early', department: 'desk', specialty: 'one', method: 'test', contribution: 'Benchmark fixture', budgetPaise: '1000000' });
+    await f.db.transaction(async tx => {
+      // snapshots 10 and 5 days ago and today; basket marks only from 5 days ago
+      for (const [ago, unrealised] of [[10, '-50000'], [5, '0'], [0, '20000']] as const)
+        await tx.query(`INSERT INTO paper_performance_snapshots(id,day,bot_id,budget_paise,realised_paise,unrealised_paise,open_positions,unpriced_or_stale,recorder)
+          VALUES($1,((now() AT TIME ZONE 'UTC') + interval '330 minutes')::date-$2::int,'early',1000000,0,$3,0,0,'evaluator')`, [crypto.randomUUID(), ago, unrealised]);
+      for (const [symbol, ago, price] of [['AAA', 5, 10000], ['AAA', 0, 10100], ['BBB', 5, 20000], ['BBB', 0, 20200]] as const)
+        await tx.query(`INSERT INTO price_marks(id,symbol,price_paise,observed_at,evidence_id,recorded_by)
+          VALUES($1,$2,$3,date_trunc('day',now())-($4::int * interval '1 day')+interval '10 hours'-interval '1 minute',$5,'evaluator')`,
+          [crypto.randomUUID(), symbol, price, ago, e.evidenceId]);
+    });
+    const one = (await new PaperPerformance(f.db).benchmark(owner, {})).bots.find(b => b.botId === 'early')!;
+    // from 5 days ago: own 1,000,000 -> 1,020,000 (+2%), basket +1%; the first snapshot is reported, not hidden
+    assert.deepEqual([one.returnPct, one.basketReturnPct, one.excessPct, one.days, one.verdict], [2, 1, 1, 2, 'ahead-of-basket']);
+    assert.ok(one.firstSnapshot && one.from && one.firstSnapshot < one.from);
+  } finally { await f.db.close(); }
+});
+
 test('equity statistics: total return and worst peak-to-trough fall', () => {
   assert.deepEqual(curveStats([100n, 110n, 99n, 120n]), { returnPct: 20, maxDrawdownPct: 10 }); // fell 11 from a 110 peak
   assert.deepEqual(curveStats([100n, 100n]), { returnPct: 0, maxDrawdownPct: 0 });

@@ -112,6 +112,10 @@ Rules `signal-risk-v2`:
 - An **opposing challenge with verified evidence** sizes a high-conviction long as medium, and records `evidenced-objection-sized-as-medium`.
 - Unevidenced objections stay visible but change nothing.
 
+**Rules `signal-risk-v3`** (21 Oct 2026) are v2 plus the owner's self-expiring loss brakes ([protections](protections.md)).
+Each pause holding the bot's new buys is a recorded reason (`protection-daily-loss`, `-weekly-loss`, `-monthly-loss`,
+`-losing-streak`, `-share-cooldown`). While no brake policy is set, v3 decides exactly as v2.
+
 **Scoring challengers.** The query shows each signal's challenges and a `challengerRecord`:
 - an opposition is right when the proposer's call turned out wrong;
 - a supported-with-caveat challenge is right when it turned out right.

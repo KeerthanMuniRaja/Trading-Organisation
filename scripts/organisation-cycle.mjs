@@ -5,10 +5,12 @@
 // model. Nothing here trades, funds, or changes limits: those stay with reviews, owner decisions and paper trading.
 //   node --env-file=.env scripts/organisation-cycle.mjs [--with-model] [--force]
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { diagnose } from './playbook.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // the research environment's Python: Scripts\python.exe on Windows, bin/python on Linux (WSL, a VM, the container);
@@ -16,20 +18,54 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PY = process.env.CYCLE_PYTHON || join(ROOT, '.local', 'replay-venv', ...(process.platform === 'win32' ? ['Scripts', 'python.exe'] : ['bin', 'python']));
 const NODE = process.execPath;
 
-export async function planSteps({ withModel = false, root = ROOT } = {}) {
+/** The feed configurations the owner explicitly enabled (.local/feed-<name>.json with enabled: true), by file name. */
+export async function enabledFeeds(root = ROOT) {
   const candidates = existsSync(join(root, '.local')) ? (await readdir(join(root, '.local'))).filter(n => /^feed-[a-z0-9-]+\.json$/.test(n)).sort() : [];
   const feeds = [];
   for (const name of candidates) { // only configurations the owner explicitly enabled; fixtures and drafts are ignored
     try { if (JSON.parse(await readFile(join(root, '.local', name), 'utf8')).enabled === true) feeds.push(name); } catch { /* not a feed config */ }
   }
+  return feeds;
+}
+
+/** The command that polls one enabled feed once (its own poll interval and back-off are respected inside). */
+export function feedCommand(name, root = ROOT) {
+  return { cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'run-feed-cycle.mjs'), 'run', join('.local', name), join('.local', 'feeds', name.slice(5, -5))] };
+}
+
+export async function planSteps({ withModel = false, root = ROOT } = {}) {
+  const feeds = await enabledFeeds(root);
   const desk = p => join(root, 'integrations', 'trading-desk', p);
   const steps = [
     { id: 'backend-health', critical: true, kind: 'http', path: '/v1/health' },
     { id: 'market-data', cmd: PY, args: [desk('daily.py'), 'fetch', '--refresh'], timeoutMs: 600_000, retries: 2, verify: verifyMarketData },
-    ...feeds.map(f => ({ id: 'news-' + f.slice(5, -5), cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'run-feed-cycle.mjs'), 'run',
-      join('.local', f), join('.local', 'feeds', f.slice(5, -5))], timeoutMs: 120_000, okCodes: [0], retries: 2, verify: verifyFeed })),
+    // REGIME-01: distribution days, breadth and trend of the eight shares, with an advisory exposure ceiling, and the
+    // study of how the regime and later falls went together (no model, no network, changes no limit)
+    { id: 'market-regime', cmd: PY, args: [desk('market_regime.py'), 'now'], timeoutMs: 120_000 },
+    { id: 'regime-study', cmd: PY, args: [desk('market_regime.py'), 'study'], timeoutMs: 300_000 },
+    ...feeds.map(f => ({ id: 'news-' + f.slice(5, -5), ...feedCommand(f, root), timeoutMs: 120_000, okCodes: [0], retries: 2, verify: verifyFeed })),
     // KNOW-02: fixed backend rules set aside news about nothing the organisation tracks, before anyone reviews it
     { id: 'news-triage', kind: 'http', method: 'POST', path: '/v1/evidence/triage', role: 'evaluator', freshKey: true },
+    // NEWS-02: the collected items of every country grouped into stories and linked to the shares (no network, no model)
+    { id: 'world-stories', cmd: NODE, args: [join(root, 'scripts', 'world-news.mjs'), 'stories'], timeoutMs: 120_000 },
+    // the organisation tests its own driver links on everything it has collected: are linked shares' moves larger after
+    // a driver's news? (direction-free; a link that shows nothing stays labelled until the owner edits the links)
+    { id: 'link-study', cmd: PY, args: [desk('chains.py'), 'study', '--headlines', join('.local', 'world', 'headline-history.json')],
+      timeoutMs: 300_000, requires: join(root, '.local', 'world', 'headline-history.json') },
+    // KNOW-06: everything collected, connected and searchable, point-in-time (items, stories, drivers, regimes, ideas, calls)
+    { id: 'knowledge-index', cmd: PY, args: [desk('knowledge_index.py'), 'build'], timeoutMs: 300_000 },
+    // SCENARIO-01: five personas rehearse the day's two biggest linked world stories (model needed; shadow only), and
+    // their calls are judged after five sessions against the basket (no model)
+    withModel
+      ? { id: 'scenario-panel', cmd: PY, args: [desk('scenario_panel.py'), 'run'], timeoutMs: 1_800_000, requires: join(root, '.local', 'world', 'latest.json') }
+      : { id: 'scenario-panel', skip: 'model steps not enabled (--with-model)' },
+    { id: 'scenario-score', cmd: PY, args: [desk('scenario_panel.py'), 'score'], timeoutMs: 120_000,
+      requires: join(root, '.local', 'trading-desk', 'scenario', 'calls.jsonl') },
+    // MiroFish's after-action question: a persona whose judged call was wrong says once what it missed (model needed)
+    withModel
+      ? { id: 'scenario-reflect', cmd: PY, args: [desk('scenario_panel.py'), 'reflect'], timeoutMs: 900_000,
+          requires: join(root, '.local', 'trading-desk', 'scenario', 'calls.jsonl') }
+      : { id: 'scenario-reflect', skip: 'model steps not enabled (--with-model)' },
     withModel
       ? { id: 'claims-and-fact-check', cmd: PY, args: [join(root, 'integrations', 'claims', 'autolearn.py'), 'run', '--config', join('.local', 'claims', 'autolearn.json'),
           '--cycles', '1'], timeoutMs: 3_600_000, requires: join(root, '.local', 'claims', 'autolearn.json') }
@@ -38,6 +74,10 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     withModel
       ? { id: 'learning-workflows', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'learning-cycle.mjs')], timeoutMs: 3_600_000 }
       : { id: 'learning-workflows', skip: 'model steps not enabled (--with-model)' },
+    // NEWS-04: the model reads each new verified headline once into a strict schema (event, direction, materiality, kind)
+    withModel
+      ? { id: 'headline-reader', cmd: PY, args: [desk('headline_reader.py')], timeoutMs: 1_800_000, requires: join(root, '.local', 'claims', 'auto', 'verified-headlines.json') }
+      : { id: 'headline-reader', skip: 'model steps not enabled (--with-model)' },
     { id: 'chain-links', cmd: PY, args: [desk('chains.py'), 'expand', '--headlines', join('.local', 'claims', 'auto', 'verified-headlines.json')],
       timeoutMs: 120_000, requires: join(root, '.local', 'claims', 'auto', 'verified-headlines.json') },
     { id: 'forward-daily-rules', cmd: PY, args: [desk('daily.py'), 'forward', '--name', 'forward-from-2026-10-09'], timeoutMs: 300_000 },
@@ -51,10 +91,19 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
       ['memory-review', '/v1/learning/cycles', 'evaluator']].map(([id, path, role]) => ({ id, kind: 'http', method: 'POST', path, role })),
     // RND-01: R&D screens its fixed catalogue of strategy ideas every day (no model); it turns a robust one into verified
     // evidence and a birth proposal for the owner's agenda only once the owner named an approved research source
-    { id: 'rnd-scout', cmd: PY, args: [desk('rnd_scout.py'), ...(process.env.RND_SOURCE
+    // RND-03: with the model on, R&D first invents new ideas (specifications only, at most 3 a month, each raising the bar)
+    { id: 'rnd-scout', cmd: PY, args: [desk('rnd_scout.py'), ...(withModel ? ['--invent', 'model'] : []), ...(process.env.RND_SOURCE
       ? ['--propose', '--source', process.env.RND_SOURCE, '--department', process.env.RND_DEPARTMENT || 'desk'] : [])], timeoutMs: 300_000 },
+    // KNOW-05: the organisation's live knowledge (research, regime, news links, scenario record) for the agents and the digest
+    { id: 'knowledge-refresh', cmd: PY, args: [desk('live_knowledge.py'), 'refresh'], timeoutMs: 120_000 },
     // the model-free rule bot proposes once a month, before the end-of-day trader reviews; it runs only once the owner
     // has created and qualified it and named it here (RULE_BOT_ID), with a trader credential bound to it
+    // AUTO-05 self-repair: a code fix under the same rule is prepared as a release by the agents, and the standing
+    // approvals (if the owner allows trials) start it as a canary right away, so the rule bot is not blocked by it
+    ...(process.env.RULE_BOT_ID ? [
+      { id: 'release-renewal', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'release-renewal.mjs')], timeoutMs: 120_000 },
+      { id: 'release-trial', kind: 'http', method: 'POST', path: '/v1/autonomy/apply', role: 'evaluator' },
+    ] : []),
     // RELEASE-01: it runs only while its exact code is the authorised release (a changed file needs a new release first)
     process.env.RULE_BOT_ID
       ? { id: 'rule-bot', cmd: PY, args: [desk('rule_bot.py'), '--bot', process.env.RULE_BOT_ID, '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000,
@@ -72,16 +121,47 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
       { id: 'model-allocator-propose', cmd: PY, args: [desk('model_allocator.py'), '--bot', process.env.MODEL_ALLOCATOR_BOT, '--run', process.env.MODEL_ALLOCATOR_RUN,
         '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 },
     ] : [{ id: 'model-allocator', skip: 'no model allocator configured (MODEL_ALLOCATOR_RUN, MODEL_ALLOCATOR_BOT)' }]),
+    // TA-01: TradingAgents decides weekly (Fridays, model needed, in its own environment) and its member proposes from the
+    // decisions file every cycle; it trades only once it has earned a release on its own shadow record
+    ...taSteps({ withModel, root, desk }),
+    // DEBATE-01: a bull and a bear argue every proposal before the review (model needed; two debater bots configured)
+    withModel && process.env.DEBATE_BULL_BOT && process.env.DEBATE_BEAR_BOT
+      ? { id: 'debate', cmd: PY, args: [desk('debate.py')], timeoutMs: 1_800_000, computeGate: { botId: process.env.DEBATE_BEAR_BOT } }
+      : { id: 'debate', skip: withModel ? 'no debaters configured (scripts/debate-setup.mjs)' : 'model steps not enabled (--with-model)' },
     { id: 'eod-trading', cmd: PY, args: [desk('eod_trader.py'), '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 },
     { id: 'score-signals', cmd: PY, args: [desk('signal_scorer.py'), '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 },
+    // LEARN-03: every scored call becomes a verified factual lesson for its bot (no model)
+    { id: 'reflections', cmd: PY, args: [desk('reflections.py')], timeoutMs: 300_000 },
+    // TRUST-02: how the calls the review took and turned down went, by reason and by the regime at the time (read-only)
+    { id: 'review-scorecard', cmd: PY, args: [desk('review_scorecard.py')], timeoutMs: 120_000 },
     { id: 'live-fitness', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'live-fitness.mjs')], timeoutMs: 120_000 },
     { id: 'paper-snapshot', kind: 'http', method: 'POST', path: '/v1/paper/performance/snapshots', role: 'evaluator' },
     // ORG-02: the daily management review of every working bot; it only recommends, the owner decides (npm run agenda)
     { id: 'management-review', kind: 'http', method: 'POST', path: '/v1/management/reviews', role: 'evaluator' },
+    // AUTO-03: the agents carry out what the owner's standing approvals cover (nothing without a policy)
+    { id: 'autonomy', kind: 'http', method: 'POST', path: '/v1/autonomy/apply', role: 'evaluator' },
+    // OPS-03: failures the playbook does not know get a drafted entry (model needed), waiting for the owner's accept
+    withModel
+      ? { id: 'playbook-drafts', cmd: PY, args: [desk('playbook_drafts.py'), 'draft'], timeoutMs: 600_000, requires: join(root, '.local', 'cycles', 'unknown-problems.jsonl') }
+      : { id: 'playbook-drafts', skip: 'model steps not enabled (--with-model)' },
     { id: 'alerts', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'deliver-alerts.mjs')], timeoutMs: 120_000 },
     { id: 'owner-digest', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'daily-digest.mjs')], timeoutMs: 120_000 },
   ];
   return steps;
+}
+
+/** The TradingAgents member's steps: decide (weekly, with the model, only if its environment is installed), then propose. */
+export function taSteps({ withModel, root, desk, now = Date.now(), env = process.env }) {
+  if (!env.TA_BOT_ID) return [{ id: 'tradingagents', skip: 'no TradingAgents member configured (TA_BOT_ID)' }];
+  const ta = p => join(root, 'integrations', 'tradingagents', p);
+  const venv = join(root, '.local', 'tradingagents-venv', ...(process.platform === 'win32' ? ['Scripts', 'python.exe'] : ['bin', 'python']));
+  const india = new Date(now + 330 * 60_000), weekday = india.getUTCDay(), day = india.toISOString().slice(0, 10);
+  const decideDay = Number(env.TA_WEEKDAY ?? 5);
+  const decide = !withModel ? { id: 'tradingagents-decide', skip: 'model steps not enabled (--with-model)' }
+    : weekday !== decideDay ? { id: 'tradingagents-decide', skip: `decides weekly (India weekday ${decideDay})` }
+      : { id: 'tradingagents-decide', cmd: venv, args: [ta('ta_decide.py'), '--day', day], timeoutMs: 6 * 3_600_000, requires: venv,
+        computeGate: { botId: env.TA_BOT_ID } };
+  return [decide, { id: 'tradingagents-propose', cmd: PY, args: [ta('ta_bot.py'), 'all', '--source', env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 }];
 }
 
 /** The last JSON value printed by a step (an object or an array), or null. */
@@ -186,7 +266,80 @@ export async function computeCheck(gate, { env = process.env, fetchImpl = fetch 
   } catch (error) { return 'compute check unreachable: ' + (error.cause?.code || error.name); }
 }
 
+// TRUST-01 run manifest: what each run ran on (code, switches, prices), so any later result can be traced to its inputs
+const CODE_DIRS = ['integrations', 'scripts', join('backend', 'src')];
+const SKIP_DIRS = new Set(['node_modules', '__pycache__', 'dist']);
+// the settings that change what a cycle does: identifiers and names only, never a credential or a limit
+export const SWITCHES = ['RULE_BOT_ID', 'RND_SOURCE', 'RND_DEPARTMENT', 'PRICE_EVIDENCE_SOURCE', 'MODEL_ALLOCATOR_RUN', 'MODEL_ALLOCATOR_BOT',
+  'TA_BOT_ID', 'TA_WEEKDAY', 'DEBATE_BULL_BOT', 'DEBATE_BEAR_BOT', 'HERMES_MODEL'];
+
+async function codeFiles(dir, out = []) {
+  let entries;
+  try { entries = await readdir(dir, { withFileTypes: true }); } catch { return out; }
+  for (const e of entries) {
+    if (e.isDirectory()) { if (!SKIP_DIRS.has(e.name) && !e.name.startsWith('.')) await codeFiles(join(dir, e.name), out); }
+    else if (/\.(py|mjs|js|ts|json)$/.test(e.name)) out.push(join(dir, e.name));
+  }
+  return out;
+}
+
+/** A content hash of files, the same on Windows and Linux (relative forward-slash names, LF line ends). */
+export async function fingerprint(paths, root) {
+  const named = paths.map(p => [relative(root, p).split('\\').join('/'), p]).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  const hash = createHash('sha256');
+  for (const [name, p] of named) hash.update(name + '\0' + (await readFile(p, 'utf8')).replace(/\r\n/g, '\n') + '\0');
+  return hash.digest('hex').slice(0, 16);
+}
+
+async function gitCommit(root) {
+  try {
+    const head = (await readFile(join(root, '.git', 'HEAD'), 'utf8')).trim();
+    if (!head.startsWith('ref: ')) return head.slice(0, 12);
+    const ref = head.slice(5);
+    try { return (await readFile(join(root, '.git', ref), 'utf8')).trim().slice(0, 12); } catch { /* packed */ }
+    const line = (await readFile(join(root, '.git', 'packed-refs'), 'utf8')).split('\n').find(l => l.trim().endsWith(' ' + ref));
+    return line ? line.slice(0, 12) : null;
+  } catch { return null; }
+}
+
+/** The code and switches a run starts with. */
+export async function runManifest({ root = ROOT, env = process.env, withModel = false, force = false, now = new Date() } = {}) {
+  const files = (await Promise.all(CODE_DIRS.map(d => codeFiles(join(root, d))))).flat();
+  return { startedAt: now.toISOString(), withModel, force, code: { commit: await gitCommit(root), fingerprint: await fingerprint(files, root), files: files.length },
+    switches: Object.fromEntries(SWITCHES.filter(k => env[k]).map(k => [k, env[k]])) };
+}
+
+/** The prices the run's decisions used, as the run left them: per share the bar count and last session, and one hash. */
+export async function dataManifest({ root = ROOT } = {}) {
+  const dir = join(root, '.local', 'trading-desk', 'daily');
+  let names = [];
+  try { names = (await readdir(dir)).filter(n => n.endsWith('.json')).sort(); } catch { return null; }
+  const shares = {};
+  for (const name of names.filter(n => n.endsWith('-1d.json'))) {
+    try {
+      const d = JSON.parse(await readFile(join(dir, name), 'utf8'));
+      shares[d.symbol] = { bars: d.bars.length, lastSession: d.bars.at(-1)?.date ?? null, retrievedAt: d.retrievedAt ?? null };
+    } catch { shares[name] = { unreadable: true }; }
+  }
+  const last = Object.values(shares).map(s => s.lastSession).filter(Boolean).sort();
+  return { prices: shares, oldestLastSession: last[0] ?? null, newestLastSession: last.at(-1) ?? null,
+    fingerprint: await fingerprint(names.map(n => join(dir, n)), root) };
+}
+
 export const ESCALATE_AFTER = 3;          // consecutive failed cycles before a step becomes an incident
+// OPS-04 circuit breaker for model agents (from FinceptTerminal's agent runner): a model step that failed CIRCUIT_AFTER
+// cycles in a row rests for CIRCUIT_REST_MS instead of failing (and spending model time) every day, then tries once again;
+// one success closes the circuit. The escalation above still tells the owner.
+export const CIRCUIT_AFTER = 3, CIRCUIT_REST_MS = 2 * 86_400_000;
+export const MODEL_STEPS = new Set(['scenario-panel', 'claims-and-fact-check', 'learning-workflows', 'model-allocator-decide', 'tradingagents-decide',
+  'debate', 'playbook-drafts', 'headline-reader', 'scenario-reflect']);
+
+/** Why a model step's circuit is open now (it rests), or null. */
+export function circuitOpen(id, streak, now) {
+  if (!MODEL_STEPS.has(id) || !streak || streak.failures < CIRCUIT_AFTER || !streak.openedAt) return null;
+  const until = Date.parse(streak.openedAt) + CIRCUIT_REST_MS;
+  return now < until ? `circuit open after ${streak.failures} failed runs in a row; resting until ${new Date(until).toISOString().slice(0, 16)} UTC, then one try` : null;
+}
 export const BACKOFF_MS = [30_000, 90_000]; // waits between retries of a transient step
 
 /** Runbook for one step: bounded retries with back-off, then the step's postcondition decides the outcome. */
@@ -227,11 +380,19 @@ export async function escalate(step, streak, summary, env = process.env, fetchIm
   return 'outbox';
 }
 
+async function recordUnknown(path, entry) {
+  try { await mkdir(dirname(path), { recursive: true }); await writeFile(path, JSON.stringify(entry) + '\n', { flag: 'a' }); } catch { /* never stop the cycle */ }
+}
+
 export async function runCycle({ steps, journalPath, streaksPath = join(dirname(journalPath), 'streaks.json'), force = false, run = runProcess,
   http = runHttp, now = () => new Date(), sleep = ms => new Promise(r => setTimeout(r, ms)), escalateStep = escalate,
-  gate = g => releaseCheck(g, { run }), budget = g => computeCheck(g) }) {
+  gate = g => releaseCheck(g, { run }), budget = g => computeCheck(g), unknownsPath = join(dirname(journalPath), 'unknown-problems.jsonl'),
+  manifest = null, data = null }) {
   let journal = { startedAt: now().toISOString(), steps: {} };
   try { journal = JSON.parse(await readFile(journalPath, 'utf8')); } catch { /* first run today */ }
+  // every run of the day keeps its own manifest; a failure to describe the run never stops it
+  const described = manifest ? await manifest().catch(error => ({ error: String(error.message ?? error).slice(0, 200) })) : null;
+  if (described) journal.runs = [...(journal.runs ?? []), described];
   let streaks = {};
   try { streaks = JSON.parse(await readFile(streaksPath, 'utf8')); } catch { /* no history yet */ }
   const results = [];
@@ -239,7 +400,9 @@ export async function runCycle({ steps, journalPath, streaksPath = join(dirname(
     const previous = journal.steps[step.id];
     if (!force && previous?.status === 'done' && !step.critical) { results.push({ id: step.id, status: 'done', resumed: true }); continue; }
     let outcome;
+    const resting = step.skip ? null : circuitOpen(step.id, streaks[step.id], now().getTime());
     if (step.skip) outcome = { status: 'skipped', reason: step.skip };
+    else if (resting) outcome = { status: 'skipped', reason: resting };
     else if (step.requires && !existsSync(step.requires)) outcome = { status: 'skipped', reason: 'missing ' + step.requires.split(/[\\/]/).slice(-2).join('/') };
     else {
       // a release-controlled bot whose code is not the authorised release does not run at all (it would be refused anyway)
@@ -249,11 +412,21 @@ export async function runCycle({ steps, journalPath, streaksPath = join(dirname(
       outcome = refused ? { status: 'failed', reason: 'release gate: ' + refused }
         : spent ? { status: 'skipped', reason: 'compute budget: ' + spent } : await attempt(step, { run, http, sleep });
     }
+    // OPS-02: a known problem gets its cause, safe fix and who decides, in the journal, the escalation and the console
+    if (outcome.status === 'failed' || outcome.status === 'degraded') {
+      const known = diagnose(step.id, `${outcome.reason ?? ''}\n${outcome.summary ?? ''}`);
+      if (known) outcome.playbook = known;
+      // a failure nobody has seen before is kept, so its cause and fix can be added to the playbook
+      if (known?.id === 'unknown') await recordUnknown(unknownsPath, { at: now().toISOString(), step: step.id, status: outcome.status,
+        text: String(outcome.reason ?? outcome.summary ?? '').slice(-500) });
+    }
     if (outcome.status === 'failed') {
       const streak = (streaks[step.id]?.failures ?? 0) + 1;
-      streaks[step.id] = { failures: streak, escalated: streaks[step.id]?.escalated ?? false };
+      streaks[step.id] = { failures: streak, escalated: streaks[step.id]?.escalated ?? false,
+        // a model step's circuit opens at the threshold, and again after each failed try once it is open
+        ...(MODEL_STEPS.has(step.id) && streak >= CIRCUIT_AFTER ? { openedAt: now().toISOString() } : {}) };
       if (streak >= ESCALATE_AFTER && !streaks[step.id].escalated) {
-        outcome.escalated = await escalateStep(step, streak, outcome.summary);
+        outcome.escalated = await escalateStep(step, streak, outcome.summary + (outcome.playbook ? ` | Known problem ${outcome.playbook.id} (${outcome.playbook.decidedBy}): ${outcome.playbook.fix}` : ''));
         streaks[step.id].escalated = true;
       }
     } else if (outcome.status === 'done' || outcome.status === 'degraded') streaks[step.id] = { failures: 0, escalated: false };
@@ -265,6 +438,11 @@ export async function runCycle({ steps, journalPath, streaksPath = join(dirname(
     if (step.critical && outcome.status !== 'done') { results.push({ id: 'cycle', status: 'stopped', reason: step.id + ' failed' }); break; }
   }
   journal.finishedAt = now().toISOString();
+  if (described) {
+    described.finishedAt = journal.finishedAt;
+    if (data) described.data = await data().catch(error => ({ error: String(error.message ?? error).slice(0, 200) }));
+  }
+  await mkdir(dirname(journalPath), { recursive: true });
   await writeFile(journalPath, JSON.stringify(journal, null, 2) + '\n');
   return results;
 }
@@ -273,8 +451,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const args = new Set(process.argv.slice(2));
   const steps = await planSteps({ withModel: args.has('--with-model') });
   const journalPath = join(ROOT, '.local', 'cycles', new Date().toISOString().slice(0, 10) + '.json');
-  const results = await runCycle({ steps, journalPath, force: args.has('--force') });
+  const results = await runCycle({ steps, journalPath, force: args.has('--force'),
+    manifest: () => runManifest({ withModel: args.has('--with-model'), force: args.has('--force') }), data: () => dataManifest() });
   for (const r of results) console.log(`${r.status.padEnd(8)} ${r.id}${r.resumed ? ' (already done today)' : ''}${r.tries > 1 ? ` (after ${r.tries} tries)` : ''}`
-    + `${r.escalated ? ' [escalated: ' + r.escalated + ']' : ''}${r.reason ? ' — ' + r.reason : ''}${r.summary ? ' — ' + String(r.summary).slice(0, 160) : ''}`);
+    + `${r.escalated ? ' [escalated: ' + r.escalated + ']' : ''}${r.reason ? ' — ' + r.reason : ''}${r.summary ? ' — ' + String(r.summary).slice(0, 160) : ''}`
+    + `${r.playbook ? `\n         fix (${r.playbook.decidedBy}): ${r.playbook.fix}` : ''}`);
   process.exitCode = results.some(r => r.status === 'failed' || r.status === 'stopped') ? 1 : 0;
 }

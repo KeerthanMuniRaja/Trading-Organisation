@@ -1,0 +1,13 @@
+{
+  "suspendOnRecommendation": true,
+  "acknowledgeWatch": true,
+  "raiseBudget": null,
+  "approveBirths": false,
+  "activateReleases": false,
+  "qualifyBots": false,
+  "startingBudgetPaise": null,
+  "trialNewReleases": true,
+  "promoteCanaries": true,
+  "rollbackFailingReleases": true,
+  "maxActionsPerRun": 5
+}

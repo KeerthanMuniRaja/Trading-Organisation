@@ -287,6 +287,32 @@ class AutoLearnTests(unittest.TestCase):
         out = cycle(backend, self.state)
         self.assertEqual((out['evidence'], out['review']['revoked']), ({'contradicted': 1}, 2))
 
+    def test_the_analysts_model_calls_count_against_its_department_budget(self):
+        backend = FakeBackend(['e1', 'e2'])
+        autolearn.factcheck_queue(backend.api('evaluator'), self.state)
+        config, sent, calls = {**CONFIG, 'analystBotId': 'claim-analyst'}, [], []
+
+        def api(allowed):
+            def call(method, route, body=None):
+                sent.append((route, body))
+                return {'allowed': allowed, 'departmentId': 'research', 'usedTodayTokens': '9000', 'budgetTokensPerDay': 8000} \
+                    if route == '/v1/compute/allowance' else {'id': 'u1'}
+            return call
+
+        def model(system, user, schema):
+            calls.append(1)
+            value, _ = stub_model(system, user, schema)
+            return value, {'promptTokens': 100, 'completionTokens': 20}
+        spent = autolearn.analyst_extract(model, 'stub', self.state, config, api=api(False), now=NOW)
+        self.assertTrue(spent['skipped'].startswith('compute budget: department research used 9000 of its 8000'))
+        self.assertEqual(calls, [])  # no model call once the budget is used up
+        out = autolearn.analyst_extract(model, 'stub', self.state, config, api=api(True), now=NOW)
+        self.assertEqual((out['callsThisRun'], out['tokensThisRun'], out['computeReported']), (2, [200, 40], True))
+        route, report = sent[-1]
+        self.assertEqual((route, report['botId'], report['calls'], report['promptTokens'], report['completionTokens'], report['periodTo']),
+                         ('/v1/compute/usage/reports', 'claim-analyst', 2, 200, 40, '2026-10-04'))
+        self.assertNotIn('computeReported', autolearn.analyst_extract(model, 'stub', self.state, CONFIG))  # not configured: unchanged
+
     def test_contradiction_blocks_mixed_evidence_even_with_primary_or_corroborated_support(self):
         obs = {'publishedAt': '2026-10-03T10:00:00+00:00'}
         for support in ('corroborated', 'primary-source'):

@@ -33,6 +33,63 @@ Months 2022-12 to 2026-09 (46 months). **No idea passes.**
 
 The best idea is the one the live rule bot `momentum-rules` already runs. Its edge is suggestive but not proven once all the ideas tried are counted, which is why live paper fitness is its real test. The scout re-tests every cycle, so a robust idea will surface as data accumulates.
 
+Later the same day, four methods adopted from claude-trading-skills were added to the catalogue ([market regime](market-regime.md)). That makes 17 ideas, and the bar is now 0.0029. None of the four passes.
+
+### More history is the strongest lever
+
+The scout judges 46 months, because the price files hold 5 years and the first year is used up by the 12-month lookback.
+With 10 years (`daily.py fetch --refresh --years 10`, owner-run, the same Yahoo source), it would judge about 100 months.
+
+Suppose momentum 6 months, top 3 kept its current hit rate (30 of 46 months, 65%) over 100 months. It would be about 65
+ahead and 35 behind, a p of about 0.002, which passes the bar. If its edge was luck, the longer record would show that
+instead. Either answer is worth having.
+
+Once fetched, a refresh keeps at least the history a file already holds (`daily.years_to_fetch`). Without that, the
+daily 5-year refresh would be rejected by the data steward as shrunk history.
+
+### The 10-year result (20 October 2026)
+
+> **Re-run 21 Oct 2026 with the corrected scout:** decisions enter at the next open, turnover counts drift, and proof time
+> uses the sign test ([research notes](research-notes/README.md)).
+> - **Momentum 6m top 3:** ahead in 59 months and behind in 46, −0.01% a month, p 0.14.
+> - **Walk-forward:** 31/39, −0.12% a month.
+> - **Nothing passes** (20 ideas, bar 0.0025).
+>
+> The table below is the original 20 Oct run.
+
+The owner approved the download. The data steward held back two real moves until the owner confirmed them: Axis Bank
+−27.9% on 23 Mar 2020 (the COVID crash) and SBI +27.7% on 25 Oct 2017 (the bank recapitalisation). With both confirmed,
+the scout judged **106 months**, 2017-12 to 2026-09. **No idea passes.**
+
+| Idea | Ahead / behind | Average excess a month | p | Halves (ahead/behind) |
+| --- | --- | ---: | ---: | --- |
+| Momentum 6 months, top 3 (`momentum-rules`) | 61 / 45 | 0.00% | 0.07 | 27/26, 34/19 |
+| Low volatility, top 3 | 54 / 52 | −0.09% | 0.46 | 28/25, 26/27 |
+| Momentum 6 months, top 4 | 54 / 52 | +0.05% | 0.46 | 25/28, 29/24 |
+| Reversal 1 month, bottom 3 | 51 / 55 | +0.13% | 1.00 | 26/27, 25/28 |
+| All others, the adopted methods included | — | ≤ +0.11% | 1.00 | — |
+
+The longer record answers the question the 46 months could not. Momentum's apparent edge came from 2022–2026. Over
+2017–2021 it was level with the basket (27/26). On average it adds nothing after costs, though it is ahead slightly more
+often than behind. The live bot remains a paper experiment judged on its live calls. Nothing on this history beats holding
+the eight shares equally.
+
+## R&D invents its own ideas (`rnd_ideas.py`)
+
+The fixed catalogue is only the start: the research department proposes new ideas itself.
+- **Specifications, not code.** An idea is a spec in a fixed grammar:
+  - momentum: 1–12 months, top 1–5;
+  - low volatility: a 20–120-day window, top 1–5;
+  - reversal: 5–63 days, bottom 1–5.
+
+  Each can add a trend filter (cash while the universe is below its 200-day average). A valid spec maps onto audited rule builders, so nothing unreviewed ever executes.
+- **Who invents.**
+  - **With the model:** the cycle runs the scout with `--invent model` (cycle `--with-model`). The local model answers in a schema confined to the grammar and states why it proposes each idea; the answer is validated again before anything is stored.
+  - **Without the model:** `--invent explorer` proposes close variants of the three best ideas. It never runs on its own; you choose it.
+- **Bounded and permanent.** At most 3 new ideas a calendar month, and duplicates of any earlier idea are refused. Every idea is appended to `.local/trading-desk/rnd/ideas.jsonl` with who proposed it and when, and is never removed.
+- **The bar rises with every idea.** The scout tests the catalogue and every ledger idea together, at p < 0.05 ÷ the number of ideas ever tried. Inventing more ideas makes passing harder, never easier, so luck can't be mined. The ledger is part of the scout's fingerprint.
+- **The same road to trading.** A passing invented idea becomes verified evidence and a birth proposal. With standing approvals, it can go on to a release, qualification, a starting budget and monthly trading through `rnd_bot.py`, which runs ledger ideas exactly like catalogue ones.
+
 ## When an idea passes
 
 The step only screens until the owner names an approved research source. To let it propose, set `RND_SOURCE` (for example `desk-research`), optionally with `RND_DEPARTMENT` (default `desk`), in `.env`. The source must be registered and approved once by the owner (`POST /v1/sources`). Then a passing idea that no bot serves yet goes through the organisation like any proposal:

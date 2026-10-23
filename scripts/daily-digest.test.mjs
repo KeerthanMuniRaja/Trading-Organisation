@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { render, run } from './daily-digest.mjs';
+import { arithmeticProblems, render, run, trustCheck } from './daily-digest.mjs';
 
 const digest = { windowHours: 24, generatedAt: '2026-10-14T18:00:00.000Z', mode: 'paper', halted: false,
   money: { realisedPaise: '25000', unrealisedPaise: '-1200', totalPaise: '23800', realisedInWindowPaise: '25000', byBot: [{ botId: 'bot-one', totalPaise: '23800', returnOnBudgetPct: 2.38 }] },
@@ -33,6 +33,133 @@ test('the digest renders as a readable note with what needs the owner first', ()
   assert.match(render({ ...digest, liveFitness: undefined }), /No bot has scored live calls yet/); // older backends
 });
 
+test('the world section: coverage, stories that reach the shares, and a broken feed under Needs you', () => {
+  const world = { coverage: { countriesCovered: ['CN', 'IN', 'US'], advice: ['World news: SCMP business is failing (FEED_HTTP_ERROR ×2); enable its backup: npm run world -- enable cn-scmp-china --yes'],
+    sources: [{ state: 'working' }, { state: 'working' }, { state: 'failing' }, { state: 'off' }] },
+  stories: { windowHours: 48, items: 40, stories: 31, crossBorder: 2, reachingShares: 1, top: [
+    { title: 'Fed holds rates', countries: ['IN', 'US'], publishers: 2, directShares: [], drivers: [{ driver: 'us-fed-rates', region: 'US', shares: ['HDFCBANK', 'INFY'] }] },
+    { title: 'A football final', countries: ['WORLD'], publishers: 1, directShares: [], drivers: [] }] },
+  links: { headlines: 900, drivers: 17, carrying: ['crude-oil'], verdicts: { 'link-carries-information': 1, 'insufficient-evidence': 12 } },
+  scenario: { horizonSessions: 5, waiting: 4, panel: { right: 7, wrong: 5, verdict: 'insufficient-evidence' } } };
+  const text = render(digest, world);
+  assert.match(text, /Feeds working: 2 of 3 enabled; countries covered: CN, IN, US/);
+  assert.match(text, /40 items in 31 stories; 2 across countries, 1 reach the shares/);
+  assert.match(text, /\[IN, US\] Fed holds rates — 2 publishers; inferred: us-fed-rates → HDFCBANK, INFY/);
+  assert.match(text, /Driver links tested on 900 headlines: 1 of 17 carry information \(crude-oil\); 12 need more events/);
+  assert.match(text, /Scenario panel \(shadow\): 7 right, 5 wrong after 5 sessions \(insufficient-evidence\); 4 call\(s\) waiting/);
+  assert.doesNotMatch(text, /football/); // stories that reach no share stay in the file, not the digest
+  assert.ok(text.indexOf('enable cn-scmp-china') < text.indexOf('## Money'));
+  assert.doesNotMatch(render(digest), /World news/); // no world data, no section
+});
+
+test('the market regime is shown as advice, with what our history says about it', () => {
+  const regime = { date: '2026-10-19', risk: 'SEVERE', distributionDays: 9, breadth50d: 1, breadth200d: 1, shares: 8, aboveTrend200d: false, exposureCeilingPct: 0,
+    study: { verdict: 'no-clear-warning', horizonSessions: 20, levels: { SEVERE: { fallOver5PctShare: 0.173 }, NORMAL: { fallOver5PctShare: 0.071 } } } };
+  const text = render(digest, null, regime);
+  assert.match(text, /## Market regime \(advice\)\n- SEVERE on 2026-10-19: 9 distribution day\(s\) in 25 sessions; 1\/8 shares above their 50-day and 1\/8 above their 200-day average; basket below its 200-day trend/);
+  assert.match(text, /Advisory exposure ceiling 0% \(not applied to any limit\)\. On our history: no-clear-warning; falls over 5% within 20 sessions followed 17% of SEVERE days and 7% of NORMAL days/);
+  assert.ok(text.indexOf('## Market regime') < text.indexOf('## Trading'));
+  assert.match(render(digest, null, { ...regime, state: 'stale' }), /- STALE \(do not rely on it\): SEVERE on 2026-10-19/); // never shown as today's
+  assert.doesNotMatch(render(digest), /Market regime/);
+});
+
+test('the research section and failures the playbook does not know yet', () => {
+  const known = { unknown: [{ at: '2026-10-20T11:00:00Z', step: 'odd-step', status: 'failed', text: 'x' }], live: { research: {
+    ideasTried: 17, from: '2017-12', through: '2026-09', bar: 0.002941, passing: [],
+    best: [{ name: 'momentum-6m-top3', ahead: 61, behind: 45, averageExcessPct: 0.003, beatsRandomPct: 81 }],
+    lowestRisk: { name: 'equal-weight-distribution', maxDrawdownPct: -9.05, sharpe: 0.9 }, basket: { maxDrawdownPct: -35.28, sharpe: 0.79 },
+    walkForward: { outOfSampleMonths: 70, ahead: 33, behind: 37, averageExcessPct: -0.349 } } } };
+  const text = render(digest, null, null, known);
+  assert.match(text, /## Research \(seen history, net of costs\)\n- 17 ideas tried on 2017-12..2026-09; passing: none \(bar 0.002941\)/);
+  assert.match(text, /momentum-6m-top3: 61\/45 months vs the basket, 0.003% a month, beats 81% of random pickers/);
+  assert.match(text, /Lowest risk: equal-weight-distribution, worst fall -9.05% \(basket -35.28%\), Sharpe 0.9 \(basket 0.79\)/);
+  assert.match(text, /walk-forward\): 33\/37 months, -0.349% a month/);
+  assert.match(text, /1 cycle failure\(s\) the problem playbook does not know \(odd-step\)/);
+  assert.ok(text.indexOf('playbook does not know') < text.indexOf('## Money'));
+});
+
+test('the self-check catches figures that do not add up and runs that never finished', async () => {
+  assert.deepEqual(arithmeticProblems(digest), []);
+  const wrong = { ...digest, money: { ...digest.money, totalPaise: '23900' }, trading: { ...digest.trading, accuracy: 1.5, executed: -1 } };
+  assert.deepEqual(arithmeticProblems(wrong), ['total P&L is not realised plus open', 'accuracy 1.5 is outside 0..1', 'a trading count is not a whole number']);
+  const root = await mkdtemp(join(tmpdir(), 'crash-'));
+  try {
+    await mkdir(join(root, '.local', 'cycles'), { recursive: true });
+    const run = (at, done) => ({ startedAt: at, ...(done ? { finishedAt: at } : {}), code: { commit: 'c', fingerprint: 'f' } });
+    await writeFile(join(root, '.local', 'cycles', '2026-10-14.json'), JSON.stringify({ steps: {},
+      runs: [run('2026-10-14T11:00:00Z', false), run('2026-10-14T12:00:00Z', true), run('2026-10-14T13:00:00Z', false)] }));
+    const t = await trustCheck(root, Date.parse('2026-10-14T13:30:00Z'), async () => null);
+    assert.deepEqual(t.crashedRuns, ['2026-10-14T11:00:00Z']); // the newest unfinished run is this cycle, still running
+    const text = render(wrong, null, null, null, t);
+    assert.match(text, /Check first: the digest does not add up: total P&L is not realised plus open/);
+    assert.match(text, /Check first: 1 cycle run\(s\) never finished \(started 2026-10-14T11:00:00Z\)/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test('the limits banner shows what the backend loaded and flags settings that differ; refused orders are counted', () => {
+  const limits = { maxOrderPaise: '500000', maxExposurePaise: '2000000', maxRealisedLossPaise: '100000', feeBps: 10, slippageBps: 5, realisedLossPaise: '25000', lossLimitUsedPct: 25 };
+  const d = { ...digest, limits, trading: { ...digest.trading, refusedOrders: 3, topRefusals: [{ message: 'Bot budget exceeded', count: 2 }, { message: 'New risk is halted', count: 1 }] } };
+  const trust = { day: '2026-10-14', crashedRuns: [], cycle: { failed: [], degraded: [], done: 3 }, prices: { newest: '2026-10-14', ageDays: 0.5, behind: [] },
+    liveAgeDays: 0.2, indexAgeDays: 0.2, code: null };
+  const clean = render(d, null, null, null, { ...trust, env: { MAX_ORDER_PAISE: '500000', PAPER_FEE_BPS: '10' } });
+  assert.match(clean, /- Limits the backend loaded: Max order ₹5,000 · organisation exposure ₹20,000 · realised-loss limit ₹1,000 \(₹250 used, 25%\) · fees 10 bps, slippage 5 bps/);
+  assert.match(clean, /- Yes: today's cycle/);
+  assert.match(clean, /- 3 order\(s\) refused: Bot budget exceeded ×2; New risk is halted ×1/);
+  const stale = render(d, null, null, null, { ...trust, env: { MAX_ORDER_PAISE: '100000', PAPER_SLIPPAGE_BPS: '5' } });
+  assert.match(stale, /Check first: the running backend loaded different limits from this digest's settings \(MAX_ORDER_PAISE\)/);
+  assert.doesNotMatch(stale, /100000/); // names only, never the value it expected
+  assert.doesNotMatch(render(digest), /order\(s\) refused|Limits the backend|Loss brakes/);
+  assert.match(render({ ...digest, protections: { policySet: false, paused: [] } }), /- Loss brakes: not set, so losses never pause a bot \(founderReview B3/);
+  assert.match(render({ ...digest, protections: { policySet: true, paused: [] } }), /- Loss brakes: set; nothing paused/);
+  assert.match(render({ ...digest, protections: { policySet: true, paused: [{ botId: 'momentum-rules', pauses: [{ code: 'protection-daily-loss', until: null },
+    { code: 'protection-losing-streak', until: '2026-10-15T10:30:00.000Z' }] }] } }),
+  /- Loss brakes: momentum-rules paused \(daily-loss, losing-streak until 2026-10-15 10:30 UTC\); new buys only, each lifts by itself/);
+});
+
+test('the review scorecard shows how taken and turned-down calls went', () => {
+  const review = { calls: 9, verdict: 'insufficient-evidence', accepted: { scored: 5, right: 3, rightPct: 60, buysWithPath: 4, averageWorstPct: -3.1,
+    averageBestPct: 4.2, worstPct: -8 }, rejected: { scored: 4, right: 1, rightPct: 25 },
+    byRejectionReason: { 'over-budget': { scored: 3, right: 1 }, 'stale-quote': { scored: 1, right: 0 } }, byRegimeAtCall: { SEVERE: { scored: 9, right: 4 } } };
+  const text = render(digest, null, null, { review });
+  assert.match(text, /## Review scorecard \(scored calls\)\n- Taken: 3 of 5 right \(60%\); turned down: 1 of 4 right \(25%\) — insufficient-evidence/);
+  assert.match(text, /by reason \(right\/scored\): over-budget 1\/3, stale-quote 0\/1/);
+  assert.match(text, /By the regime when the call was made: SEVERE 4\/9/);
+  assert.match(text, /Buys taken, while held: average worst -3.1%, average best 4.2%, deepest -8% \(4 buys\)/);
+  assert.doesNotMatch(render(digest, null, null, { review: { calls: 0 } }), /Review scorecard/);
+});
+
+test('the trust check says what to check first, or that the digest rests on a clean cycle and fresh inputs', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'trust-'));
+  try {
+    const now = Date.parse('2026-10-14T18:00:00Z');
+    const put = async (path, value) => { await mkdir(join(root, ...path.slice(0, -1)), { recursive: true }); await writeFile(join(root, ...path), JSON.stringify(value)); };
+    const share = (symbol, last) => ({ symbol, retrievedAt: '2026-10-14T11:00:00Z', bars: [{ date: '2026-10-13' }, { date: last }] });
+    await put(['.local', 'trading-desk', 'daily', 'A.NS-1d.json'], share('A.NS', '2026-10-14'));
+    await put(['.local', 'trading-desk', 'daily', 'B.NS-1d.json'], share('B.NS', '2026-10-13'));
+    await put(['.local', 'cycles', '2026-10-13.json'], { steps: {}, runs: [{ code: { commit: 'aaa111', fingerprint: 'f1' } }] });
+    await put(['.local', 'cycles', '2026-10-14.json'], { steps: { 'market-data': { status: 'done' }, 'link-study': { status: 'failed' } },
+      runs: [{ code: { commit: 'bbb222', fingerprint: 'f2' } }] });
+    await put(['.local', 'knowledge', 'index-meta.json'], { builtAt: '2026-10-14T12:00:00Z' });
+    const t = await trustCheck(root, now);
+    assert.deepEqual(t.prices, { newest: '2026-10-14', ageDays: 0.75, behind: ['B.NS'] });
+    const text = render(digest, null, { ...{ date: '2026-10-14', risk: 'NORMAL', shares: 8 }, state: 'stale' }, null, t);
+    assert.ok(text.indexOf('## Needs you') < text.indexOf('## Can you trust this digest?') && text.indexOf('## Can you trust') < text.indexOf('## Money'));
+    for (const x of [/Check first: cycle steps failed: link-study/, /Check first: prices behind the others for B\.NS/, /Check first: the market regime is stale/,
+      /Check first: no live knowledge yet/, /Code: commit bbb222 \(fingerprint f2\); changed since the previous run \(aaa111\)/]) assert.match(text, x);
+    assert.doesNotMatch(text, /knowledge index is/); // built today
+    // all clear
+    await put(['.local', 'trading-desk', 'daily', 'B.NS-1d.json'], share('B.NS', '2026-10-14'));
+    await put(['.local', 'cycles', '2026-10-14.json'], { steps: { 'market-data': { status: 'done' } }, runs: [{ code: { commit: 'aaa111', fingerprint: 'f1' } }] });
+    await put(['.local', 'trading-desk', 'knowledge', 'live.json'], { generatedAt: '2026-10-14T12:00:00Z' });
+    const clear = render(digest, null, null, null, await trustCheck(root, now));
+    assert.match(clear, /- Yes: today's cycle has 1 step\(s\) done and none failed; prices to 2026-10-14/);
+    assert.doesNotMatch(clear, /Check first|changed since/);
+    // no cycle today, and prices a week old
+    assert.match(render(digest, null, null, null, await trustCheck(root, now + 7 * 86_400_000)),
+      /Check first: no organisation cycle has run today \(2026-10-21\)[\s\S]*Check first: prices are stale: last session 2026-10-14/);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 test('the run writes the note locally and sends only a short summary to an optional webhook', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'digest-'));
   try {
@@ -42,7 +169,7 @@ test('the run writes the note locally and sends only a short summary to an optio
       return url.endsWith('/v1/owner/digest') ? { ok: true, json: async () => digest } : { ok: true };
     };
     const env = { PRINCIPALS_JSON: JSON.stringify([{ id: 'e', role: 'evaluator', token: 'eval-token' }]), ALERT_WEBHOOK_URL: 'https://notify.example/t' };
-    const result = await run(env, { fetchImpl, outDir: dir });
+    const result = await run(env, { fetchImpl, outDir: dir, world: null, regime: null, knowledge: null, trust: null });
     assert.equal(result.webhook, true);
     assert.match(await readFile(join(dir, '2026-10-14.md'), 'utf8'), /Needs you/);
     assert.equal(sent[1].auth, undefined); // the backend credential never goes to the webhook

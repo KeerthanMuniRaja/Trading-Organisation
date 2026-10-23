@@ -60,7 +60,7 @@ export function assess(f: Facts, raiseTo: bigint | null): Recommendation | null 
 const daysSince = (at: unknown) => at ? Math.floor((Date.now() - new Date(at as string).getTime()) / 86_400_000) : null;
 
 /** The largest budget a raise may propose: +raisePct, within the department's unallocated ceiling and the exposure limit. */
-async function raiseCeiling(tx: Sql, cfg: Config, botId: string, department: string, budget: bigint) {
+export async function raiseCeiling(tx: Sql, cfg: Config, botId: string, department: string, budget: bigint) {
   let target = budget * BigInt(100 + LIMITS.raisePct) / 100n / 100n * 100n; // whole rupees
   if (target > cfg.maxExposure) target = cfg.maxExposure;
   const dept = (await tx.query("SELECT budget_paise::text AS budget FROM departments WHERE id=$1 AND status='active'", [department])).rows[0];
@@ -135,32 +135,7 @@ export class Management {
   decide(actor: Actor, key: string, raw: unknown) {
     permit(actor, 'owner');
     const input = parse(decisionSchema, raw);
-    return this.db.command(actor, 'management-decision', key, input, async tx => {
-      const r = (await tx.query('SELECT * FROM bot_recommendations WHERE id=$1', [input.recommendationId])).rows[0];
-      requireThat(r, 'Recommendation not found', 404);
-      requireThat(!(await tx.query('SELECT 1 FROM bot_recommendation_decisions WHERE recommendation_id=$1', [r.id])).rows.length, 'Recommendation already decided');
-      const newest = (await tx.query('SELECT id FROM bot_recommendations WHERE bot_id=$1 ORDER BY sequence DESC LIMIT 1', [r.bot_id])).rows[0]!;
-      requireThat(String(newest.id) === String(r.id), 'A newer recommendation for this bot supersedes this one; decide that one');
-      let applied: unknown = null;
-      if (input.outcome === 'accepted') {
-        const bot = (await tx.query('SELECT state,department FROM bots WHERE id=$1', [r.bot_id])).rows[0]!;
-        if (r.kind === 'suspend') applied = await isSuspended(tx, r.bot_id) ? 'already suspended'
-          : await applySuspension(tx, actor, r.bot_id, true, 'Management recommendation accepted: ' + r.reason.slice(0, 500));
-        else if (r.kind === 'raise-budget') {
-          // the ceiling is checked again now: other budgets may have changed since the review
-          const budget = BigInt((await tx.query('SELECT budget_paise::text AS b FROM bots WHERE id=$1', [r.bot_id])).rows[0]!.b);
-          const ceiling = await raiseCeiling(tx, this.cfg, r.bot_id, bot.department, budget);
-          requireThat(ceiling !== null && ceiling >= BigInt(r.proposed_budget_paise), 'The department ceiling or exposure limit no longer allows this budget');
-          applied = await applyBudget(tx, actor, r.bot_id, String(r.proposed_budget_paise), 'Management recommendation accepted: ' + r.reason.slice(0, 500));
-        } else if (r.kind === 'retire')
-          // retirement settles knowledge transfer first (POST /v1/bots/retirements); this records that it was the owner's call
-          requireThat(bot.state === 'retired', 'Retire the bot first (POST /v1/bots/retirements, transferring its verified lessons), then accept');
-      }
-      await tx.query('INSERT INTO bot_recommendation_decisions(recommendation_id,outcome,note,decided_by) VALUES($1,$2,$3,$4)',
-        [r.id, input.outcome, input.note, actor.id]);
-      await audit(tx, actor, 'bot.recommendation.decided', String(r.id), { botId: r.bot_id, kind: r.kind, outcome: input.outcome });
-      return { recommendationId: String(r.id), botId: r.bot_id, kind: r.kind, outcome: input.outcome, applied };
-    });
+    return this.db.command(actor, 'management-decision', key, input, tx => applyRecommendation(tx, actor, this.cfg, input));
   }
 
   /** Everything waiting on the owner, in one place. */
@@ -208,6 +183,35 @@ export class Management {
       FROM bot_recommendations r LEFT JOIN bot_recommendation_decisions d ON d.recommendation_id=r.id ORDER BY r.sequence DESC LIMIT 200`)).rows
       .map(r => ({ ...view(r), outcome: r.outcome ?? 'pending', note: r.note ?? null, decidedAt: r.decided_at ? new Date(r.decided_at).toISOString() : null })) }), false);
   }
+}
+
+/** Decides one recommendation inside the caller's transaction: the owner, or a standing approval acting for the owner.
+ *  Only the newest recommendation for a bot can be decided; accepting applies it in the same transaction. */
+export async function applyRecommendation(tx: Sql, actor: Actor, cfg: Config, input: { recommendationId: string; outcome: 'accepted' | 'declined'; note: string }) {
+  const r = (await tx.query('SELECT * FROM bot_recommendations WHERE id=$1', [input.recommendationId])).rows[0];
+  requireThat(r, 'Recommendation not found', 404);
+  requireThat(!(await tx.query('SELECT 1 FROM bot_recommendation_decisions WHERE recommendation_id=$1', [r.id])).rows.length, 'Recommendation already decided');
+  const newest = (await tx.query('SELECT id FROM bot_recommendations WHERE bot_id=$1 ORDER BY sequence DESC LIMIT 1', [r.bot_id])).rows[0]!;
+  requireThat(String(newest.id) === String(r.id), 'A newer recommendation for this bot supersedes this one; decide that one');
+  let applied: unknown = null;
+  if (input.outcome === 'accepted') {
+    const bot = (await tx.query('SELECT state,department FROM bots WHERE id=$1', [r.bot_id])).rows[0]!;
+    if (r.kind === 'suspend') applied = await isSuspended(tx, r.bot_id) ? 'already suspended'
+      : await applySuspension(tx, actor, r.bot_id, true, 'Management recommendation accepted: ' + r.reason.slice(0, 500));
+    else if (r.kind === 'raise-budget') {
+      // the ceiling is checked again now: other budgets may have changed since the review
+      const budget = BigInt((await tx.query('SELECT budget_paise::text AS b FROM bots WHERE id=$1', [r.bot_id])).rows[0]!.b);
+      const ceiling = await raiseCeiling(tx, cfg, r.bot_id, bot.department, budget);
+      requireThat(ceiling !== null && ceiling >= BigInt(r.proposed_budget_paise), 'The department ceiling or exposure limit no longer allows this budget');
+      applied = await applyBudget(tx, actor, r.bot_id, String(r.proposed_budget_paise), 'Management recommendation accepted: ' + r.reason.slice(0, 500));
+    } else if (r.kind === 'retire')
+      // retirement settles knowledge transfer first (POST /v1/bots/retirements); this records that it was the owner's call
+      requireThat(bot.state === 'retired', 'Retire the bot first (POST /v1/bots/retirements, transferring its verified lessons), then accept');
+  }
+  await tx.query('INSERT INTO bot_recommendation_decisions(recommendation_id,outcome,note,decided_by) VALUES($1,$2,$3,$4)',
+    [r.id, input.outcome, input.note, actor.id]);
+  await audit(tx, actor, 'bot.recommendation.decided', String(r.id), { botId: r.bot_id, kind: r.kind, outcome: input.outcome });
+  return { recommendationId: String(r.id), botId: r.bot_id as string, kind: r.kind as string, outcome: input.outcome, applied };
 }
 
 type Request = { actor: Actor };
