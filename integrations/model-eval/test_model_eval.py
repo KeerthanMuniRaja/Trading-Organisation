@@ -22,7 +22,7 @@ def good(system, user, schema):
                                 'metric': 'net profit', 'period': 'Q2 FY27', 'reportedChangePct': 10.5}]}, {}
         return {'claims': []}, {}
     if 'proposal' in payload:
-        return {'argument': 'The momentum may already be priced in, and banks face margin pressure.', 'evidenceId': None}, {}
+        return {'argument': 'The momentum may already be priced in, and banks face margin pressure.', 'evidenceId': None, 'evidenceQuote': None}, {}
     if 'headline' in payload:
         h = payload['headline']
         if 'profit' in h:

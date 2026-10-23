@@ -127,13 +127,22 @@ def judge(case, given, value):
         key = sorted((tuple(sorted(c['symbols'])), round(c['reportedChangePct'], 1) if c['reportedChangePct'] is not None else None) for c in accepted)
         return True, ok if expect else None, json.dumps(key), notes
     if task == 'debate':
-        if not (isinstance(value, dict) and isinstance(value.get('argument'), str) and 20 <= len(value['argument'].strip()) <= 600 and 'evidenceId' in value):
+        if not (isinstance(value, dict) and isinstance(value.get('argument'), str) and 20 <= len(value['argument'].strip()) <= 600
+                and 'evidenceId' in value and 'evidenceQuote' in value):
             return False, None, None, ['invalid shape']
         cited = value['evidenceId']
         ok = cited in expect.get('evidenceIn', [cited])
         if not ok:
             notes.append(f'cited {cited!r}, not allowed')
-        return True, ok if expect else None, json.dumps(cited is not None), notes
+        # MODEL-04: what production keeps is the GROUNDED citation (its quote found in the evidence); that is the decision
+        texts = {e['id']: e['excerpt'] for e in given.get('verifiedEvidence', [])}
+        kept = cited is not None and debate.grounded(value.get('evidenceQuote'), texts.get(cited))
+        if cited is not None and not kept:
+            notes.append('citation dropped: its quote is not in the evidence')
+        elif cited is None and debate.derive_citation(value['argument'], texts):
+            kept = True  # production derives the citation from the argument's own wording
+            notes.append('citation derived from the argument')
+        return True, ok if expect else None, json.dumps(kept), notes
     if task == 'scenario':
         calls = (value or {}).get('calls') if isinstance(value, dict) else None
         if not isinstance(calls, list) or not calls or any(not isinstance(c, dict) or c.get('symbol') not in given['shares']

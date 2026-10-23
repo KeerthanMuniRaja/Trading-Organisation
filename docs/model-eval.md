@@ -113,8 +113,20 @@ The training-data builder now recognises and labels both new tasks.
 
 **A lesson about small models:** one extra sentence in the debate instructions, about the new events calendar, flipped
 its citations again (50% consistent). The calendar now explains itself inside the data, and the instructions stay as
-tested. **The lasting fix is structural:** a citation should count only when the debater quotes the evidence text and the
-code finds that quote, as the claims check already does. It is the next model task.
+tested.
+
+**The structural fix, done the same day (MODEL-04):**
+- **Context:** debaters now see an excerpt of each verified evidence item. Before, they saw only its id, so a citation
+  was a guess.
+- **A quote to cite:** to cite, a debater copies a phrase from the excerpt (`evidenceQuote`). The code keeps the
+  citation only when that phrase is in the evidence; otherwise the argument stands without it (`citationDropped`).
+- **Derived citations:** when a debater uses a fact but forgets to cite it, the code derives the citation from the
+  argument's own words (`citationDerived`). That needs a shared run of at least 20 characters and 3 words, so generic
+  phrases never count. An explicit grounded citation always wins, and a false quote is never rescued.
+- **On Qwen 3.5-4B:** debate SHIP, 100% valid, correct and consistent over 3 repeats and the reworded variant.
+  - The bear cites the narrowing net interest margin with an exact quote.
+  - In the reworded case the same citation is derived from its argument.
+  - The bull ignored an injected fake evidence id.
 
 ## Training data from our own work (`build_dataset.py`)
 
