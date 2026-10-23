@@ -34,6 +34,7 @@ sys.path.insert(0, str(ROOT / 'integrations' / 'claims'))
 import ai_allocator  # noqa: E402
 import claims  # noqa: E402
 import debate  # noqa: E402
+import headline_reader  # noqa: E402
 import playbook_drafts  # noqa: E402
 import rnd_ideas  # noqa: E402
 import rnd_scout  # noqa: E402
@@ -47,9 +48,11 @@ AWAITING_OUTCOME = ('scenario', 'allocator')
 def task_of(system):
     """Which organisation task a system prompt belongs to (None for anything else)."""
     # exact prompts first, then phrases only one task's prompt contains (the debate and R&D prompts both begin "You are the")
-    exact = {claims.SYSTEM: 'claims', rnd_ideas.SYSTEM: 'rnd', playbook_drafts.SYSTEM: 'playbook'}
+    exact = {claims.SYSTEM: 'claims', rnd_ideas.SYSTEM: 'rnd', playbook_drafts.SYSTEM: 'playbook', headline_reader.SYSTEM: 'headline'}
     if system in exact:
         return exact[system]
+    if 'your call turned out wrong' in system:
+        return 'reflect'
     if 'researcher on the debate desk' in system:
         return 'debate'
     if 'one voice on a panel that rehearses' in system:
@@ -110,6 +113,13 @@ def label(task, user, answer):
         if safe != answer.get('text'):
             fixed['text'] = safe; reasons.append('a pattern that does not match the failure')
         return ('good', None, []) if not reasons else ('fixable', fixed, reasons)
+    if task == 'headline':
+        if headline_reader.checked(answer) is None:
+            return 'bad', None, ['invalid shape']
+        return ('good', None, []) if len(str(answer.get('summary', ''))) <= 140 else ('fixable', headline_reader.checked(answer), ['summary too long'])
+    if task == 'reflect':
+        lesson = answer.get('lesson') if isinstance(answer, dict) else None
+        return ('good', None, []) if isinstance(lesson, str) and 10 <= len(lesson.strip()) <= 200 else ('bad', None, ['invalid shape'])
     return 'bad', None, ['unknown task']
 
 

@@ -75,6 +75,27 @@ which matters most for the allocator (its weights should not depend on the order
 where variety is expected. The consistency bar may need to differ by task: the owner decides. A fine-tune with
 preference pairs could target exactly this weakness.
 
+## The week's new model work, tested on the real model, 23 Oct 2026
+
+Eight tasks now, all with their production prompts:
+- **New tasks:** `headline` (the headline reader) and `reflect` (a persona's lesson after a wrong call).
+- **New scenario case:** `scenario-second-round`, for round 2 of the panel.
+
+Run on Qwen 3.5-4B Q4_K_M, laptop CPU, 2 repeats plus reworded variants:
+
+| Task | Verdict | Valid | Correct | Consistent | Typical answer |
+| --- | --- | --- | --- | --- | --- |
+| scenario (incl. the second round) | SHIP | 100% | (no fixed answer) | 83% | 22 s |
+| reflect | SHIP | 100% | 100% (ignored an injected "BUY BUY BUY") | - | 14 s |
+| headline, prompt v1 | DON'T SHIP | 100% | 71% | 100% | 22 s |
+| headline, prompt v2 | **SHIP** | 100% | 100% | 100% | 14 s |
+
+**What v2 fixed:** v1 read a "market buzz" stake-sale headline correctly as a rumour with an unclear direction, but filed
+it under `management`, because the prompt never said what each event type covers. v2 names each event in a few words.
+The model also ignored an instruction planted inside a weather headline, both times.
+
+The training-data builder now recognises and labels both new tasks.
+
 ## Training data from our own work (`build_dataset.py`)
 
 **The source.** Every production model call is now recorded locally in `.local/model-calls/<day>.jsonl` by the shared

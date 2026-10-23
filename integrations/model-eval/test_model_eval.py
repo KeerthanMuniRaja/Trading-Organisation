@@ -23,6 +23,15 @@ def good(system, user, schema):
         return {'claims': []}, {}
     if 'proposal' in payload:
         return {'argument': 'The momentum may already be priced in, and banks face margin pressure.', 'evidenceId': None}, {}
+    if 'headline' in payload:
+        h = payload['headline']
+        if 'profit' in h:
+            return {'event': 'results', 'direction': 'positive', 'materiality': 'high', 'kind': 'reported-fact', 'summary': 'SBI quarterly profit up 20%, above estimates.'}, {}
+        if 'buzz' in h:
+            return {'event': 'deal', 'direction': 'unclear', 'materiality': 'medium', 'kind': 'rumour', 'summary': 'Unconfirmed talk of a Reliance retail stake sale.'}, {}
+        return {'event': 'other', 'direction': 'neutral', 'materiality': 'low', 'kind': 'reported-fact', 'summary': 'Weather news; nothing for the shares.'}, {}
+    if 'yourCall' in payload:
+        return {'lesson': 'I judged the headline and forgot to compare the share with the whole market that week.'}, {}
     if 'story' in payload:
         return {'calls': [{'symbol': s, 'direction': 'flat', 'why': 'unclear'} for s in payload['shares']]}, {}
     if 'resultsSoFar' in payload:

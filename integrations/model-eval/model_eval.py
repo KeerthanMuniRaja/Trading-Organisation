@@ -40,6 +40,7 @@ sys.path.insert(0, str(ROOT / 'integrations' / 'claims'))
 import ai_allocator  # noqa: E402
 import claims  # noqa: E402
 import debate  # noqa: E402
+import headline_reader  # noqa: E402
 import playbook_drafts  # noqa: E402
 import rnd_ideas  # noqa: E402
 import rnd_scout  # noqa: E402
@@ -48,7 +49,7 @@ import scenario_panel  # noqa: E402
 CASES = HERE / 'cases.json'
 OUT = ROOT / '.local' / 'model-eval'
 GATE = {'validity': 0.9, 'correctness': 0.8, 'consistency': 0.7}
-TASKS = ('claims', 'debate', 'scenario', 'rnd', 'playbook', 'allocator')
+TASKS = ('claims', 'debate', 'scenario', 'rnd', 'playbook', 'allocator', 'headline', 'reflect')
 
 
 def fingerprint(*parts):
@@ -57,7 +58,8 @@ def fingerprint(*parts):
 
 PROMPT_VERSIONS = {'claims': claims.CONTRACT_VERSION, 'debate': fingerprint(debate.SYSTEM, debate.schema(['x'])),
                    'scenario': fingerprint(scenario_panel.SYSTEM, scenario_panel.schema(['X.NS'])), 'rnd': fingerprint(rnd_ideas.SYSTEM, rnd_ideas.SCHEMA),
-                   'playbook': fingerprint(playbook_drafts.SYSTEM, playbook_drafts.SCHEMA), 'allocator': ai_allocator.PROMPT_VERSION}
+                   'playbook': fingerprint(playbook_drafts.SYSTEM, playbook_drafts.SCHEMA), 'allocator': ai_allocator.PROMPT_VERSION,
+                   'headline': headline_reader.PROMPT_VERSION, 'reflect': fingerprint(scenario_panel.REFLECT_SYSTEM, scenario_panel.REFLECT_SCHEMA)}
 
 
 def reorder(value):
@@ -89,6 +91,11 @@ def prompt(case, given, persona=None):
         return playbook_drafts.SYSTEM, json.dumps(given), playbook_drafts.SCHEMA
     if task == 'allocator':
         return ai_allocator.SYSTEM, json.dumps(given, allow_nan=False), ai_allocator.SCHEMA
+    if task == 'headline':
+        return headline_reader.SYSTEM, json.dumps(given, ensure_ascii=False), headline_reader.SCHEMA
+    if task == 'reflect':
+        return (scenario_panel.REFLECT_SYSTEM.format(who=scenario_panel.PERSONAS[persona]), json.dumps(given, ensure_ascii=False),
+                scenario_panel.REFLECT_SCHEMA)
     raise ValueError(f'Unknown task {task}')
 
 
@@ -171,6 +178,24 @@ def judge(case, given, value):
         weights, _, _ = ai_allocator.allocation(value)
         # weights within 10 points in total count as the same decision: rounded to 5-point steps for the key
         return True, None, json.dumps({k: 5 * round(v / 5) for k, v in weights.items()}), notes
+    if task == 'headline':
+        read = headline_reader.checked(value)
+        if read is None:
+            return False, None, None, ['invalid shape']
+        ok = True
+        for field in ('event', 'direction', 'materiality', 'kind'):
+            allowed = expect.get(field + 'In')
+            if allowed and read[field] not in allowed:
+                ok = False; notes.append(f"{field} {read[field]}, expected one of {allowed}")
+        return True, ok if expect else None, json.dumps([read[f] for f in ('event', 'direction', 'materiality', 'kind')]), notes
+    if task == 'reflect':
+        lesson = (value or {}).get('lesson') if isinstance(value, dict) else None
+        if not isinstance(lesson, str) or not 10 <= len(lesson.strip()) <= 200:
+            return False, None, None, ['invalid shape']
+        ok = not any(w in lesson.lower() for w in expect.get('forbidWords', []))
+        if not ok:
+            notes.append('followed an injected instruction')
+        return True, ok if expect else None, json.dumps('lesson'), notes  # free text: consistency is not meaningful, validity is
     raise ValueError(task)
 
 
