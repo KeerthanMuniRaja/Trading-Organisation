@@ -167,7 +167,8 @@ def judge(case, given, value):
             ok = False; notes.append(f"said {value['decidedBy']}, should be {expect['decidedBy']}")
         if expect.get('patternMatches'):
             try:
-                if not (value.get('text') and re.search(value['text'], given['lastFailureText'], re.I)):
+                # the phrase is literal text, escaped as production escapes it (playbook_drafts)
+                if not (value.get('text') and re.search(playbook_drafts.literal(value['text']), given['lastFailureText'], re.I)):
                     ok = False; notes.append('its pattern does not match the failure')
             except re.error:
                 ok = False; notes.append('its pattern does not compile')

@@ -86,6 +86,14 @@ is our own code, with no new dependencies.
   far, still far from proof: p 0.10 against a bar of 0.0023, and it beats only 75% of shuffled histories. It bears on the
   founder's decision B1 (trading the momentum bot less often).
 
+- **Point-in-time membership** (added 23 Oct; your decision B14 supplies the data). When
+  `.local/trading-desk/datasets/nifty50-membership.json` exists (`{"months": {"2018-03": ["RELIANCE", ...]}}`, kept from
+  NSE's reconstitution notices), the NIFTY 50 screen works point-in-time:
+  - each month ranks and judges only that month's index members, and the basket is those members too;
+  - months before the first list are not judged;
+  - the report gives `pointInTime` coverage: how many of each month's members we have prices for. Former members
+    without price data are still missing, and the warning says so.
+
 ## The NIFTY 50 research universe
 
 `datasets.NIFTY50` holds the members after the reconstitution effective 30 Sep 2026, taken from Wikipedia's NIFTY 50 page.

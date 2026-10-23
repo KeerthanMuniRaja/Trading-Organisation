@@ -36,6 +36,36 @@ class FakeBackend:
         return Response()
 
 
+class PointInTimeTests(unittest.TestCase):
+    def test_each_month_ranks_and_judges_only_that_months_members(self):
+        import tempfile
+        from test_research_checks import table_of
+        dates, table = table_of(years=2)
+        first, second = sorted(table)[:2]
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / 'membership.json'
+            months = sorted({x[:7] for x in dates})
+            mid = months[int(len(months) * 0.8)]  # after the scout's first year of warm-up, so there are months before and after
+            # the first share joins only halfway; the second is a member throughout; an unknown company has no prices
+            path.write_text(json.dumps({'months': {months[0]: [second.removesuffix('.NS'), 'GONE'],
+                                                   mid: [first.removesuffix('.NS'), second.removesuffix('.NS'), 'GONE']}}), encoding='utf-8')
+            members_at = rs.membership(path)
+            self.assertEqual(members_at(months[0] + '-15'), {second, 'GONE.NS'})
+            self.assertIsNone(members_at('1999-01-01'))
+            self.assertIsNone(rs.membership(Path(d) / 'none.json'))
+            seen = []
+
+            def rule(t, d_, i):
+                seen.append((d_[i][:7], set(t)))
+                return {s: 1 / len(t) for s in t}
+            rows = rs.monthly(table, dates, {'all': rule}, universe_at=members_at)
+            early = [s for m, s in seen if m < mid]
+            self.assertTrue(early and all(s == {second} for s in early))           # before joining, the first share is invisible
+            self.assertTrue(all(first in s for m, s in seen if m >= mid))
+            self.assertEqual(rows[0]['coverage'], 0.5)                             # one of two members has prices
+            self.assertAlmostEqual(rows[1]['rules']['all'], rows[1]['basketPct'], places=6)  # the basket is the members too (month 1 pays the first purchase)
+
+
 class ScoutTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

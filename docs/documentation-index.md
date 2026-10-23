@@ -33,6 +33,7 @@ The preferred experimental model is constrained Qwen3.5-4B Q4_K_M on the direct 
 - [The organisation cycle, run manifests, the digest self-check and the review scorecard](operations-cycle.md)
 - [Self-expiring loss brakes (protections)](protections.md)
 - [Keeping the organisation's data on GitHub (private data repository)](data-export.md)
+- [Events calendar](events-calendar.md)
 - [Roadmap to proven skill](skill-roadmap.md)
 - [Starter policy for standing approvals](policies/autonomy-starter.json)
 - [Live paper testing: the daily runbook](live-testing.md)

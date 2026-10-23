@@ -96,6 +96,26 @@ The model also ignored an instruction planted inside a weather headline, both ti
 
 The training-data builder now recognises and labels both new tasks.
 
+## Where the model stands, 23 Oct 2026 (Qwen 3.5-4B, laptop CPU)
+
+**7 of 8 tasks pass** (against 2 of 6 on 21 Oct):
+
+| Task | 21 Oct | 23 Oct | What changed |
+| --- | --- | --- | --- |
+| claims | SHIP | SHIP | - |
+| scenario | SHIP | SHIP (83% consistent) | - |
+| headline (new) | - | SHIP | prompt v2: each event type defined |
+| reflect (new) | - | SHIP | - |
+| debate | DON'T SHIP (50% consistent) | **SHIP (100%)** | an exact citation rule: cite only when the argument uses a fact stated in that evidence |
+| playbook | DON'T SHIP (67% correct) | **SHIP (100%)** | the model copies a phrase from the failure text, and the code escapes it (`playbook_drafts.literal`). The model had copied "limit (MAX_ORDER_PAISE)" exactly; our code then read the brackets as regex symbols |
+| R&D invention | DON'T SHIP (0% consistent) | DON'T SHIP | owner decision B10: variety is expected when inventing ideas |
+| allocator | DON'T SHIP (0% consistent) | DON'T SHIP | owner decision B11: a fixed share order needs a new forward test |
+
+**A lesson about small models:** one extra sentence in the debate instructions, about the new events calendar, flipped
+its citations again (50% consistent). The calendar now explains itself inside the data, and the instructions stay as
+tested. **The lasting fix is structural:** a citation should count only when the debater quotes the evidence text and the
+code finds that quote, as the claims check already does. It is the next model task.
+
 ## Training data from our own work (`build_dataset.py`)
 
 **The source.** Every production model call is now recorded locally in `.local/model-calls/<day>.jsonl` by the shared

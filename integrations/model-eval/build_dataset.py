@@ -109,8 +109,9 @@ def label(task, user, answer):
         fixed, reasons = dict(answer), []
         if answer['decidedBy'] == 'agents' and playbook_drafts.OWNER_ONLY.search(answer['fix']):
             fixed['decidedBy'] = 'owner'; reasons.append('a money or limits fix given to the agents')
-        safe = playbook_drafts.safe_pattern(str(answer.get('text', '')), payload['lastFailureText'])
-        if safe != answer.get('text'):
+        literal = playbook_drafts.literal(answer.get('text', ''))
+        safe = playbook_drafts.safe_pattern(literal, payload['lastFailureText'])
+        if safe != literal:
             fixed['text'] = safe; reasons.append('a pattern that does not match the failure')
         return ('good', None, []) if not reasons else ('fixable', fixed, reasons)
     if task == 'headline':
