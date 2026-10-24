@@ -212,8 +212,12 @@ These are fixes from the gap analysis that need no decision.
 - **Model:** **7 of 8 tasks pass** on Qwen 3.5-4B ([model evaluation](docs/model-eval.md)).
 - **The first live run (22 Oct):** clean. It found and fixed a missing basket comparison for trend-bot.
 
+**Done 27 Oct: fast-forward replay** ([replay](docs/replay.md)). The real system, run over a past stretch of
+trading days in an isolated copy. Three months of 2025 replayed with no failures in 46 minutes, and the rule bot again
+trailed the basket (+6.6% against +8.6%). You can run it yourself: `node scripts/replay-org.mjs prepare`, then
+`run --from <date> --to <date>`.
+
 **Still to do, no decision needed:**
-- the replay clock for the whole backend (fast-forward testing). The brakes already take an injectable clock;
 - the NSE bhavcopy price cross-check, which stays off until you approve the source (B16).
 
 ## Part D: things you should know

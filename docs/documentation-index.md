@@ -34,6 +34,7 @@ The preferred experimental model is constrained Qwen3.5-4B Q4_K_M on the direct 
 - [Self-expiring loss brakes (protections)](protections.md)
 - [Keeping the organisation's data on GitHub (private data repository)](data-export.md)
 - [Events calendar](events-calendar.md)
+- [Fast-forward replay of the whole organisation](replay.md)
 - [Roadmap to proven skill](skill-roadmap.md)
 - [Starter policy for standing approvals](policies/autonomy-starter.json)
 - [Live paper testing: the daily runbook](live-testing.md)

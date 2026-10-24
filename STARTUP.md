@@ -87,6 +87,7 @@ The commands below are for Windows PowerShell. On Linux, use `/` in paths and `.
 | `npm run scan:secrets` | Run before every push |
 | `npm run export-data` / `-- --write` | See, then copy, the data into `.local/data-repo` for the private data repository |
 | `node scripts/backup.mjs verify .local/backups/<folder>` | Re-check a backup without restoring it |
+| `node scripts/replay-org.mjs prepare`, then `run --from <date> --to <date>` | Replay a past stretch of trading days through the real system, isolated from the live one ([replay](docs/replay.md)) |
 
 ## 4. Who calls the API (roles)
 
