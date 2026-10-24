@@ -81,6 +81,7 @@ The commands below are for Windows PowerShell. On Linux, use `/` in paths and `.
 | `npm run readiness` | The morning check: is everything ready to trade today? |
 | `npm run autonomy` / `-- set <file> --reason "..."` | Standing approvals: what the agents may do by themselves |
 | `npm run protections` / `-- set <file> --reason "..."` | Loss brakes: pause new buys after losses, and lift by themselves |
+| `npm run charter` / `-- set docs/policies/founder-charter.json --reason "..."` | The founder charter: every boundary at once, after which the organisation runs itself ([charter](docs/charter.md)) |
 | `npm run world -- probe \| enable <ids> --yes` | World news sources |
 | `npm run members -- apply <member> --yes` | Model members: TradingAgents and the debaters |
 | `npm run verify -- --quick` | The full check gate: tests, build and secret scan |

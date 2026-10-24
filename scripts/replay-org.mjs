@@ -9,6 +9,9 @@
 // Commands:
 //   node scripts/replay-org.mjs prepare                       the workspace (worktree, build, settings, prices)
 //   node scripts/replay-org.mjs run --from 2025-04-01 --to 2025-06-30 [--budget-paise 500000]
+//        [--protections docs/policies/protections-suggested.json] [--autonomy docs/policies/autonomy-starter.json]
+//        [--charter docs/policies/founder-charter.json]  (both parts at once, as `npm run charter -- set` applies them)
+//        policies applied at the start, so a decision can be tried on the past before it is taken for real
 //   node scripts/replay-org.mjs report                        the result of the last run
 //   node scripts/replay-org.mjs clean                         remove the workspace
 import { execFileSync, spawn } from 'node:child_process';
@@ -120,7 +123,23 @@ async function setup(budget) {
   return { budget };
 }
 
-async function run(from, to, budget) {
+/** Owner policies for the replay (the same files the live owner would use), applied once the bot is set up. */
+async function applyPolicies({ protections, autonomy, charter }) {
+  const env = await readEnv(), applied = {};
+  const rules = async path => { const p = JSON.parse(await readFile(resolve(ROOT, path), 'utf8')); return p.rules ?? p; };
+  if (charter) {
+    // the founder charter: both parts, brakes first, exactly as `npm run charter -- set` applies it
+    const c = JSON.parse(await readFile(resolve(ROOT, charter), 'utf8'));
+    await api(env, 'owner', 'POST', '/v1/protections/policy', { rules: c.protections, reason: `Replay with the charter ${charter}` }, 'replay-charter-protections');
+    await api(env, 'owner', 'POST', '/v1/autonomy/policy', { rules: c.autonomy, reason: `Replay with the charter ${charter}` }, 'replay-charter-autonomy');
+    return { charter };
+  }
+  if (protections) { await api(env, 'owner', 'POST', '/v1/protections/policy', { rules: await rules(protections), reason: `Replay with ${protections}` }, 'replay-protections'); applied.protections = protections; }
+  if (autonomy) { await api(env, 'owner', 'POST', '/v1/autonomy/policy', { rules: await rules(autonomy), reason: `Replay with ${autonomy}` }, 'replay-autonomy'); applied.autonomy = autonomy; }
+  return applied;
+}
+
+async function run(from, to, budget, policies = {}) {
   if (!existsSync(WS)) throw new Error('No workspace: run "prepare" first');
   const bars = JSON.parse(await readFile(join(FULL, (await readdir(FULL)).find(n => n.endsWith('-1d.json'))), 'utf8')).bars;
   const days = sessions(bars, from, to);
@@ -137,6 +156,7 @@ async function run(from, to, budget) {
       backend.kill(); await waitUp(false);             // restart so the backend loads the bot's new trader credential
       backend = startBackend(); await waitUp();
       node([join('scripts', 'activate-rule-bot.mjs'), 'apply', '--yes', `--budget-paise=${budget}`]);
+      policies.applied = await applyPolicies(policies);
     }
     for (const day of days) {
       await setClock(indiaTime(day, 16, 10));
@@ -147,7 +167,9 @@ async function run(from, to, budget) {
     }
     const env = await readEnv();
     const digest = await api(env, 'owner', 'POST', '/v1/owner/digest', { hours: 24 * 31 });
-    const result = { from, to, sessions: days.length, failedDays: log.filter(l => l.status !== 'done').length, log,
+    const performance = await api(env, 'owner', 'POST', '/v1/paper/performance/history', {}).catch(() => null);
+    const result = { from, to, sessions: days.length, failedDays: log.filter(l => l.status !== 'done').length, policies: policies.applied ?? {}, log,
+      equityCurves: performance,
       money: digest.money, trading: digest.trading, benchmark: digest.benchmark, protections: digest.protections, limits: digest.limits,
       audit: await api(env, 'owner', 'GET', '/v1/audit/integrity'), finishedAt: new Date().toISOString() };
     await writeFile(REPORT, JSON.stringify(result, null, 2));
@@ -162,8 +184,10 @@ async function main() {
   const opt = (name, fallback) => { const i = args.indexOf('--' + name); return i >= 0 ? args[i + 1] : fallback; };
   if (command === 'prepare') { console.log(JSON.stringify(await prepare(), null, 2)); return; }
   if (command === 'run') {
-    const r = await run(opt('from', '2025-04-01'), opt('to', '2025-04-30'), opt('budget-paise', '500000'));
-    console.log(JSON.stringify({ sessions: r.sessions, failedDays: r.failedDays, money: r.money, trading: r.trading, benchmark: r.benchmark, audit: r.audit }, null, 2));
+    const r = await run(opt('from', '2025-04-01'), opt('to', '2025-04-30'), opt('budget-paise', '500000'),
+      { protections: opt('protections'), autonomy: opt('autonomy'), charter: opt('charter') });
+    console.log(JSON.stringify({ sessions: r.sessions, failedDays: r.failedDays, policies: r.policies, money: r.money, trading: r.trading,
+      benchmark: r.benchmark, protections: r.protections, audit: r.audit }, null, 2));
     return;
   }
   if (command === 'report') { console.log(await readFile(REPORT, 'utf8')); return; }

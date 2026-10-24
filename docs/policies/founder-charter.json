@@ -1,0 +1,25 @@
+{
+  "note": "The founder charter (CHARTER-01): the boundaries the owner sets once; inside them the organisation decides and acts by itself. Apply with: npm run charter -- set docs/policies/founder-charter.json --reason \"...\". Change any number before applying. Never automatic, whatever this says: the hard limits in .env (order, exposure, realised loss), permissions, departments, retirement, and real money. Amounts are in paise (100 paise = Rs 1).",
+  "autonomy": {
+    "suspendOnRecommendation": true,
+    "acknowledgeWatch": true,
+    "raiseBudget": { "maxPctPerChange": 25, "maxTotalPaisePerMonth": "200000" },
+    "reduceBudget": true,
+    "approveBirths": true,
+    "activateReleases": true,
+    "qualifyBots": true,
+    "startingBudgetPaise": "100000",
+    "trialNewReleases": true,
+    "promoteCanaries": true,
+    "rollbackFailingReleases": true,
+    "maxActionsPerRun": 10
+  },
+  "protections": {
+    "dailyLossPct": 2,
+    "weeklyLossPct": 5,
+    "monthlyLossPct": 8,
+    "losingExits": { "inARow": 2, "pauseDays": 1 },
+    "shareCooldownDays": null,
+    "organisationLossPaise": "150000"
+  }
+}

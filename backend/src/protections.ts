@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Actor, id, parse, permit, requireThat, uuid } from './core.js';
 import { Database, Sql, audit } from './database.js';
 import { Allow } from './security.js';
+import { compute as paperPerformance } from './paper-performance.js';
 
 // Self-expiring protections (PROTECT-01, from freqtrade's protections and the trading-skills circuit breaker): brakes
 // that pause a bot's NEW BUYS by themselves and lift by themselves, so the organisation can run unattended without a
@@ -22,6 +23,10 @@ export const protectionRules = z.object({
   losingExits: z.object({ inARow: z.number().int().min(2).max(10), pauseDays: days }).strict().nullable().default(null),
   /** No new buy of a share for this many days after the bot sold it. */
   shareCooldownDays: days.nullable().default(null),
+  /** CHARTER-01 last-resort stop: when the organisation's total P&L (realised AND open, all bots) falls to minus this
+   *  many paise, the guard halts all new risk with a critical incident and the owner is alerted. It does not lift by
+   *  itself: only the owner resumes (resolve the incident, then resume operations). */
+  organisationLossPaise: z.string().regex(/^[1-9][0-9]{0,13}$/).nullable().default(null),
 }).strict();
 const policySchema = z.object({ rules: protectionRules, reason: z.string().trim().min(1).max(600) }).strict();
 const statusSchema = z.object({ botId: id.optional() }).strict();
@@ -95,6 +100,27 @@ export class Protections {
     });
   }
 
+  /** CHARTER-01, the evaluator's daily guard: the organisation's total P&L against the charter's loss limit. At or past
+   *  it, one critical incident halts all new risk (exits stay allowed) and raises the owner's alert; it never resumes
+   *  by itself. */
+  guard(actor: Actor, key: string) {
+    permit(actor, 'evaluator');
+    return this.db.command(actor, 'protection-guard', key, {}, async tx => {
+      const policy = await currentProtections(tx);
+      const limit = policy?.rules.organisationLossPaise ? BigInt(policy.rules.organisationLossPaise) : null;
+      const total = (await paperPerformance(tx, null, this.clock())).reduce((s, b) => s + BigInt(b.realisedPaise) + BigInt(b.unrealisedPaise), 0n);
+      if (limit === null) return { status: 'no-limit', totalPaise: total.toString() };
+      if (total > -limit) return { status: 'within', totalPaise: total.toString(), limitPaise: (-limit).toString() };
+      if ((await tx.query('SELECT halted FROM system_lock WHERE id=1')).rows[0]!.halted) return { status: 'already-halted', totalPaise: total.toString() };
+      const incidentId = uuid(), description = `Founder charter: the organisation's total P&L (${total} paise, open losses included) reached the `
+        + `charter's loss limit (-${limit} paise). New risk is halted; exits stay allowed. Only the owner resumes.`;
+      await tx.query("INSERT INTO incidents(id,reporter,description,severity,status) VALUES($1,$2,$3,'critical','open')", [incidentId, actor.id, description]);
+      await tx.query('UPDATE system_lock SET halted=true,halt_reason=$1 WHERE id=1', [incidentId]);
+      await audit(tx, actor, 'protection.organisation-stop', incidentId, { totalPaise: total.toString(), limitPaise: limit.toString(), policySequence: policy!.sequence });
+      return { status: 'stopped', incidentId, totalPaise: total.toString(), limitPaise: (-limit).toString() };
+    });
+  }
+
   /** The policy and every paper bot's pauses now (or one bot's). */
   status(actor: Actor, raw: unknown) {
     permit(actor, 'owner', 'evaluator');
@@ -118,4 +144,5 @@ export class ProtectionsController {
   constructor(private readonly protections: Protections) {}
   @Post('protections/policy') @Allow('owner') policy(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) { return this.protections.setPolicy(r.actor, k ?? '', b); }
   @Post('protections/status') @Allow('owner', 'evaluator') status(@Req() r: Request, @Body() b: unknown) { return this.protections.status(r.actor, b); }
+  @Post('protections/guard') @Allow('evaluator') guard(@Req() r: Request, @Headers('idempotency-key') k: string) { return this.protections.guard(r.actor, k ?? ''); }
 }

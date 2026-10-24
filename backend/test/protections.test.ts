@@ -62,6 +62,21 @@ test('protections pause new buys by themselves after losses, never exits, and li
     assert.equal((await f.db.transaction(tx => tx.query('SELECT COUNT(*)::int AS n FROM protection_policies'), false)).rows[0]!.n, 2);
     await assert.rejects(() => f.db.transaction(tx => tx.query("UPDATE protection_policies SET reason='x'")));
 
+    // CHARTER-01 last-resort stop: total P&L (realised and open) against the charter's limit; it halts once, never lifts itself
+    assert.equal((await protections.guard(evaluator, key())).status, 'no-limit');
+    await protections.setPolicy(owner, key(), { rules: { organisationLossPaise: '1000000' }, reason: 'Charter: Rs 10,000 at most' });
+    assert.equal((await protections.guard(evaluator, key())).status, 'within');
+    await protections.setPolicy(owner, key(), { rules: { organisationLossPaise: '1000' }, reason: 'Charter: a tight limit for the test' });
+    const stopped = await protections.guard(evaluator, key());
+    assert.equal(stopped.status, 'stopped');                                       // the losing exits put it past Rs 10
+    const halted = (await f.db.transaction(tx => tx.query('SELECT halted FROM system_lock WHERE id=1'), false)).rows[0]!.halted;
+    assert.equal(halted, true);
+    assert.equal((await f.db.transaction(tx => tx.query("SELECT severity,status FROM incidents WHERE id=$1", [stopped.incidentId]), false)).rows[0]!.severity, 'critical');
+    assert.equal((await protections.guard(evaluator, key())).status, 'already-halted'); // one incident, not one a day
+    await assert.rejects(() => f.paper.reserve(trader, key(), { botId: 'bot-one', symbol: 'OTHER', side: 'buy', quantity: 1, evidenceId: e.evidenceId }), /halted/);
+    await f.db.transaction(tx => tx.query('UPDATE system_lock SET halted=false WHERE id=1'));       // (the owner's resume, simplified)
+    await protections.setPolicy(owner, key(), { rules: {}, reason: 'Back to no limit' });
+
     // the digest says whether brakes are set and who is paused
     const d = await new OwnerDigest(f.db, f.cfg).digest(owner, {});
     assert.deepEqual(d.protections, { policySet: true, paused: [] });

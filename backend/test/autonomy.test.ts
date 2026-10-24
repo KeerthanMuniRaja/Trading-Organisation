@@ -172,3 +172,16 @@ test('autonomy routes are guarded by role', async () => {
     assert.equal((await call('GET', 'autonomy', 'owner')).status, 200);
   } finally { await app.close(); await db.close(); }
 });
+
+test('CHARTER-01: with reduceBudget, a standing approval cuts the budget of a bot that trails the basket; without it, it waits', async () => {
+  const f = await setup(); try {
+    await recommend(f, 'reduce-budget', '375000');
+    await f.autonomy.setPolicy(owner, key(), { rules: OFF, reason: 'Nothing automatic' });
+    assert.deepEqual((await f.autonomy.apply(evaluator, key())).actions, []);
+    await f.autonomy.setPolicy(owner, key(), { rules: { ...OFF, reduceBudget: true }, reason: 'Charter: budget follows evidence' });
+    const done = await f.autonomy.apply(evaluator, key());
+    assert.deepEqual(done.actions.map(a => String(a.kind)), ['reduce-budget']);
+    assert.equal((await f.db.transaction(tx => tx.query("SELECT budget_paise::text AS b FROM bots WHERE id='bot-one'"), false)).rows[0]!.b, '375000');
+    assert.equal((await f.db.transaction(tx => tx.query("SELECT kind FROM autonomy_actions"), false)).rows[0]!.kind, 'reduce-budget');
+  } finally { await f.db.close(); }
+});

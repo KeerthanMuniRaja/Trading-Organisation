@@ -14,8 +14,13 @@ import { EVALUATION_VALID_DAYS } from './bot-releases.js';
 // transaction. The owner's agenda gathers every decision waiting on the owner in one place: management recommendations,
 // proposed births and departments, releases ready to activate, and bots ready to start paper trading.
 
-export const RULES = 'management-v1';
+// v2 (CHARTER-01): budget follows evidence both ways; a bot that keeps trailing the basket is recommended a smaller budget
+export const RULES = 'management-v2';
 export const LIMITS = {
+  reduceAfterDays: 60,      // daily snapshots needed before a budget cut is considered
+  reduceBehindPct: 3,       // points behind the basket over its record that call for a cut
+  reducePct: 25,
+  minBudgetPaise: 100000,   // a cut never takes a bot below Rs 1,000 (retirement is a separate, owner-level matter)
   suspendLossPct: -15,      // return on budget at or below this: suspend (no new risk; exits stay allowed)
   watchLossPct: -8,         // return on budget at or below this: watch
   watchDrawdownPct: 20,     // worst fall of the equity curve at or above this: watch
@@ -31,7 +36,15 @@ const decisionSchema = z.object({ recommendationId: z.uuid(), outcome: z.enum(['
 type Facts = { suspended: boolean; suspendedDays: number | null; liveVerdict: string | null; livePValue: number | null; liveJudged: number;
   returnOnBudgetPct: number | null; maxDrawdownPct: number | null; snapshotDays: number; excessOverBasketPct: number | null;
   lapsed30: number; executed30: number; openPositions: number; budgetPaise: string; daysSinceBudgetChange: number | null };
-type Recommendation = { kind: 'watch' | 'suspend' | 'raise-budget' | 'retire'; rule: string; reason: string; proposedBudgetPaise?: string };
+type Recommendation = { kind: 'watch' | 'suspend' | 'raise-budget' | 'reduce-budget' | 'retire'; rule: string; reason: string; proposedBudgetPaise?: string };
+
+/** management-v2's cut: 25% less, in whole rupees, never below the floor; null when the bot is already at or below it. */
+export function reducedBudget(budgetPaise: string): bigint | null {
+  const budget = BigInt(budgetPaise), floor = BigInt(LIMITS.minBudgetPaise);
+  if (budget <= floor) return null;
+  const cut = budget * BigInt(100 - LIMITS.reducePct) / 100n / 100n * 100n;
+  return cut < floor ? floor : cut;
+}
 
 /** management-v1: the first matching rule decides; null when nothing needs the owner. Pure, so it is tested directly. */
 export function assess(f: Facts, raiseTo: bigint | null): Recommendation | null {
@@ -50,6 +63,11 @@ export function assess(f: Facts, raiseTo: bigint | null): Recommendation | null 
     return { kind: 'watch', rule: 'deep-drawdown', reason: `Its equity fell ${f.maxDrawdownPct}% from a peak.` };
   if (f.lapsed30 >= LIMITS.lapsedToWatch && f.executed30 === 0)
     return { kind: 'watch', rule: 'not-executing', reason: `${f.lapsed30} accepted proposals lapsed in 30 days and none was executed: check its pipeline.` };
+  const cut = reducedBudget(f.budgetPaise);
+  if (f.liveVerdict !== 'adds-value' && f.excessOverBasketPct !== null && f.excessOverBasketPct <= -LIMITS.reduceBehindPct && f.snapshotDays >= LIMITS.reduceAfterDays
+    && (f.daysSinceBudgetChange === null || f.daysSinceBudgetChange >= LIMITS.budgetQuietDays) && cut !== null)
+    return { kind: 'reduce-budget', rule: 'trails-basket', proposedBudgetPaise: cut.toString(),
+      reason: `It is ${-f.excessOverBasketPct} points behind simply holding the basket over ${f.snapshotDays} days, without proven skill: less money until it earns more.` };
   if (f.liveVerdict === 'adds-value' && (f.excessOverBasketPct ?? 0) > 0 && f.snapshotDays >= LIMITS.raiseAfterDays && (f.returnOnBudgetPct ?? 0) > 0
     && (f.daysSinceBudgetChange === null || f.daysSinceBudgetChange >= LIMITS.budgetQuietDays) && raiseTo !== null && raiseTo > BigInt(f.budgetPaise))
     return { kind: 'raise-budget', rule: 'proven-skill', proposedBudgetPaise: raiseTo.toString(),
@@ -162,7 +180,8 @@ export class Management {
       const unfunded = (await tx.query(`SELECT id FROM bots WHERE state='paper' AND budget_paise=0 AND lifecycle_managed=false ORDER BY id`)).rows;
       const items = [
         ...recommendations.filter(r => !decided.has(String(r.id))).map(r => ({ type: 'recommendation', ...view(r),
-          action: `management decision: accept to ${r.kind === 'raise-budget' ? `raise the budget to ${r.proposed_budget_paise} paise` : r.kind}` })),
+          action: `management decision: accept to ${r.kind === 'raise-budget' ? `raise the budget to ${r.proposed_budget_paise} paise`
+            : r.kind === 'reduce-budget' ? `reduce the budget to ${r.proposed_budget_paise} paise` : r.kind}` })),
         ...births.map(p => ({ type: 'birth', id: String(p.id), botId: p.bot_id, name: p.name, department: p.department, specialty: p.specialty,
           contribution: p.contribution, opportunity: p.opportunity, proposer: p.proposer, action: 'approve to create the bot in school with zero budget' })),
         ...departments.map(p => ({ type: 'department', id: String(p.id), kind: p.kind, departmentId: p.department_id, name: p.name, rationale: p.rationale,
@@ -204,6 +223,11 @@ export async function applyRecommendation(tx: Sql, actor: Actor, cfg: Config, in
       const ceiling = await raiseCeiling(tx, cfg, r.bot_id, bot.department, budget);
       requireThat(ceiling !== null && ceiling >= BigInt(r.proposed_budget_paise), 'The department ceiling or exposure limit no longer allows this budget');
       applied = await applyBudget(tx, actor, r.bot_id, String(r.proposed_budget_paise), 'Management recommendation accepted: ' + r.reason.slice(0, 500));
+    } else if (r.kind === 'reduce-budget') {
+      // a cut only ever lowers the budget: if it is already at or below the proposal, nothing changes
+      const budget = BigInt((await tx.query('SELECT budget_paise::text AS b FROM bots WHERE id=$1', [r.bot_id])).rows[0]!.b);
+      applied = budget <= BigInt(r.proposed_budget_paise) ? 'already at or below the proposed budget'
+        : await applyBudget(tx, actor, r.bot_id, String(r.proposed_budget_paise), 'Management recommendation accepted: ' + r.reason.slice(0, 500));
     } else if (r.kind === 'retire')
       // retirement settles knowledge transfer first (POST /v1/bots/retirements); this records that it was the owner's call
       requireThat(bot.state === 'retired', 'Retire the bot first (POST /v1/bots/retirements, transferring its verified lessons), then accept');

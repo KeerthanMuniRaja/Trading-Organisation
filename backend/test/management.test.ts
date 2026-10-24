@@ -44,6 +44,29 @@ test('management-v1: each rule, in order, and silence when nothing needs the own
   assert.equal(assess({ ...parked, suspendedDays: 10 }, null), null);
 });
 
+test('management-v2: a bot that keeps trailing the basket without proven skill gets less money, never below the floor', async () => {
+  const trailing = { ...healthy, snapshotDays: 60, excessOverBasketPct: -3 };
+  assert.deepEqual([assess(trailing, null)?.kind, assess(trailing, null)?.proposedBudgetPaise], ['reduce-budget', '375000']); // 25% less
+  assert.equal(assess({ ...trailing, excessOverBasketPct: -2.9 }, null), null);          // close to the basket: no cut
+  assert.equal(assess({ ...trailing, snapshotDays: 59 }, null), null);                   // too early to judge
+  assert.equal(assess({ ...trailing, daysSinceBudgetChange: 30 }, null), null);          // budget changed recently
+  assert.equal(assess({ ...trailing, liveVerdict: 'adds-value' }, null), null);          // proven skill is not cut for one weak stretch
+  assert.equal(assess({ ...trailing, budgetPaise: '120000' }, null)?.proposedBudgetPaise, String(LIMITS.minBudgetPaise)); // the floor
+  assert.equal(assess({ ...trailing, budgetPaise: String(LIMITS.minBudgetPaise) }, null), null);  // already at the floor
+  // the owner, or a standing approval, applies it; it only ever lowers the budget
+  const f = await setup(); try {
+    const reviewed = await f.db.transaction(async tx => {
+      const id = randomUUID();
+      await tx.query(`INSERT INTO bot_recommendations(id,bot_id,kind,rule,reason,proposed_budget_paise,facts,proposer,content_hash)
+        VALUES($1,'bot-one','reduce-budget','trails-basket','fixture',375000,'{}'::jsonb,'evaluator',$2)`, [id, 'h-' + id]);
+      return id;
+    });
+    const decided = await f.management.decide(owner, key(), { recommendationId: reviewed, outcome: 'accepted', note: 'Budget follows evidence' });
+    assert.equal(decided.kind, 'reduce-budget');
+    assert.equal((await f.db.transaction(tx => tx.query("SELECT budget_paise::text AS b FROM bots WHERE id='bot-one'"), false)).rows[0]!.b, '375000');
+  } finally { await f.db.close(); }
+});
+
 test('the daily review recommends, the owner decides, and accepting applies the change atomically', async () => {
   const f = await setup(); try {
     await f.fitness.report(evaluator, key(), live(4, 26));
