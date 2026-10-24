@@ -22,13 +22,13 @@ answering in a session ("decision 3: yes"). This file is updated as items close.
 
 ---
 
-## Part 0: your next three days, without Claude (Sat 24 – Mon 26 Oct)
+## Part 0: your first three days on the new machine, without Claude
 
 Follow [STARTUP.md](STARTUP.md) for every command. Keep a notes file as you go, `.local/owner-notes.txt`, with the date, what you did, and anything odd:
 the exact message and which step. It is never committed to the code repository, and the weekly data export carries it
 to your private data repository, where Claude can read it later.
 
-**Day 1 (Saturday): move to the new machine and switch on.** Markets are closed, so nothing trades today.
+**Day 1 (best on a Saturday): move to the new machine and switch on.** Markets are closed, so nothing trades.
 1. Set up the new machine: STARTUP.md section 1, steps 1–8. Finish only when `verify` says ALL CHECKS PASSED and
    `preflight` says READY.
 2. Run Part A below, A3 to A12, in order:
@@ -40,29 +40,29 @@ to your private data repository, where Claude can read it later.
    - create `.local/nse-holidays.json` from NSE's holiday circular (A9).
 4. Check: `npm run status` should show Backend up, Supervisor alive and no failed steps.
 
-**Day 2 (Sunday): let it run, and decide.** Markets are closed again. The supervisor still polls news every 30 minutes.
-1. `npm run status`: the supervisor should be alive, and its next job the readiness check on Monday at 09:00.
+**Day 2 (Sunday, or the next evening): let it run, and decide.** The supervisor polls news every 30 minutes, on any day.
+1. `npm run status`: the supervisor should be alive, and its next job the readiness check of the next trading day at 09:00.
 2. Read Part B and write your answers in your notes. The five that unblock the most work: **B1, B3, B4, B6 and the
    limits (B26)**. "All recommended" is a valid answer.
 3. Optional (B14, the biggest data lever): download NSE's NIFTY 50 reconstitution notices and write the monthly member
    lists into `.local/trading-desk/datasets/nifty50-membership.json` (format in
    [research methods](docs/research-methods.md)).
 
-**Day 3 (Monday): the first trading day on the new machine.**
+**Day 3 (the first trading day on the new machine).**
 1. Around 09:00 the readiness check runs by itself. `npm run readiness` shows it.
 2. After 16:05 the cycle runs by itself, with the model if A5 is on. That takes 30–60 minutes.
 3. Read `.local/digests/<today>.md`:
    - "Needs you" first;
    - then "Can you trust this digest?": it should say "Yes", or tell you what to check;
    - then answer `npm run agenda`.
-4. Monday evening, backend stopped: run the backup and the data export (A13), then push `.local/data-repo`.
+4. That evening, with the backend stopped: run the backup and the data export (A13), then push `.local/data-repo`.
 
 **When you come back to Claude:** say "Read founderReview.md Part 0 and my notes", and paste your notes and your
 decisions. Development continues from there.
 
 ---
 
-## Part A: the switch-on (Saturday 24 Oct, on the new machine), in order
+## Part A: the switch-on (on the new machine), in order
 
 On the new machine, A1 and A2 are already covered by STARTUP.md section 1: the preflight, and the restore of the 23 Oct
 backup.
@@ -225,4 +225,4 @@ These are fixes from the gap analysis that need no decision.
   question for the copyleft ones (FinceptTerminal, MiroFish, backtesting.py, freqtrade).
 - **The office laptop:** nothing is downloaded, installed, run in the background or pushed without your OK, except
   what you have authorised (pushes to `dev` when asked).
-- **The new machine:** run the organisation there only, from 24 Oct. Don't run it on the office laptop as well.
+- **The new machine:** once you switch on there, run the organisation there only. Don't run it on the office laptop as well.
