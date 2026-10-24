@@ -38,7 +38,11 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
   const desk = p => join(root, 'integrations', 'trading-desk', p);
   const steps = [
     { id: 'backend-health', critical: true, kind: 'http', path: '/v1/health' },
-    { id: 'market-data', cmd: PY, args: [desk('daily.py'), 'fetch', '--refresh'], timeoutMs: 600_000, retries: 2, verify: verifyMarketData },
+    // REPLAY-02: in a replay workspace the prices come from the full history, cut at the virtual day (no network)
+    process.env.REPLAY_PRICES
+      ? { id: 'market-data', cmd: NODE, args: [join(root, 'scripts', 'replay-prices.mjs'), process.env.REPLAY_PRICES,
+          join(root, '.local', 'trading-desk', 'daily')], timeoutMs: 120_000, verify: verifyMarketData }
+      : { id: 'market-data', cmd: PY, args: [desk('daily.py'), 'fetch', '--refresh'], timeoutMs: 600_000, retries: 2, verify: verifyMarketData },
     // REGIME-01: distribution days, breadth and trend of the eight shares, with an advisory exposure ceiling, and the
     // study of how the regime and later falls went together (no model, no network, changes no limit)
     { id: 'market-regime', cmd: PY, args: [desk('market_regime.py'), 'now'], timeoutMs: 120_000 },
