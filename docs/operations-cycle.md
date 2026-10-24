@@ -20,10 +20,14 @@ Three pieces that make the organisation run on its own and stay auditable. They 
 | `model-allocator-decide` | The model allocator decides any new month in its pre-registered forward test (at most 2 model calls) | `--with-model`, `MODEL_ALLOCATOR_RUN` and `MODEL_ALLOCATOR_BOT` set |
 | `model-allocator-propose` | Turns a current decided month into proposals, citing the facts the model saw, recomputed and verified by the evaluator ([trade signals](trade-signals.md#the-model-allocator-in-the-daily-cycle)) | `MODEL_ALLOCATOR_RUN` and `MODEL_ALLOCATOR_BOT` set; no model needed |
 | `eod-trading` | Reviews waiting proposals at the verified close, executes accepted ones at the verified next open | backend, daily data |
+| `rule-bot-entries`, `eod-trading-entries` | A second pass on the same day: once the month's exits have filled, the rule bot sends the entries the exits made room for, and they are reviewed. A proposal turned down **only** for a passing reason (a loss-brake pause, a stale quote, a halt) is sent again on a later day; any lasting reason stays final. Found by the 2020 replay, where a one-week brake kept the bot in cash for the whole April rebound | `RULE_BOT_ID` set |
+| `mentor-refresh` | Re-checks the mentor's lessons on our own price data ([mentor](mentor.md)) | daily data |
+| `outcome-labels` | Labels each logged debate argument by what really happened to the call it argued, for a later fine-tune ([mentor](mentor.md#training-on-reality)) | scored proposals |
 | `score-signals` | Scores proposals whose horizon has passed | backend, daily data |
 | `review-scorecard` | Read-only. Shows how the calls the risk review took and turned down went: by fate, by rejection reason, and by the regime when each call was made and when it ended. For buys it also shows the worst and best price while held (MAE/MFE). Writes `.local/trading-desk/review-scorecard.json` | backend (evaluator credential) |
 | `live-fitness` | Files each bot's fitness report from its scored paper calls; once there is a verdict, re-evaluates its active release with it | backend |
 | `paper-snapshot` | Records today's per-bot P&L mark (evaluator credential) | backend |
+| `charter-guard` | The founder charter's last-resort stop: when the organisation's total paper loss reaches `organisationLossPaise`, it opens a critical incident and halts the system ([charter](charter.md)) | backend (evaluator credential) |
 | `alerts` | Evaluates alert rules and delivers new alerts | backend |
 | `owner-digest` | Writes the day's summary to `.local/digests/<day>.md` | backend |
 

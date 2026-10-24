@@ -103,6 +103,8 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
       ? ['--propose', '--source', process.env.RND_SOURCE, '--department', process.env.RND_DEPARTMENT || 'desk'] : [])], timeoutMs: 300_000 },
     // KNOW-05: the organisation's live knowledge (research, regime, news links, scenario record) for the agents and the digest
     { id: 'knowledge-refresh', cmd: PY, args: [desk('live_knowledge.py'), 'refresh'], timeoutMs: 120_000 },
+    // MENTOR-01: the mentor's lessons, each re-checked on today's data (no model, no network)
+    { id: 'mentor-refresh', cmd: PY, args: [desk('mentor.py'), 'refresh'], timeoutMs: 120_000 },
     // the model-free rule bot proposes once a month, before the end-of-day trader reviews; it runs only once the owner
     // has created and qualified it and named it here (RULE_BOT_ID), with a trader credential bound to it
     // AUTO-05 self-repair: a code fix under the same rule is prepared as a release by the agents, and the standing
@@ -136,13 +138,25 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
       ? { id: 'debate', cmd: PY, args: [desk('debate.py')], timeoutMs: 1_800_000, computeGate: { botId: process.env.DEBATE_BEAR_BOT } }
       : { id: 'debate', skip: withModel ? 'no debaters configured (scripts/debate-setup.mjs)' : 'model steps not enabled (--with-model)' },
     { id: 'eod-trading', cmd: PY, args: [desk('eod_trader.py'), '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 },
+    // the rule bot's entries follow its exits: once eod-trading has filled today's exits, a second short pass proposes
+    // the entries and has them reviewed at the same close, so a rebalance takes two sessions, not three (found by the
+    // replay, 27 Oct 2026); both passes are release-gated, and a pass with nothing to do changes nothing
+    ...(process.env.RULE_BOT_ID ? [
+      { id: 'rule-bot-entries', cmd: PY, args: [desk('rule_bot.py'), '--bot', process.env.RULE_BOT_ID, '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'],
+        timeoutMs: 300_000, releaseGate: { botId: process.env.RULE_BOT_ID, cmd: PY, args: [desk('rule_bot.py'), '--describe'] } },
+      { id: 'eod-trading-entries', cmd: PY, args: [desk('eod_trader.py'), '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 },
+    ] : []),
     { id: 'score-signals', cmd: PY, args: [desk('signal_scorer.py'), '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 },
     // LEARN-03: every scored call becomes a verified factual lesson for its bot (no model)
     { id: 'reflections', cmd: PY, args: [desk('reflections.py')], timeoutMs: 300_000 },
+    // MODEL-DATA-02: each posted debate argument labelled by its call's real outcome (read-only), for a future fine-tune
+    { id: 'outcome-labels', cmd: PY, args: [desk('outcome_labels.py')], timeoutMs: 120_000 },
     // TRUST-02: how the calls the review took and turned down went, by reason and by the regime at the time (read-only)
     { id: 'review-scorecard', cmd: PY, args: [desk('review_scorecard.py')], timeoutMs: 120_000 },
     { id: 'live-fitness', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'live-fitness.mjs')], timeoutMs: 120_000 },
     { id: 'paper-snapshot', kind: 'http', method: 'POST', path: '/v1/paper/performance/snapshots', role: 'evaluator' },
+    // CHARTER-01 last-resort stop: total P&L (open losses included) against the charter's limit; halts and alerts the owner
+    { id: 'charter-guard', kind: 'http', method: 'POST', path: '/v1/protections/guard', role: 'evaluator' },
     // ORG-02: the daily management review of every working bot; it only recommends, the owner decides (npm run agenda)
     { id: 'management-review', kind: 'http', method: 'POST', path: '/v1/management/reviews', role: 'evaluator' },
     // AUTO-03: the agents carry out what the owner's standing approvals cover (nothing without a policy)

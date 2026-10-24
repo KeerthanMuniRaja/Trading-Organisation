@@ -595,6 +595,55 @@
         "task": "You have seen the panel. Keep or change your call for each share; say why."
       },
       "expect": {}
+    },
+    {
+      "id": "exam-bank-concentration",
+      "task": "debate",
+      "side": "bear",
+      "input": {
+        "proposal": {
+          "symbol": "ICICIBANK",
+          "action": "enter-long",
+          "conviction": "high",
+          "horizonDays": 20,
+          "targetWeightPct": 33,
+          "thesis": "Adds ICICI Bank to a book that already holds HDFC Bank and Axis Bank: its six-month momentum is the strongest of the eight.",
+          "invalidation": "Drops out of the top three by six-month return"
+        },
+        "recentCloses": [
+          {
+            "date": "2026-10-16",
+            "closePaise": 140000
+          },
+          {
+            "date": "2026-10-19",
+            "closePaise": 141500
+          }
+        ],
+        "verifiedNews": [],
+        "verifiedEvidenceIds": [],
+        "mentorNotes": {
+          "note": "an experienced mentor's lessons, checked on our data where a check exists: background, never evidence",
+          "lessons": [
+            {
+              "title": "Four of our eight shares are banks",
+              "status": "checked",
+              "lesson": "HDFC Bank, ICICI Bank, Axis Bank and SBI move together: an RBI surprise, a credit scare or foreign selling hits all four at once. Three banks in a top-3 portfolio is closer to one bet than three.",
+              "evidence": "Over the last ~2 years the banks' daily moves correlate 0.47 with each other, against 0.26 with the other shares."
+            }
+          ]
+        }
+      },
+      "expect": {
+        "evidenceIn": [
+          null
+        ],
+        "mustMention": [
+          "bank",
+          "concentrat",
+          "correlat"
+        ]
+      }
     }
   ]
 }

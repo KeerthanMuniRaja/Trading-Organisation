@@ -90,14 +90,15 @@ def first_round_summary(answers, symbols):
     return out
 
 
-def ask_panel(llm, story, regime=None, lessons=None, rounds=ROUNDS, events=None):
+def ask_panel(llm, story, regime=None, lessons=None, rounds=ROUNDS, events=None, mentor_notes=None):
     """Each persona's answer for the story's shares; an invalid or failed answer counts as no view (flat). `regime` is the
     organisation's own market-regime summary (background, the same for every persona); `lessons` each persona's latest
     lessons from its own wrong calls. With two rounds, every persona that answered sees the first round's votes and
     reasons and answers again; its first answer is kept as `firstRound`."""
     answers, lessons = {}, lessons or {}
     base = {'story': story['title'], 'countries': story['countries'], 'drivers': story['drivers'], 'shares': story['symbols'],
-            **({'marketRegime': regime} if regime else {}), **({'upcomingEvents': events} if events else {})}
+            **({'marketRegime': regime} if regime else {}), **({'upcomingEvents': events} if events else {}),
+            **({'mentorNotes': mentor_notes} if mentor_notes else {})}
     for name, who in PERSONAS.items():
         calls = _ask(llm, who, {**base, **({'yourRecentLessons': lessons[name]} if lessons.get(name) else {})}, story['symbols'])
         # a voice that failed, or left a share out, is MARKED, never silently passed off as a 'flat' view (MiroFish review)
@@ -153,8 +154,11 @@ def run(llm, now=None, stories_path=STORIES, out=OUT, cache=daily.DAILY, limit=2
     lessons = latest_lessons(out)
     import events_calendar
     events = events_calendar.context(day, None, days=HORIZON + 2)['events']  # the week the calls are judged on
-    calls = [c for story in stories for c in panel_calls(story, ask_panel(llm, story, regime if regime != 'unknown' else None, lessons, events=events),
-                                                         day, as_of)]
+    import mentor
+    risk = str(regime).split(' ')[0]
+    notes = mentor.notes_for(None, events=[e['kind'] for e in events], regime=risk if risk in ('NORMAL', 'CAUTION', 'HIGH', 'SEVERE') else None, limit=2)
+    calls = [c for story in stories for c in panel_calls(story, ask_panel(llm, story, regime if regime != 'unknown' else None, lessons, events=events,
+                                                                          mentor_notes=notes), day, as_of)]
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open('a', encoding='utf-8') as handle:
         for c in calls:

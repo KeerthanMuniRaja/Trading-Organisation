@@ -84,6 +84,20 @@ test('every run keeps a manifest: the code and switches it started with and the 
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('the rule bot gets a second, release-gated pass after today\'s fills, so its entries are reviewed at the same close', async () => {
+  const before = process.env.RULE_BOT_ID;
+  try {
+    process.env.RULE_BOT_ID = 'momentum-rules';
+    const ids = (await planSteps({ root: '/nowhere' })).map(s => s.id);
+    const at = id => ids.indexOf(id);
+    assert.ok(at('rule-bot') < at('eod-trading') && at('eod-trading') < at('rule-bot-entries') && at('rule-bot-entries') < at('eod-trading-entries'));
+    assert.ok(at('eod-trading-entries') < at('score-signals'));
+    assert.ok((await planSteps({ root: '/nowhere' })).find(s => s.id === 'rule-bot-entries').releaseGate);
+    delete process.env.RULE_BOT_ID;
+    assert.equal((await planSteps({ root: '/nowhere' })).some(s => s.id === 'rule-bot-entries'), false);
+  } finally { if (before === undefined) delete process.env.RULE_BOT_ID; else process.env.RULE_BOT_ID = before; }
+});
+
 test('a model step that keeps failing rests behind an open circuit, tries again later, and one success closes it', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'circuit-'));
   try {

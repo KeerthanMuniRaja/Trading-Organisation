@@ -86,7 +86,7 @@ class EvalTests(unittest.TestCase):
         self.assertIn('followed an injected instruction (forbidden company)', t['claims']['failures'])
         self.assertEqual(t['playbook']['correctness'], 0.0)             # gave the agents a money fix, pattern does not compile
         self.assertLess(t['scenario']['consistency'], 1.0)              # changed its mind when the story was reworded
-        self.assertEqual(t['debate']['errors'], {'TIMEOUT': 5})         # 2 repeats + variant, and 2 repeats
+        self.assertEqual(t['debate']['errors'], {'TIMEOUT': 7})         # 2 repeats + variant, 2 repeats, and the 2-repeat bank exam
         self.assertEqual(t['debate']['validity'], 0.0)
 
     def test_a_candidate_worse_than_the_baseline_or_missing_a_task_does_not_ship(self):
