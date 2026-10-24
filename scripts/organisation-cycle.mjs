@@ -84,8 +84,11 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
       : { id: 'headline-reader', skip: 'model steps not enabled (--with-model)' },
     { id: 'chain-links', cmd: PY, args: [desk('chains.py'), 'expand', '--headlines', join('.local', 'claims', 'auto', 'verified-headlines.json')],
       timeoutMs: 120_000, requires: join(root, '.local', 'claims', 'auto', 'verified-headlines.json') },
-    { id: 'forward-daily-rules', cmd: PY, args: [desk('daily.py'), 'forward', '--name', 'forward-from-2026-10-09'], timeoutMs: 300_000 },
-    { id: 'forward-portfolio', cmd: PY, args: [desk('portfolio_daily.py'), 'forward', '--name', 'portfolio-forward-from-2026-10-09'], timeoutMs: 300_000 },
+    // the live organisation's pre-registered forward tests (from 9 Oct 2026): meaningless in a replay of earlier days
+    ...(process.env.REPLAY_PRICES
+      ? [{ id: 'forward-daily-rules', skip: 'replay: the live forward tests start on 9 Oct 2026' }, { id: 'forward-portfolio', skip: 'replay: the live forward tests start on 9 Oct 2026' }]
+      : [{ id: 'forward-daily-rules', cmd: PY, args: [desk('daily.py'), 'forward', '--name', 'forward-from-2026-10-09'], timeoutMs: 300_000 },
+        { id: 'forward-portfolio', cmd: PY, args: [desk('portfolio_daily.py'), 'forward', '--name', 'portfolio-forward-from-2026-10-09'], timeoutMs: 300_000 }]),
     // ORG-03: the academy and lifecycle run every day. Each backend cycle answers 'disabled' until the owner enables its
     // policy, so these cost nothing until then: exams and remediation for students, lifecycle (births from blueprints,
     // school to college, reputation, retirement requests), research dispatch, registered experiments, reviewed memory.

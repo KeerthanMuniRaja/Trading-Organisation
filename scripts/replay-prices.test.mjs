@@ -28,8 +28,10 @@ test('in a replay the cycle cuts prices locally instead of downloading them', as
   const before = process.env.REPLAY_PRICES;
   try {
     process.env.REPLAY_PRICES = '/x/full';
-    const step = (await planSteps({ root: '/nowhere' })).find(s => s.id === 'market-data');
+    const plan = await planSteps({ root: '/nowhere' });
+    const step = plan.find(s => s.id === 'market-data');
     assert.ok(step.args[0].endsWith('replay-prices.mjs') && step.args[1] === '/x/full');
+    assert.match(plan.find(s => s.id === 'forward-daily-rules').skip, /replay/);   // the live forward tests are not replayed
     delete process.env.REPLAY_PRICES;
     assert.ok((await planSteps({ root: '/nowhere' })).find(s => s.id === 'market-data').args[0].endsWith('daily.py'));
   } finally { if (before === undefined) delete process.env.REPLAY_PRICES; else process.env.REPLAY_PRICES = before; }
