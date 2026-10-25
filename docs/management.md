@@ -4,7 +4,7 @@ The organisation is run like a firm. Every day a management review looks at each
 
 ## The daily management review
 
-The cycle step `management-review` (after the paper snapshot) has the evaluator apply fixed, published rules, now `management-v4`, to every bot in paper trading. The first matching rule decides:
+The cycle step `management-review` (after the paper snapshot) has the evaluator apply fixed, published rules, now `management-v5`, to every bot in paper trading. The first matching rule decides:
 
 | Rule | When | Recommendation |
 | --- | --- | --- |
@@ -33,6 +33,14 @@ holds nothing (or has recovered), and its live calls do not lose to cash. It ret
 the loss rules (`loss-limit`, `losing`) count only what it lost **since it was reinstated**, so its old loss cannot
 suspend it again the next morning. Suspensions for calls that lose to cash, rollbacks, and the owner's own suspensions
 have no automatic way back: they stay the owner's call.
+
+**Why v5.** Every measure here used to read the equity as budget plus P&L, so a budget change looked like performance.
+A 25% cut read as a 25% fall (a `deep-drawdown` watch and a drawdown alert), as 25 points behind the basket (which
+called for the next cut once the budget had been quiet for 90 days, and made a later loss read as "behind the basket"),
+and the same rupee loss became a third larger as a share of the smaller budget (a bot at −12% read −16%: suspended).
+From v5 the loss rules, the worst fall and the basket comparison use the bot's value with budget changes taken out
+(`performanceCurve` in `paper-performance.ts`, a time-weighted return). For a bot whose budget never changed, nothing
+differs.
 
 How recommendations behave:
 - **No repeats:** a concern is not filed again while it waits for the owner, nor within 30 days after the owner decided it.

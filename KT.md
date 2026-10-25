@@ -51,7 +51,8 @@ The organisation now manages itself like a firm, with the owner as CEO:
   the data export carries to the private data repository.
 - **First live run, 22 Oct:** 35 steps done, migrations 052–054 applied. It found and fixed the benchmark start for
   bots whose record predates the basket marks.
-- **Model:** 7 of 8 evaluation tasks pass on Qwen 3.5-4B ([model evaluation](docs/model-eval.md)).
+- **Model:** 6 of 8 evaluation tasks pass on Qwen 3.5-4B ([model evaluation](docs/model-eval.md); an earlier "7 of 8"
+  was a miscount).
   - The headline reader is on prompt v2.
   - Debate citations are grounded (MODEL-04): a quote checked in the evidence, or a citation derived from the argument.
   - Playbook phrases are escaped literals (`playbook_drafts.literal`).
@@ -139,6 +140,8 @@ The organisation now manages itself like a firm, with the owner as CEO:
   - `management-v4` (evening, migration 056) gives a loss-limit suspension a way back: `reinstate` after 20 days, once
     the bot holds nothing or has recovered, with 25% less budget; afterwards only its loss since returning counts.
     Standing approval `reinstateSuspended` (in the charter, not the starter policy).
+  - `management-v5`: losses, the worst fall and the basket comparison take budget changes out (`performanceCurve`), so a
+    budget cut no longer reads as a fall, as trailing the basket, or as a bigger loss.
 - **New machine (27 Oct evening):** the organisation now runs from `C:\Keerthan\Project\Trading-Organisation`
   (STARTUP.md done, 23 Oct backup restored, starter policy and suggested brakes set, model members created). The
   llama.cpp runtime is a separate install: `npm run model:local -- install runtime` (STARTUP.md step 7 now says so).

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { Config } from './config.js';
 import { Actor, digest, parse, permit, requireThat, uuid } from './core.js';
 import { Database, Sql, audit } from './database.js';
-import { MARK_STALE_SECONDS, curveStats } from './paper-performance.js';
+import { MARK_STALE_SECONDS, curveStats, performanceCurve } from './paper-performance.js';
 import { usageByBot } from './compute-usage.js';
 import { LOW_SCORE, MIN_FOR_ALERT, reliability } from './source-reliability.js';
 import { available, balance, tradingLoss } from './treasury.js';
@@ -48,12 +48,13 @@ export async function conditions(tx: Sql, config: Config): Promise<Condition[]> 
       message: `Realised paper loss is ${used}% of the configured limit (${loss} of ${config.maxLoss} paise).`, detail: { lossPaise: loss.toString(), limitPaise: config.maxLoss.toString(), usedPct: used } });
   }
 
-  const snaps = (await tx.query(`SELECT bot_id,(budget_paise+realised_paise+unrealised_paise)::text AS equity FROM paper_performance_snapshots
-    WHERE day >= CURRENT_DATE - 90 ORDER BY bot_id,day`)).rows;
-  const curves = new Map<string, bigint[]>();
-  for (const s of snaps) curves.set(s.bot_id, [...(curves.get(s.bot_id) ?? []), BigInt(s.equity)]);
-  for (const [bot, equity] of curves) {
-    const { maxDrawdownPct } = curveStats(equity);
+  const snaps = (await tx.query(`SELECT bot_id,budget_paise::text AS budget,realised_paise::text AS realised,unrealised_paise::text AS unrealised
+    FROM paper_performance_snapshots WHERE day >= CURRENT_DATE - 90 ORDER BY bot_id,day`)).rows;
+  const curves = new Map<string, { budget: string; realised: string; unrealised: string }[]>();
+  for (const s of snaps) curves.set(s.bot_id, [...(curves.get(s.bot_id) ?? []), s as { budget: string; realised: string; unrealised: string }]);
+  for (const [bot, days] of curves) {
+    // a budget change is money moving, not a fall in value
+    const { maxDrawdownPct } = curveStats(performanceCurve(days));
     if (maxDrawdownPct !== null && maxDrawdownPct >= 10) out.push({ rule: 'bot-drawdown', severity: maxDrawdownPct >= 20 ? 'critical' : 'warning',
       subject: bot, message: `Paper equity of ${bot} fell ${maxDrawdownPct}% from its peak in the last 90 days.`, detail: { botId: bot, maxDrawdownPct } });
   }

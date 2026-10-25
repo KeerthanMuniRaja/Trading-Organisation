@@ -57,6 +57,11 @@ The worst fall is the measure that matters before trusting a bot with more money
 
 The owner digest shows the same comparison daily. It is descriptive: a few weeks prove nothing, and fitness reports judge significance.
 
+**Budget changes are not performance (27 Oct 2026).** The bot's return, worst fall and risk figures come from
+`performanceCurve`: it starts at the first day's equity and then moves only by each day's P&L change, measured on the
+previous day's capital (a time-weighted return). A raise or a cut moves nothing. For a bot whose budget never changed it
+equals budget plus P&L exactly, so earlier results are unchanged.
+
 **Still to come in PAPER-01:**
 - partial fills;
 - liquidity and volume limits;

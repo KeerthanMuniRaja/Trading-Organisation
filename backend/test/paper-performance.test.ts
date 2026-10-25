@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fixture, config, owner, evaluator, researcher, trader, market, key } from './helpers.js';
-import { PaperPerformance, curveStats, indiaDay } from '../src/paper-performance.js';
+import { PaperPerformance, curveStats, indiaDay, performanceCurve } from '../src/paper-performance.js';
 import { OwnerAlerts } from '../src/alerts.js';
 import { Database } from '../src/database.js';
 import { createApp } from '../src/app.js';
@@ -135,6 +135,38 @@ test('equity statistics: total return and worst peak-to-trough fall', () => {
   assert.deepEqual(curveStats([100n, 100n]), { returnPct: 0, maxDrawdownPct: 0 });
   assert.deepEqual(curveStats([]), { returnPct: null, maxDrawdownPct: null });
   assert.equal(indiaDay(Date.parse('2026-10-12T19:00:00Z')), '2026-10-13'); // 00:30 IST is already the next trading day
+});
+
+test('a budget change is money moving, not performance: it shows neither as a return nor as a fall', async () => {
+  const day = (budget: number, pnl: number) => ({ budget: String(budget), realised: '0', unrealised: String(pnl) });
+  // an unchanged budget gives exactly budget + P&L
+  assert.deepEqual(performanceCurve([day(500000, 0), day(500000, -20000), day(500000, 10000)]), [500000n, 480000n, 510000n]);
+  // a 25% cut on day 2, with no change in P&L, leaves the curve flat (it used to read as a 25% fall)
+  const cut = performanceCurve([day(500000, -80000), day(375000, -80000), day(375000, -80000)]);
+  assert.deepEqual(cut, [420000n, 420000n, 420000n]);
+  assert.deepEqual(curveStats(cut), { returnPct: 0, maxDrawdownPct: 0 });
+  // after the cut, a gain is measured on the smaller capital: +29,500 on 295,000 is +10%
+  assert.deepEqual(performanceCurve([day(500000, -80000), day(375000, -80000), day(375000, -50500)]).map(Number), [420000, 420000, 462000]);
+  // a raise does not count as a gain either
+  assert.equal(curveStats(performanceCurve([day(500000, 0), day(625000, 0)])).returnPct, 0);
+
+  // the basket comparison: a bot level with the basket stays level after its budget is cut
+  const f = await fixture(); try {
+    const e = await f.evidence();
+    await f.org.bot(owner, key(), { id: 'bot-one', name: 'bot-one', department: 'desk', specialty: 'one', method: 'test', contribution: 'Budget fixture', budgetPaise: '500000' });
+    await f.db.transaction(async tx => {
+      for (const [ago, budget] of [[10, 500000], [5, 375000], [0, 375000]] as const)
+        await tx.query(`INSERT INTO paper_performance_snapshots(id,day,bot_id,budget_paise,realised_paise,unrealised_paise,open_positions,unpriced_or_stale,recorder)
+          VALUES($1,((now() AT TIME ZONE 'UTC') + interval '330 minutes')::date-$2::int,'bot-one',$3,0,0,0,0,'evaluator')`, [crypto.randomUUID(), ago, budget]);
+      for (const [symbol, ago, price] of [['AAA', 10, 10000], ['AAA', 0, 10000], ['BBB', 10, 20000], ['BBB', 0, 20000]] as const)
+        await tx.query(`INSERT INTO price_marks(id,symbol,price_paise,observed_at,evidence_id,recorded_by)
+          VALUES($1,$2,$3,date_trunc('day',now())-($4::int * interval '1 day')+interval '10 hours'-interval '1 minute',$5,'evaluator')`,
+          [crypto.randomUUID(), symbol, price, ago, e.evidenceId]);
+    });
+    const one = (await new PaperPerformance(f.db).benchmark(owner, {})).bots.find(b => b.botId === 'bot-one')!;
+    assert.deepEqual([one.returnPct, one.excessPct, one.verdict], [0, 0, 'level-with-basket']); // was -25 and 'behind-basket'
+    assert.equal(one.risk?.maxDrawdownPct, 0);
+  } finally { await f.db.close(); }
 });
 
 test('daily snapshots are recorded once per day, append-only, and build each bot\'s equity curve', async () => {

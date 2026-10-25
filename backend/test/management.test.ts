@@ -28,7 +28,7 @@ const live = (wins: number, losses: number) => ({ botId: 'bot-one', role: 'trade
 test('management-v1: each rule, in order, and silence when nothing needs the owner', () => {
   assert.equal(assess(healthy, null), null);
   assert.equal(assess({ ...healthy, liveVerdict: 'worse-than-baseline' }, null)?.kind, 'suspend');
-  // management-v3: at the loss limit, a bot behind the basket (or not yet compared) is suspended; one ahead of it is watched
+  // management-v3 (still in v5): at the loss limit, a bot behind the basket (or not yet compared) is suspended; one ahead of it is watched
   assert.equal(assess({ ...healthy, returnOnBudgetPct: LIMITS.suspendLossPct, excessOverBasketPct: -1 }, null)?.rule, 'loss-limit');
   assert.equal(assess({ ...healthy, returnOnBudgetPct: LIMITS.suspendLossPct, excessOverBasketPct: null }, null)?.kind, 'suspend');
   const crash = assess({ ...healthy, returnOnBudgetPct: -17, excessOverBasketPct: 6 }, null);
@@ -83,12 +83,30 @@ test('management-v4: a loss-limit suspension has a way back, with less money; ot
   assert.equal(assess({ ...served, openPositions: 2, returnOnBudgetPct: -10 }, null)?.kind, 'reinstate'); // holding, but recovered
   assert.equal(assess({ ...served, budgetPaise: String(LIMITS.minBudgetPaise) }, null)?.proposedBudgetPaise, String(LIMITS.minBudgetPaise)); // the floor
   // back at work, only the loss since the reinstatement counts: the old loss cannot suspend it again
-  const returned = { ...healthy, returnOnBudgetPct: -16, excessOverBasketPct: -4, returnSinceResumePct: -2 };
+  const returned = { ...healthy, returnOnBudgetPct: -16, excessOverBasketPct: -4, valueChangePct: -2, sinceResume: true };
   assert.equal(assess(returned, null), null);
-  const again = assess({ ...returned, returnSinceResumePct: -15 }, null);
+  const again = assess({ ...returned, valueChangePct: -15 }, null);
   assert.equal(again?.rule, 'loss-limit');
   assert.match(again!.reason, /since it was reinstated/);
-  assert.equal(assess({ ...returned, returnSinceResumePct: -9 }, null)?.rule, 'losing');
+  assert.equal(assess({ ...returned, valueChangePct: -9 }, null)?.rule, 'losing');
+});
+
+test('management-v5: losses are measured on value with budget changes taken out, so a cut cannot invite a suspension', async () => {
+  // Rs 600 lost on Rs 5,000 is -12%; after a cut to Rs 3,750 it is -16% "of budget", but its value fell 12%: watched, not suspended
+  const cut = { ...healthy, returnOnBudgetPct: -16, valueChangePct: -12, excessOverBasketPct: -2 };
+  assert.deepEqual([assess(cut, null)?.kind, assess(cut, null)?.rule], ['watch', 'losing']);
+  assert.equal(assess({ ...cut, valueChangePct: null }, null)?.rule, 'loss-limit'); // no snapshots yet: falls back to budget
+  // through the real review: a 25% cut with nothing else changed raises no deep-drawdown watch and no loss concern
+  const f = await setup(); try {
+    await f.db.transaction(async tx => {
+      for (const [ago, budget] of [[3, 500000], [2, 500000], [1, 375000], [0, 375000]] as const)
+        await tx.query(`INSERT INTO paper_performance_snapshots(id,day,bot_id,budget_paise,realised_paise,unrealised_paise,open_positions,unpriced_or_stale,recorder)
+          VALUES($1,((now() AT TIME ZONE 'UTC') + interval '330 minutes')::date-$2::int,'bot-one',$3,-40000,0,0,0,'evaluator')`, [randomUUID(), ago, budget]);
+      await tx.query("UPDATE bots SET budget_paise=375000 WHERE id='bot-one'");
+    });
+    const reviewed = await f.management.review(evaluator, key());
+    assert.deepEqual(reviewed.filed.map(r => r.rule), []); // under v4: deep-drawdown (25% "fall")
+  } finally { await f.db.close(); }
 });
 
 test('management-v4: the review recommends reinstatement, accepting lifts the suspension with the smaller budget, and the old loss is not counted again', async () => {

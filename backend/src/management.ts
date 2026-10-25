@@ -4,7 +4,7 @@ import { Actor, digest, parse, permit, requireThat, uuid } from './core.js';
 import { Config } from './config.js';
 import { Database, Sql, audit } from './database.js';
 import { Allow } from './security.js';
-import { compare, compute, curveStats, indiaDay } from './paper-performance.js';
+import { compare, compute, curveStats, indiaDay, performanceCurve } from './paper-performance.js';
 import { applyBudget, applySuspension, isSuspended } from './bot-control.js';
 import { EVALUATION_VALID_DAYS } from './bot-releases.js';
 
@@ -22,7 +22,10 @@ import { EVALUATION_VALID_DAYS } from './bot-releases.js';
 // v4: a way back. A bot the loss limit suspended is recommended for reinstatement, with a smaller budget, once it has
 // served its time, holds nothing or has recovered, and its live calls do not lose to cash. After it returns, the loss
 // rules count only what it lost since then, so its old loss cannot suspend it again the next morning.
-export const RULES = 'management-v4';
+// v5: losses and falls are measured on the bot's value with budget changes taken out (paper-performance's
+// performanceCurve). Under v4 a 25% budget cut read as a 25% fall and as 25 points behind the basket, and made the same
+// loss a third larger as a share of the smaller budget, so one cut invited the next cut or a suspension.
+export const RULES = 'management-v5';
 export const LIMITS = {
   reduceAfterDays: 60,      // daily snapshots needed before a budget cut is considered
   reduceBehindPct: 3,       // points behind the basket over its record that call for a cut
@@ -46,8 +49,11 @@ type Facts = { suspended: boolean; suspendedDays: number | null; liveVerdict: st
   lapsed30: number; executed30: number; openPositions: number; budgetPaise: string; daysSinceBudgetChange: number | null;
   /** v4: the management rule whose accepted recommendation suspended the bot (null: the owner or a rollback did) */
   suspendedRule?: string | null;
-  /** v4: return on budget since the bot was last resumed (null: never resumed) */
-  returnSinceResumePct?: number | null };
+  /** v5: change in the bot's value with budget changes taken out, since its first snapshot, or since it was last
+   *  resumed (null: no snapshots yet, then returnOnBudgetPct is used) */
+  valueChangePct?: number | null;
+  /** v5: valueChangePct counts from the bot's last resumption */
+  sinceResume?: boolean };
 type Recommendation = { kind: 'watch' | 'suspend' | 'raise-budget' | 'reduce-budget' | 'reinstate' | 'retire'; rule: string; reason: string; proposedBudgetPaise?: string };
 
 /** management-v2's cut: 25% less, in whole rupees, never below the floor; null when the bot is already at or below it. */
@@ -64,17 +70,18 @@ export function assess(f: Facts, raiseTo: bigint | null): Recommendation | null 
     if (f.liveVerdict === 'worse-than-baseline' && (f.suspendedDays ?? 0) >= LIMITS.retireAfterSuspendedDays && f.openPositions === 0)
       return { kind: 'retire', rule: 'suspended-and-still-worse', reason: `Suspended ${f.suspendedDays} days, holds nothing, and its live calls still lose to holding cash (p=${f.livePValue}).` };
     // v4: only a loss-limit suspension has a way back; the owner's own, and those for failing calls, stay with the owner
+    const value = f.valueChangePct ?? f.returnOnBudgetPct;
     if (f.suspendedRule === 'loss-limit' && (f.suspendedDays ?? 0) >= LIMITS.reinstateAfterDays && f.liveVerdict !== 'worse-than-baseline'
-      && (f.openPositions === 0 || (f.returnOnBudgetPct !== null && f.returnOnBudgetPct > LIMITS.suspendLossPct)))
+      && (f.openPositions === 0 || (value !== null && value > LIMITS.suspendLossPct)))
       return { kind: 'reinstate', rule: 'suspension-served', proposedBudgetPaise: (reducedBudget(f.budgetPaise) ?? BigInt(f.budgetPaise)).toString(),
-        reason: `Suspended ${f.suspendedDays} days by the loss limit; it ${f.openPositions === 0 ? 'holds nothing' : `has recovered to ${f.returnOnBudgetPct}% of its budget`}`
+        reason: `Suspended ${f.suspendedDays} days by the loss limit; it ${f.openPositions === 0 ? 'holds nothing' : `has recovered to ${value}% of its value`}`
           + ` and its live calls do not lose to holding cash: back to work, with less money until it earns more.` };
     return null;
   }
   if (f.liveVerdict === 'worse-than-baseline')
     return { kind: 'suspend', rule: 'live-worse-than-cash', reason: `Its live paper calls lose to holding cash, significantly (${f.liveJudged} calls, p=${f.livePValue}).` };
-  // after a reinstatement, only the loss since then counts
-  const loss = f.returnSinceResumePct ?? f.returnOnBudgetPct, since = f.returnSinceResumePct != null ? ' since it was reinstated' : '';
+  // v5: the loss on its value, budget changes taken out; after a reinstatement, only the loss since then counts
+  const loss = f.valueChangePct ?? f.returnOnBudgetPct, since = f.sinceResume ? ' since it was reinstated' : '';
   if (loss !== null && loss <= LIMITS.suspendLossPct) {
     if (f.excessOverBasketPct !== null && f.excessOverBasketPct > 0)
       return { kind: 'watch', rule: 'market-fall', reason: `It has lost ${-loss}% of its budget${since}, but simply holding the basket lost more `
@@ -93,10 +100,10 @@ export function assess(f: Facts, raiseTo: bigint | null): Recommendation | null 
     && (f.daysSinceBudgetChange === null || f.daysSinceBudgetChange >= LIMITS.budgetQuietDays) && cut !== null)
     return { kind: 'reduce-budget', rule: 'trails-basket', proposedBudgetPaise: cut.toString(),
       reason: `It is ${-f.excessOverBasketPct} points behind simply holding the basket over ${f.snapshotDays} days, without proven skill: less money until it earns more.` };
-  if (f.liveVerdict === 'adds-value' && (f.excessOverBasketPct ?? 0) > 0 && f.snapshotDays >= LIMITS.raiseAfterDays && (f.returnOnBudgetPct ?? 0) > 0
+  if (f.liveVerdict === 'adds-value' && (f.excessOverBasketPct ?? 0) > 0 && f.snapshotDays >= LIMITS.raiseAfterDays && (loss ?? 0) > 0
     && (f.daysSinceBudgetChange === null || f.daysSinceBudgetChange >= LIMITS.budgetQuietDays) && raiseTo !== null && raiseTo > BigInt(f.budgetPaise))
     return { kind: 'raise-budget', rule: 'proven-skill', proposedBudgetPaise: raiseTo.toString(),
-      reason: `Its live calls beat cash significantly (p=${f.livePValue}), it is ${f.excessOverBasketPct}% ahead of the basket over ${f.snapshotDays} days and up ${f.returnOnBudgetPct}% on its budget.` };
+      reason: `Its live calls beat cash significantly (p=${f.livePValue}), it is ${f.excessOverBasketPct}% ahead of the basket over ${f.snapshotDays} days and its value is up ${loss}%.` };
   return null;
 }
 
@@ -119,8 +126,10 @@ export async function raiseCeiling(tx: Sql, cfg: Config, botId: string, departme
 async function facts(tx: Sql, bot: Record<string, any>, perf: Map<string, Record<string, any>>, bench: Map<string, Record<string, any>>): Promise<Facts> {
   const live = (await tx.query(`SELECT verdict,p_value,judged FROM bot_fitness_reports WHERE bot_id=$1 AND test_name LIKE 'live-paper%'
     ORDER BY created_at DESC,id DESC LIMIT 1`, [bot.id])).rows[0];
-  const curve = (await tx.query(`SELECT (budget_paise+realised_paise+unrealised_paise)::text AS e FROM paper_performance_snapshots WHERE bot_id=$1 ORDER BY day`,
-    [bot.id])).rows.map(r => BigInt(r.e));
+  const snaps = (await tx.query(`SELECT to_char(day,'YYYY-MM-DD') AS day,budget_paise::text AS budget,realised_paise::text AS realised,
+    unrealised_paise::text AS unrealised FROM paper_performance_snapshots WHERE bot_id=$1 ORDER BY day`, [bot.id])).rows as
+    { day: string; budget: string; realised: string; unrealised: string }[];
+  const curve = performanceCurve(snaps);
   const flow = (await tx.query(`SELECT
       (SELECT COUNT(*)::int FROM trade_signal_lapses l JOIN trade_signals s ON s.id=l.signal_id WHERE s.bot_id=$1 AND l.created_at > now()-interval '30 days') AS lapsed,
       (SELECT COUNT(*)::int FROM trade_signal_executions x JOIN trade_signals s ON s.id=x.signal_id WHERE s.bot_id=$1 AND x.created_at > now()-interval '30 days') AS executed,
@@ -131,14 +140,18 @@ async function facts(tx: Sql, bot: Record<string, any>, perf: Map<string, Record
   const suspendedRule = suspended ? (await tx.query(`SELECT r.rule FROM bot_recommendations r JOIN bot_recommendation_decisions d ON d.recommendation_id=r.id
       WHERE r.bot_id=$1 AND r.kind='suspend' AND d.outcome='accepted' AND abs(extract(epoch FROM d.created_at - $2::timestamptz)) < 5
       ORDER BY d.created_at DESC LIMIT 1`, [bot.id, flow.suspended_at])).rows[0]?.rule ?? null : null;
-  // v4: once resumed, the loss rules measure from the last daily snapshot before the resumption
-  let returnSinceResumePct: number | null = null;
-  if (!suspended && flow.suspended_at && p && BigInt(bot.budget) > 0n) {
-    const base = (await tx.query(`SELECT (realised_paise+unrealised_paise)::text AS pnl FROM paper_performance_snapshots WHERE bot_id=$1
-      AND day <= ((($2::timestamptz) AT TIME ZONE 'UTC') + interval '330 minutes')::date ORDER BY day DESC LIMIT 1`, [bot.id, flow.suspended_at])).rows[0];
-    returnSinceResumePct = Number((BigInt(p.totalPaise) - BigInt(base?.pnl ?? '0')) * 10000n / BigInt(bot.budget)) / 100;
+  // v5: the change in value, budget changes taken out; once resumed, from the last daily snapshot before the resumption
+  // (the latest bot_suspensions row of an unsuspended bot is its resumption)
+  const sinceResume = !suspended && !!flow.suspended_at;
+  let from = 0;
+  if (sinceResume) {
+    const resumeDay = indiaDay(new Date(flow.suspended_at).getTime());
+    from = Math.max(0, snaps.reduce((at, s, i) => s.day <= resumeDay ? i : at, -1)); // none before it: its first snapshot
   }
-  return { suspended, suspendedDays: suspended ? daysSince(flow.suspended_at) : null, suspendedRule, returnSinceResumePct,
+  const base = from >= 0 ? curve[from] : undefined, now = curve[curve.length - 1];
+  const valueChangePct = base !== undefined && now !== undefined && base > 0n ? Number((Number((now - base) * 1_000_000n / base) / 10_000).toFixed(2))
+    : sinceResume ? 0 : null; // resumed with no snapshot since: nothing lost since then
+  return { suspended, suspendedDays: suspended ? daysSince(flow.suspended_at) : null, suspendedRule, valueChangePct, sinceResume,
     liveVerdict: live?.verdict ?? null, livePValue: live ? Number(Number(live.p_value).toFixed(4)) : null, liveJudged: live?.judged ?? 0,
     returnOnBudgetPct: p?.returnOnBudgetPct ?? null, maxDrawdownPct: curveStats(curve).maxDrawdownPct, snapshotDays: curve.length,
     excessOverBasketPct: bench.get(bot.id)?.excessPct ?? null, lapsed30: flow.lapsed, executed30: flow.executed,
