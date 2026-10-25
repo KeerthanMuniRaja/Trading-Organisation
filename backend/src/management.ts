@@ -15,7 +15,11 @@ import { EVALUATION_VALID_DAYS } from './bot-releases.js';
 // proposed births and departments, releases ready to activate, and bots ready to start paper trading.
 
 // v2 (CHARTER-01): budget follows evidence both ways; a bot that keeps trailing the basket is recommended a smaller budget
-export const RULES = 'management-v2';
+// v3: the loss limit tells a market fall from a failing bot. A bot at the limit that is still AHEAD of simply holding the
+// basket is watched, not suspended: the 2020 replay suspended a bot a week into the crash while it fell less than the
+// basket, and with nothing to lift a suspension it sat in cash through the whole recovery (-13.0% against +7.8%).
+// A disaster is still caught by the charter's organisation stop and the .env limits.
+export const RULES = 'management-v3';
 export const LIMITS = {
   reduceAfterDays: 60,      // daily snapshots needed before a budget cut is considered
   reduceBehindPct: 3,       // points behind the basket over its record that call for a cut
@@ -55,8 +59,13 @@ export function assess(f: Facts, raiseTo: bigint | null): Recommendation | null 
   }
   if (f.liveVerdict === 'worse-than-baseline')
     return { kind: 'suspend', rule: 'live-worse-than-cash', reason: `Its live paper calls lose to holding cash, significantly (${f.liveJudged} calls, p=${f.livePValue}).` };
-  if (f.returnOnBudgetPct !== null && f.returnOnBudgetPct <= LIMITS.suspendLossPct)
-    return { kind: 'suspend', rule: 'loss-limit', reason: `It has lost ${-f.returnOnBudgetPct}% of its budget (limit ${-LIMITS.suspendLossPct}%).` };
+  if (f.returnOnBudgetPct !== null && f.returnOnBudgetPct <= LIMITS.suspendLossPct) {
+    if (f.excessOverBasketPct !== null && f.excessOverBasketPct > 0)
+      return { kind: 'watch', rule: 'market-fall', reason: `It has lost ${-f.returnOnBudgetPct}% of its budget, but simply holding the basket lost more `
+        + `(it is ${f.excessOverBasketPct} points ahead): a market fall, not the bot failing.` };
+    return { kind: 'suspend', rule: 'loss-limit', reason: `It has lost ${-f.returnOnBudgetPct}% of its budget (limit ${-LIMITS.suspendLossPct}%)`
+      + (f.excessOverBasketPct === null ? ', with no basket comparison yet.' : `, and is ${-f.excessOverBasketPct} points behind simply holding the basket.`) };
+  }
   if (f.returnOnBudgetPct !== null && f.returnOnBudgetPct <= LIMITS.watchLossPct)
     return { kind: 'watch', rule: 'losing', reason: `It has lost ${-f.returnOnBudgetPct}% of its budget.` };
   if (f.maxDrawdownPct !== null && f.maxDrawdownPct >= LIMITS.watchDrawdownPct)

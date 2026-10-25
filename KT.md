@@ -122,10 +122,31 @@ The organisation now manages itself like a firm, with the owner as CEO:
   - **Digest:** a limits banner (what the running backend loaded, with a name-only warning when settings differ),
     arithmetic checks, crashed runs, refused-order counts and the loss-brake state.
   - **Loss brakes** (migration 054, `protections.ts`, `npm run protections`, [protections](docs/protections.md)):
-    - daily, weekly and monthly realised-loss pauses, a losing-streak pause and a per-share cooldown;
+    - daily, weekly and monthly loss pauses, measured on realised losses or on the fall in value (`measure: equity`,
+      27 Oct), a losing-streak pause and a per-share cooldown;
     - they pause new buys only and lift by themselves;
     - they are set by the owner only, and are off until then (founder review B3);
     - the review rules are now `signal-risk-v3`, identical to v2 with no policy.
+
+### Added on 27 October 2026 ([project log](docs/project-log/2026-10-27.md))
+
+- **Founder charter** (`npm run charter`, [charter](docs/charter.md)): autonomy rules and brakes applied together.
+  - `management-v2` also cuts budgets (`reduce-budget`, migration 055; standing approval `reduceBudget`).
+  - `management-v3` only watches, rather than suspends, a bot at the 15% loss limit that is ahead of the basket
+    (`market-fall`). Found by the year-long 2020 replay ([management](docs/management.md)).
+  - Cycle step `charter-guard` (`POST /v1/protections/guard`, evaluator) halts all new buying at the organisation loss
+    limit (`organisationLossPaise`). It never resumes by itself.
+- **Mentor** (`mentor.py`, `knowledge/mentor-curriculum.json`, cycle step `mentor-refresh`, [mentor](docs/mentor.md)):
+  lessons checked on our data; the debate and the panel read at most 3 as data; contradicted lessons are never shown.
+- **Training on reality:** the debate log plus `outcome_labels.py` (cycle step `outcome-labels`) feed
+  `build_dataset.py`'s `<task>/outcome-kto.jsonl`. Claude's outputs are never training targets.
+- **Rule bot:** a second pass the same day once exits fill (`rule-bot-entries`, `eod-trading-entries`). It also
+  retries, at most once a day, a buy refused only for a passing reason.
+- **Replay:**
+  - `run --protections/--autonomy/--charter` and `prepare --limits`;
+  - the report has `tradingWholeRun` with rejection reasons, and equity curves;
+  - the 2020 crash runs revised B3 (value-based brakes, daily and weekly), raised the charter stop to ₹2,000 and added
+    B27 (the lifetime realised-loss limit) ([replay](docs/replay.md)).
 
 ### Added in the evening of 20 October 2026
 

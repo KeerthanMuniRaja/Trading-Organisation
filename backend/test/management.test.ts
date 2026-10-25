@@ -28,7 +28,11 @@ const live = (wins: number, losses: number) => ({ botId: 'bot-one', role: 'trade
 test('management-v1: each rule, in order, and silence when nothing needs the owner', () => {
   assert.equal(assess(healthy, null), null);
   assert.equal(assess({ ...healthy, liveVerdict: 'worse-than-baseline' }, null)?.kind, 'suspend');
-  assert.equal(assess({ ...healthy, returnOnBudgetPct: LIMITS.suspendLossPct }, null)?.rule, 'loss-limit');
+  // management-v3: at the loss limit, a bot behind the basket (or not yet compared) is suspended; one ahead of it is watched
+  assert.equal(assess({ ...healthy, returnOnBudgetPct: LIMITS.suspendLossPct, excessOverBasketPct: -1 }, null)?.rule, 'loss-limit');
+  assert.equal(assess({ ...healthy, returnOnBudgetPct: LIMITS.suspendLossPct, excessOverBasketPct: null }, null)?.kind, 'suspend');
+  const crash = assess({ ...healthy, returnOnBudgetPct: -17, excessOverBasketPct: 6 }, null);
+  assert.deepEqual([crash?.kind, crash?.rule], ['watch', 'market-fall']);
   assert.equal(assess({ ...healthy, returnOnBudgetPct: -9 }, null)?.rule, 'losing');
   assert.equal(assess({ ...healthy, maxDrawdownPct: 21 }, null)?.rule, 'deep-drawdown');
   assert.equal(assess({ ...healthy, lapsed30: 3, executed30: 0 }, null)?.rule, 'not-executing');

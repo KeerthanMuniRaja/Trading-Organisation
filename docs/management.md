@@ -4,17 +4,27 @@ The organisation is run like a firm. Every day a management review looks at each
 
 ## The daily management review
 
-The cycle step `management-review` (after the paper snapshot) has the evaluator apply fixed, published rules, `management-v1`, to every bot in paper trading. The first matching rule decides:
+The cycle step `management-review` (after the paper snapshot) has the evaluator apply fixed, published rules, now `management-v3`, to every bot in paper trading. The first matching rule decides:
 
 | Rule | When | Recommendation |
 | --- | --- | --- |
 | `live-worse-than-cash` | Its live paper calls lose to holding cash, significantly (sign test) | **Suspend**: no new risk; exits stay allowed |
-| `loss-limit` | It has lost 15% or more of its budget | **Suspend** |
+| `loss-limit` | It has lost 15% or more of its budget, and is behind simply holding the basket (or has no basket comparison yet) | **Suspend** |
+| `market-fall` (v3) | It has lost 15% or more of its budget, but is **ahead** of the basket: the market fell, the bot did not fail | **Watch** |
 | `losing` | It has lost 8% or more of its budget | **Watch** |
 | `deep-drawdown` | Its equity fell 20% or more from a peak | **Watch** |
 | `not-executing` | 3 or more accepted proposals lapsed in 30 days, and none was executed | **Watch**: check its pipeline |
 | `proven-skill` | Its live calls beat cash significantly, it is ahead of the basket and up on its budget, over at least 60 daily snapshots, with no budget change in 90 days | **Raise its budget by 25%**, capped by the department's unallocated ceiling and the exposure limit |
 | `suspended-and-still-worse` | Suspended for 30 days or more, holds nothing, and its live calls still lose to cash | **Retire** |
+
+`management-v2` (27 Oct 2026) added `trails-basket`: a bot 3 or more points behind the basket over 60+ days, without
+proven skill, is recommended 25% less budget, never below ₹1,000 ([charter](charter.md)).
+
+**Why v3.** In the hands-off replay of 2020, v2 suspended momentum-rules on 12 March, a week into the crash, for
+losing 15% of its budget, while it was falling *less* than the basket. The charter's standing approvals applied the
+suspension. A suspension is only ever lifted by the owner, so the bot sold what it held and sat in cash for the rest
+of the year: −13.0% against the basket's +7.8%. A real disaster is still caught by the charter's organisation stop and
+the `.env` limits.
 
 How recommendations behave:
 - **No repeats:** a concern is not filed again while it waits for the owner, nor within 30 days after the owner decided it.
