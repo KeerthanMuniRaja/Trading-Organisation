@@ -16,6 +16,7 @@ npm run charter                                   shows what is in force
 | --- | --- | --- |
 | **Losing bots** | `suspendOnRecommendation` | A bot whose live calls lose to cash, or that lost 15% of its budget while behind the basket, is suspended. Its exits stay allowed. A bot that lost 15% in a market fall but is ahead of the basket is only watched (management-v3) |
 | **Budget follows evidence, up** | `raiseBudget`: at most +25% a change, at most ₹2,000 of raises a month | A bot whose live calls beat cash and beat the basket over 60+ days gets more money |
+| **A way back** | `reinstateSuspended` | A bot the loss limit suspended returns after 20 days, once it holds nothing (or has recovered) and its live calls do not lose to cash, with 25% less budget. From then on only its losses since returning count (management-v4) |
 | **Budget follows evidence, down** | `reduceBudget` | A bot that trails the basket by 3+ points over 60+ days, without proven skill, gets 25% less, never below ₹1,000 (management-v2) |
 | **New members** | `approveBirths`, `qualifyBots`, `startingBudgetPaise` ₹1,000 | An idea that passes R&D becomes a bot, which qualifies on its release and gets a small starting budget |
 | **Better versions** | `activateReleases`, `trialNewReleases`, `promoteCanaries`, `rollbackFailingReleases` | A new version runs on trial beside the old one. It takes over only if its own live calls beat cash, and a failing version is rolled back |

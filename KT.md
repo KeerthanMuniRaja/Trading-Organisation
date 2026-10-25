@@ -136,6 +136,12 @@ The organisation now manages itself like a firm, with the owner as CEO:
     (`market-fall`). Found by the year-long 2020 replay ([management](docs/management.md)).
   - Cycle step `charter-guard` (`POST /v1/protections/guard`, evaluator) halts all new buying at the organisation loss
     limit (`organisationLossPaise`). It never resumes by itself.
+  - `management-v4` (evening, migration 056) gives a loss-limit suspension a way back: `reinstate` after 20 days, once
+    the bot holds nothing or has recovered, with 25% less budget; afterwards only its loss since returning counts.
+    Standing approval `reinstateSuspended` (in the charter, not the starter policy).
+- **New machine (27 Oct evening):** the organisation now runs from `C:\Keerthan\Project\Trading-Organisation`
+  (STARTUP.md done, 23 Oct backup restored, starter policy and suggested brakes set, model members created). The
+  llama.cpp runtime is a separate install: `npm run model:local -- install runtime` (STARTUP.md step 7 now says so).
 - **Mentor** (`mentor.py`, `knowledge/mentor-curriculum.json`, cycle step `mentor-refresh`, [mentor](docs/mentor.md)):
   lessons checked on our data; the debate and the panel read at most 3 as data; contradicted lessons are never shown.
 - **Training on reality:** the debate log plus `outcome_labels.py` (cycle step `outcome-labels`) feed

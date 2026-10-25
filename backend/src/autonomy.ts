@@ -26,6 +26,8 @@ const rulesSchema = z.object({
   raiseBudget: z.object({ maxPctPerChange: z.number().int().min(1).max(25), maxTotalPaisePerMonth: money }).strict().nullable().default(null),
   /** CHARTER-01: accept the review's budget cuts for bots that keep trailing the basket (a cut only lowers risk). */
   reduceBudget: z.boolean().default(false),
+  /** management-v4: accept the review's reinstatement of a bot the loss limit suspended (with its smaller budget). */
+  reinstateSuspended: z.boolean().default(false),
   /** Approve proposed births (each new bot starts in school with zero budget). */
   approveBirths: z.boolean().default(false),
   /** Activate releases whose newest, fresh evaluation allows activation. */
@@ -128,6 +130,7 @@ export class Autonomy {
         if (p.kind === 'suspend' && r.suspendOnRecommendation) await attempt('suspend', p.bot_id, null, decide);
         else if (p.kind === 'watch' && r.acknowledgeWatch) await attempt('watch', p.bot_id, null, decide);
         else if (p.kind === 'reduce-budget' && r.reduceBudget) await attempt('reduce-budget', p.bot_id, null, decide);
+        else if (p.kind === 'reinstate' && r.reinstateSuspended) await attempt('reinstate', p.bot_id, null, decide);
         else if (p.kind === 'raise-budget' && r.raiseBudget) {
           const before = BigInt(p.budget), increase = BigInt(p.proposed) - before;
           if (before > 0n && increase * 100n > before * BigInt(r.raiseBudget.maxPctPerChange)) left.push({ kind: 'raise-budget', target: p.bot_id, reason: 'larger than the policy allows per change' });

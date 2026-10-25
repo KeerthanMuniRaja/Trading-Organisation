@@ -31,6 +31,9 @@ test('a failure is matched to the known problem by step and text', () => {
   assert.equal(diagnose('news-economictimes', 'feed fetch-failed').id, 'feed-failing');
   assert.equal(diagnose('rule-bot', 'release gate: code fingerprint differs').id, 'release-gate');
   assert.equal(diagnose('debate', '[timed out]').id, 'timeout');
+  // the model client's own codes (integrations/hermes/openai_compat.py)
+  assert.equal(diagnose('rnd-scout', "raise EndpointError('ENDPOINT_TIMEOUT') from None").id, 'timeout');
+  assert.equal(diagnose('playbook-drafts', '"reason": "ENDPOINT_UNREACHABLE"').id, 'model-missing');
   assert.equal(diagnose('something-new', 'odd').id, 'unknown');
 });
 

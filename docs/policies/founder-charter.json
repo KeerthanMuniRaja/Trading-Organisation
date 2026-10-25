@@ -5,6 +5,7 @@
     "acknowledgeWatch": true,
     "raiseBudget": { "maxPctPerChange": 25, "maxTotalPaisePerMonth": "200000" },
     "reduceBudget": true,
+    "reinstateSuspended": true,
     "approveBirths": true,
     "activateReleases": true,
     "qualifyBots": true,

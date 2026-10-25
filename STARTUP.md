@@ -54,8 +54,10 @@ The commands below are for Windows PowerShell. On Linux, use `/` in paths and `.
    node scripts\backup.mjs restore .local\backups\<newest-backup-folder> .data\paper
    ```
 6. **Rebuild the knowledge index:** `npm run knowledge -- build`
-7. **Install the model** (a 2.6 GB download): `npm run model:local -- install qwen3.5-4b-q4km`. Details are in
-   [docs/local-model.md](docs/local-model.md).
+7. **Install the model** (a 2.6 GB download) **and its runtime** (llama.cpp, 19 MB):
+   `npm run model:local -- install qwen3.5-4b-q4km`, then `npm run model:local -- install runtime`. Details are in
+   [docs/local-model.md](docs/local-model.md). Only the supervisor starts the model by itself (`MODEL_AUTOSTART`);
+   without it, start it with `npm run model:local -- serve qwen3.5-4b-q4km` before `npm run cycle -- --with-model`.
 8. **Check everything:**
    - `npm run verify -- --quick`: every line should say `passed`, ending with `ALL CHECKS PASSED`.
    - `npm run preflight`: it should say READY, and it gives a command for any gap.

@@ -173,6 +173,22 @@ test('autonomy routes are guarded by role', async () => {
   } finally { await app.close(); await db.close(); }
 });
 
+test('management-v4: with reinstateSuspended, a standing approval brings a suspended bot back with its smaller budget; without it, it waits', async () => {
+  const f = await setup(); try {
+    await f.db.transaction(tx => tx.query(`INSERT INTO bot_suspensions(id,bot_id,suspended,reason,decided_by) VALUES($1,'bot-one',true,'Loss limit','autonomy-policy')`, [randomUUID()]));
+    await recommend(f, 'reinstate', '375000');
+    await f.autonomy.setPolicy(owner, key(), { rules: { ...OFF, suspendOnRecommendation: true }, reason: 'Protective only' });
+    assert.deepEqual((await f.autonomy.apply(evaluator, key())).actions, []);
+    assert.equal(await f.db.transaction(tx => isSuspended(tx, 'bot-one')), true);
+    await f.autonomy.setPolicy(owner, key(), { rules: { ...OFF, reinstateSuspended: true }, reason: 'Charter: a way back' });
+    const done = await f.autonomy.apply(evaluator, key());
+    assert.deepEqual(done.actions.map(a => String(a.kind)), ['reinstate']);
+    assert.equal(await f.db.transaction(tx => isSuspended(tx, 'bot-one')), false);
+    assert.equal((await f.db.transaction(tx => tx.query("SELECT budget_paise::text AS b FROM bots WHERE id='bot-one'"), false)).rows[0]!.b, '375000');
+    assert.deepEqual(await decidedBy(f), [{ decided_by: 'autonomy-policy', outcome: 'accepted' }]);
+  } finally { await f.db.close(); }
+});
+
 test('CHARTER-01: with reduceBudget, a standing approval cuts the budget of a bot that trails the basket; without it, it waits', async () => {
   const f = await setup(); try {
     await recommend(f, 'reduce-budget', '375000');

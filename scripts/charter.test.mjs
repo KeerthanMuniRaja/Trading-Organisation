@@ -13,6 +13,7 @@ test('the charter sets the brakes first, then the standing approvals, with one r
   assert.deepEqual(sent.map(s => s.url.replace('http://127.0.0.1:3000', '')), ['/v1/protections/policy', '/v1/autonomy/policy']);
   assert.equal(sent[0].body.rules.organisationLossPaise, '200000');                 // the last-resort stop is part of it
   assert.equal(sent[1].body.rules.reduceBudget, true);                               // budget follows evidence both ways
+  assert.equal(sent[1].body.rules.reinstateSuspended, true);                         // and a loss-limit suspension has a way back
   assert.ok(sent.every(s => s.body.reason === 'Founder charter: I leave it to run'));
   await assert.rejects(() => set(env, charter, ' ', fetchImpl), /Say why/);
   assert.throws(() => parts({ autonomy: {} }), /two parts/);
