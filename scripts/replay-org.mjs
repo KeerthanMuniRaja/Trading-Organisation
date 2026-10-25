@@ -7,7 +7,8 @@
 //   - its backend listens on port 3100, not 3000, and the clock refuses any database that is not a replay one;
 //   - no network: prices come from the copied history, cut at each replayed day; no feed is enabled; no model.
 // Commands:
-//   node scripts/replay-org.mjs prepare                       the workspace (worktree, build, settings, prices)
+//   node scripts/replay-org.mjs prepare [--limits MAX_REALISED_LOSS_PAISE=250000,...]
+//        the workspace (worktree, build, settings, prices); --limits tries other .env limits than the live ones
 //   node scripts/replay-org.mjs run --from 2025-04-01 --to 2025-06-30 [--budget-paise 500000]
 //        [--protections docs/policies/protections-suggested.json] [--autonomy docs/policies/autonomy-starter.json]
 //        [--charter docs/policies/founder-charter.json]  (both parts at once, as `npm run charter -- set` applies them)
@@ -38,18 +39,29 @@ export function sessions(bars, from, to) {
   return [...new Set(bars.map(b => b.date))].filter(d => d >= from && d <= to).sort();
 }
 
-/** The replay's own settings: fresh credentials and owner key, the live limits, port 3100, a replay database. */
-export function replaySettings(publicKeyPem) {
+/** `KEY=VALUE,...` limits to try instead of the live ones (only the keys in LIMITS, digits only). */
+export function limitOverrides(text) {
+  const out = {};
+  for (const pair of (text ?? '').split(',').filter(Boolean)) {
+    const [k, v] = pair.split('=');
+    if (!(k in LIMITS) || !/^[0-9]{1,14}$/.test(v ?? '')) throw new Error(`--limits takes KEY=digits for ${Object.keys(LIMITS).join(', ')}; got "${pair}"`);
+    out[k] = v;
+  }
+  return out;
+}
+
+/** The replay's own settings: fresh credentials and owner key, the live limits (or the ones being tried), port 3100, a replay database. */
+export function replaySettings(publicKeyPem, limits = {}) {
   const roles = ['owner', 'researcher', 'evaluator', 'market', 'treasury', 'coordinator'];
   const principals = roles.map(role => ({ id: 'replay-' + role, role, token: randomBytes(32).toString('base64url') }));
   return ['APP_MODE=paper', 'HOST=127.0.0.1', `PORT=${PORT}`, `API_URL=${API}`, 'DATABASE_PATH=.data/replay-paper',
     `PRINCIPALS_JSON='${JSON.stringify(principals)}'`, `OWNER_PUBLIC_KEY_BASE64=${Buffer.from(publicKeyPem).toString('base64')}`,
-    ...Object.entries(LIMITS).map(([k, v]) => `${k}=${v}`), 'PRICE_EVIDENCE_SOURCE=market-yahoo-daily', ''].join('\n');
+    ...Object.entries({ ...LIMITS, ...limits }).map(([k, v]) => `${k}=${v}`), 'PRICE_EVIDENCE_SOURCE=market-yahoo-daily', ''].join('\n');
 }
 
 const sh = (cmd, args, opts = {}) => execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });
 
-async function prepare() {
+async function prepare(limits = {}) {
   if (existsSync(WS)) throw new Error(`${WS} exists: run "clean" first, or "run" to use it`);
   await mkdir(HOME, { recursive: true });
   sh('git', ['-c', 'safe.directory=*', 'worktree', 'add', '--detach', WS, 'HEAD'], { cwd: ROOT });
@@ -58,10 +70,10 @@ async function prepare() {
   const keys = generateKeyPairSync('ed25519');
   await mkdir(join(WS, '.local'), { recursive: true });
   await writeFile(join(WS, '.local', 'owner-signing-key.pem'), keys.privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
-  await writeFile(join(WS, '.env'), replaySettings(keys.publicKey.export({ type: 'spki', format: 'pem' }).toString()), { mode: 0o600 });
+  await writeFile(join(WS, '.env'), replaySettings(keys.publicKey.export({ type: 'spki', format: 'pem' }).toString(), limits), { mode: 0o600 });
   // the full price history, which each replayed day cuts at its own date; and the R&D and method knowledge (no feeds)
   await cp(join(ROOT, '.local', 'trading-desk', 'daily'), FULL, { recursive: true });
-  return { workspace: WS, commit: sh('git', ['-c', 'safe.directory=*', 'rev-parse', '--short', 'HEAD'], { cwd: WS }).trim() };
+  return { workspace: WS, limits: { ...LIMITS, ...limits }, commit: sh('git', ['-c', 'safe.directory=*', 'rev-parse', '--short', 'HEAD'], { cwd: WS }).trim() };
 }
 
 function childEnv() {
@@ -169,8 +181,8 @@ async function run(from, to, budget, policies = {}) {
     const digest = await api(env, 'owner', 'POST', '/v1/owner/digest', { hours: 24 * 31 });
     const performance = await api(env, 'owner', 'POST', '/v1/paper/performance/history', {}).catch(() => null);
     const result = { from, to, sessions: days.length, failedDays: log.filter(l => l.status !== 'done').length, policies: policies.applied ?? {}, log,
-      equityCurves: performance,
-      money: digest.money, trading: digest.trading, benchmark: digest.benchmark, protections: digest.protections, limits: digest.limits,
+      equityCurves: performance, tradingWholeRun: await wholeRun(env),
+      money: digest.money, tradingLast31Days: digest.trading, benchmark: digest.benchmark, protections: digest.protections, limits: digest.limits,
       audit: await api(env, 'owner', 'GET', '/v1/audit/integrity'), finishedAt: new Date().toISOString() };
     await writeFile(REPORT, JSON.stringify(result, null, 2));
     return result;
@@ -179,14 +191,38 @@ async function run(from, to, budget, policies = {}) {
   }
 }
 
+/** Every proposal of the run (the digest covers at most 31 days): counts by review outcome, and rejections by reason. */
+export function tally(signals) {
+  const out = { proposed: signals.length, accepted: 0, rejected: 0, unreviewed: 0, executed: 0, rejectedFor: {} };
+  for (const s of signals) {
+    if (s.execution) out.executed += 1;
+    if (!s.review) { out.unreviewed += 1; continue; }
+    out[s.review.outcome === 'accepted' ? 'accepted' : 'rejected'] += 1;
+    if (s.review.outcome !== 'accepted') {
+      for (const r of s.review.reasons ?? []) if (r !== 'priced-from-verified-close') out.rejectedFor[r] = (out.rejectedFor[r] ?? 0) + 1;
+    }
+  }
+  return out;
+}
+
+async function wholeRun(env) {
+  const signals = [];
+  let before = null;
+  do {
+    const page = await api(env, 'owner', 'POST', '/v1/trading/signals/query', { limit: 200, ...(before ? { before } : {}) });
+    signals.push(...page.signals); before = page.nextBefore;
+  } while (before);
+  return tally(signals);
+}
+
 async function main() {
   const args = process.argv.slice(2), [command] = args;
   const opt = (name, fallback) => { const i = args.indexOf('--' + name); return i >= 0 ? args[i + 1] : fallback; };
-  if (command === 'prepare') { console.log(JSON.stringify(await prepare(), null, 2)); return; }
+  if (command === 'prepare') { console.log(JSON.stringify(await prepare(limitOverrides(opt('limits'))), null, 2)); return; }
   if (command === 'run') {
     const r = await run(opt('from', '2025-04-01'), opt('to', '2025-04-30'), opt('budget-paise', '500000'),
       { protections: opt('protections'), autonomy: opt('autonomy'), charter: opt('charter') });
-    console.log(JSON.stringify({ sessions: r.sessions, failedDays: r.failedDays, policies: r.policies, money: r.money, trading: r.trading,
+    console.log(JSON.stringify({ sessions: r.sessions, failedDays: r.failedDays, policies: r.policies, money: r.money, trading: r.tradingWholeRun,
       benchmark: r.benchmark, protections: r.protections, audit: r.audit }, null, 2));
     return;
   }

@@ -21,9 +21,7 @@ How it is measured:
   counted. A loss window lifts when the losing sales roll out of it.
 - **`equity`** (27 Oct 2026) counts the fall in the bot's total P&L, open positions marked now, since its recorded
   daily mark at the window's start. It pauses buying *during* a fall, even with nothing sold, and lifts once the window
-  starts after the fall stopped. Why it exists: in the 2020 crash replay, realised brakes stayed quiet through the March
-  fall and then tripped on the planned April rebalance, when the losses were finally sold, which kept the bot out of
-  the rebound.
+  starts after the fall stopped.
 - **A streak or cooldown** lifts at the time shown in the status.
 
 ## Where it is enforced
@@ -46,12 +44,20 @@ npm run protections                                                        the p
 npm run protections -- set docs/policies/protections-suggested.json --reason "Founder thresholds"
 ```
 
-The suggested starting thresholds are in
-[`docs/policies/protections-suggested.json`](policies/protections-suggested.json):
-- 2% of budget in a day;
-- 5% in a week;
-- 8% in a month;
-- a 1-day pause after 2 losing exits in a row.
+The suggested thresholds are in
+[`docs/policies/protections-suggested.json`](policies/protections-suggested.json), revised on 27 Oct 2026:
+- measured on value (`equity`);
+- 3% of budget in a day;
+- 6% in a week;
+- no monthly window and no losing-streak brake.
+
+**Why they changed (2020 crash replay, Feb–May, ₹5,000 budget).** The first suggestion (realised losses: 2% a day, 5% a
+week, 8% a month, and a 1-day pause after 2 losing exits) made the bot −15.0%. With no brakes it made −7.5%, and with
+the revised set −6.7%. The basket made −20.6%. The monthly window and the streak brake tripped when the bot's planned
+April rebalance sold March's losers, after the fall was over. They then turned down every retry of the new entries
+until 4 May, through most of the rebound. For a bot that trades once a month, brakes over a month only hurt. No brake
+changed the worst fall (33% in every run), because brakes never touch shares already held. That needs a drawdown rule
+(founder review B4).
 
 ## Where you see it
 

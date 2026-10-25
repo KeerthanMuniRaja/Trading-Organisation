@@ -1,7 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
-import { indiaTime, replaySettings, sessions } from './replay-org.mjs';
+import { indiaTime, limitOverrides, replaySettings, sessions, tally } from './replay-org.mjs';
+
+test('a replay can try other .env limits, only the known ones and only as whole paise', () => {
+  assert.deepEqual(limitOverrides('MAX_REALISED_LOSS_PAISE=250000'), { MAX_REALISED_LOSS_PAISE: '250000' });
+  assert.deepEqual(limitOverrides(undefined), {});
+  assert.throws(() => limitOverrides('PRINCIPALS_JSON=x'), /--limits takes/);
+  assert.throws(() => limitOverrides('MAX_ORDER_PAISE=-5'), /--limits takes/);
+  const pem = generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString();
+  assert.match(replaySettings(pem, { MAX_REALISED_LOSS_PAISE: '250000' }), /^MAX_REALISED_LOSS_PAISE=250000$/m);
+  assert.match(replaySettings(pem), /^MAX_REALISED_LOSS_PAISE=100000$/m);
+});
+
+test('the report counts every proposal of the run and why the rejected ones were turned down', () => {
+  const reject = reasons => ({ review: { outcome: 'rejected', reasons: [...reasons, 'priced-from-verified-close'] } });
+  assert.deepEqual(tally([{ review: { outcome: 'accepted', reasons: [] }, execution: { side: 'buy' } }, reject(['protection-monthly-loss']),
+    reject(['protection-monthly-loss', 'protection-losing-streak']), {}]),
+    { proposed: 4, accepted: 1, rejected: 2, unreviewed: 1, executed: 1, rejectedFor: { 'protection-monthly-loss': 2, 'protection-losing-streak': 1 } });
+});
 
 test('the replay runs each trading day after its close, on its own settings, never the live ones', () => {
   assert.equal(indiaTime('2025-04-01', 16, 10), '2025-04-01T10:40:00.000Z');   // 16:10 IST, after the close

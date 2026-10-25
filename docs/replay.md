@@ -44,7 +44,8 @@ node scripts/replay-org.mjs clean                                     remove it 
 The report gives:
 - the days that failed;
 - the money, by bot;
-- the trading counts (proposed, accepted, rejected, executed, scored, refused);
+- the trading counts over the whole run (proposed, accepted, rejected with reasons, executed), and the last month's
+  from the digest (also scored and refused);
 - each bot against the basket;
 - the protections and the loaded limits;
 - the audit chain's integrity.
@@ -67,4 +68,27 @@ Each replayed day's own cycle journal and digest are in the workspace's `.local/
   - **Result:** momentum-rules **+6.64% against the basket's +8.58%, 1.94 points behind.** Worst fall 3.6%, Sharpe
     2.0. The same picture as the research: no edge over holding the basket.
   - **Seen:** a rebalance takes about three sessions end to end (exit, then buy once the cash is free), so the money
-    waits in cash for two sessions. That is safe, but it costs a little in a rising market.
+    waits in cash for two sessions. That is safe, but it costs a little in a rising market. The cycle now has a
+    second rule-bot pass after the exits fill, so the buys go in a session sooner.
+
+## The 2020 crash, February–May 2020 (77 trading days, ₹5,000 budget)
+
+Each run had no failed day and a valid audit chain. The basket made −20.6% in every run.
+
+| Brakes | momentum-rules | What happened |
+| --- | --- | --- |
+| None | −7.5% | Held the banks into the March fall; the April rebalance moved to INFY and NTPC |
+| The first suggested set (realised losses: 2% a day, 5% a week, 8% a month, a pause after 2 losing exits) | **−15.0%** | The April rebalance sold March's losers and tripped the monthly and streak brakes. Every new buy was turned down until 4 May, so the money sat in cash through the rebound |
+| The same, with the rule bot retrying refused buys | −15.0% | The retries worked (one a day), but the monthly brake turned each one down until 4 May |
+| Value-based, daily and weekly only (now suggested) | −6.7% | Never needed to act: the bot buys monthly, and by the April rebalance the fall had stopped |
+
+The worst fall was 33% in every run: brakes stop new buys and never touch shares already held. Two settings would
+have stopped an unattended organisation for good:
+- **the charter's first last-resort stop (₹1,500):** the bot's worst point was −₹1,542, at the bottom on 23 March;
+- **the `.env` lifetime realised-loss limit (₹1,000):** the run used ₹947 of it.
+
+Both are revised or flagged in the [charter](charter.md) (founder review B3 and B27).
+
+**Report changes from these runs.** `tradingWholeRun` counts every proposal of the run, with rejections by reason.
+The digest's own counts (`tradingLast31Days`) cover only the last month. `prepare --limits KEY=VALUE,...` tries
+`.env` limits other than the live ones.
