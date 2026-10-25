@@ -4,6 +4,7 @@ import { owner, trader, evaluator, market, fixture, key } from './helpers.js';
 import { activePauses, Protections } from '../src/protections.js';
 import { OwnerDigest } from '../src/owner-digest.js';
 import { TradeSignals, RULES_VERSION } from '../src/trade-signals.js';
+import { PaperPerformance } from '../src/paper-performance.js';
 
 const DAY = 86_400_000;
 
@@ -81,5 +82,32 @@ test('protections pause new buys by themselves after losses, never exits, and li
     const d = await new OwnerDigest(f.db, f.cfg).digest(owner, {});
     assert.deepEqual(d.protections, { policySet: true, paused: [] });
     assert.throws(() => protections.status(trader, {}));
+  } finally { await f.db.close(); }
+});
+
+test('equity brakes pause new buys during a fall in open positions, with no sale, and lift once the fall stops', async () => {
+  const f = await fixture();
+  try {
+    const e = await f.evidence(); await f.deposit('500000');
+    await f.org.bot(owner, key(), { id: 'bot-one', name: 'Fixture', department: 'research', specialty: 'demo', method: 'test', contribution: 'Protection fixture', budgetPaise: '1000000' });
+    await f.db.transaction(tx => tx.query("UPDATE bots SET state='paper' WHERE id='bot-one'"));
+    const quote = (paise: string) => f.paper.quote(market, key(), { symbol: 'DEMO', bidPaise: paise, askPaise: paise, observedAt: new Date().toISOString(), sourceId: e.sourceId });
+    await quote('10000');
+    const o = await f.paper.reserve(trader, key(), { botId: 'bot-one', symbol: 'DEMO', side: 'buy', quantity: 20, evidenceId: e.evidenceId });
+    await f.paper.fill(trader, key(), { orderId: o.id });
+    const protections = new Protections(f.db);
+    const pauses = (now = Date.now()) => f.db.transaction(tx => activePauses(tx, 'bot-one', null, now), false);
+
+    // a 6% fall on 20 shares: 12,000 paise, 1.2% of the budget, all of it open
+    await quote('9400');
+    await protections.setPolicy(owner, key(), { rules: { dailyLossPct: 1 }, reason: 'Realised brakes' });
+    assert.deepEqual(await pauses(), []);                                   // nothing was sold, so realised brakes see nothing
+    await protections.setPolicy(owner, key(), { rules: { dailyLossPct: 1, measure: 'equity' }, reason: 'Equity brakes' });
+    const [pause] = await pauses();
+    assert.equal(pause!.code, 'protection-daily-loss');
+    assert.match(pause!.detail, /fall in value \(open positions included\)/);
+    // today's mark is recorded; a day later, with no further fall, the daily window measures from that mark and lifts
+    await new PaperPerformance(f.db).snapshot(evaluator, key());
+    assert.deepEqual(await pauses(Date.now() + 1.5 * DAY), []);
   } finally { await f.db.close(); }
 });

@@ -1,0 +1,11 @@
+{
+  "note": "Alternative thresholds for founderReview.md B3: brakes on the fall in value (open positions included), daily and weekly only. Monthly windows and losing-exit streaks are left off: for a bot that rebalances monthly they trip on the planned rebalance itself, after the fall is over (the 2020 crash replay). Set with: npm run protections -- set docs/policies/protections-equity.json --reason \"...\". Pauses hold new buys only and lift by themselves.",
+  "rules": {
+    "measure": "equity",
+    "dailyLossPct": 3,
+    "weeklyLossPct": 6,
+    "monthlyLossPct": null,
+    "losingExits": null,
+    "shareCooldownDays": null
+  }
+}

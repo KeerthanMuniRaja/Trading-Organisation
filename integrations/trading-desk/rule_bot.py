@@ -157,11 +157,12 @@ def run(bot_id, source_id, env=os.environ, cache=daily.DAILY, opener=None, now=N
         path.write_text(json.dumps(decision, indent=2), encoding='utf-8')
     rows = [tuple(r) for r in decision['ranking']]
     top = [r[0] for r in rows[:KEEP]]
-    # a proposal refused only for a passing reason counts as not sent, so it is tried again (and the newest attempt decides)
-    latest = {}
+    # a proposal refused only for a passing reason counts as not sent, so it is tried again on a later day, at most once a
+    # day (the newest attempt decides)
+    latest, today = {}, now.strftime('%Y-%m-%d')
     for s in sorted(mine, key=lambda x: x['createdAt']):
         latest[(s['action'], s['symbol'])] = s
-    sent = {k for k, s in latest.items() if not retryable(s)}
+    sent = {k for k, s in latest.items() if not (retryable(s) and s['createdAt'][:10] < today)}
     plan = [p for p in proposals(rows, holdings, bot_id, decision['evidenceId'], now) if (p['action'], p['symbol']) not in sent]
     exits = [p for p in plan if p['action'] == 'exit']
     if not plan:

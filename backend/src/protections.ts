@@ -3,14 +3,15 @@ import { z } from 'zod';
 import { Actor, id, parse, permit, requireThat, uuid } from './core.js';
 import { Database, Sql, audit } from './database.js';
 import { Allow } from './security.js';
-import { compute as paperPerformance } from './paper-performance.js';
+import { compute as paperPerformance, indiaDay } from './paper-performance.js';
 
 // Self-expiring protections (PROTECT-01, from freqtrade's protections and the trading-skills circuit breaker): brakes
 // that pause a bot's NEW BUYS by themselves and lift by themselves, so the organisation can run unattended without a
 // person having to resume anything. Exits are never blocked, so risk can only fall while a pause holds. The owner sets
 // the thresholds (a policy, owner only, never the standing-approvals agent); with no policy nothing is paused. Checked
 // wherever the halt is: the risk review (a recorded reason) and the paper order's reserve and fill (a refusal).
-// Windows are rolling calendar days, measured on realised P&L in the ledger (fees, sales and dividends).
+// Windows are rolling calendar days, measured on realised P&L in the ledger (fees, sales and dividends), or on the fall in
+// value with open positions included when the policy says `measure: 'equity'`.
 
 const pct = z.number().min(0.1).max(50);
 const days = z.number().int().min(1).max(30);
@@ -19,6 +20,10 @@ export const protectionRules = z.object({
   dailyLossPct: pct.nullable().default(null),
   weeklyLossPct: pct.nullable().default(null),
   monthlyLossPct: pct.nullable().default(null),
+  /** What the loss windows measure: 'realised' (sales, fees and dividends in the ledger) or 'equity' (the fall in the
+   *  bot's total P&L, open positions marked now, since its recorded mark at the window's start). The 2020 replay showed
+   *  realised brakes trip on a planned rebalance after the fall is over; equity brakes trip during the fall itself. */
+  measure: z.enum(['realised', 'equity']).default('realised'),
   /** Pause new buys for `pauseDays` after `inARow` losing exits in a row. */
   losingExits: z.object({ inARow: z.number().int().min(2).max(10), pauseDays: days }).strict().nullable().default(null),
   /** No new buy of a share for this many days after the bot sold it. */
@@ -49,6 +54,15 @@ async function realisedLoss(tx: Sql, botId: string, windowDays: number, now: num
     [botId, windowDays, new Date(now).toISOString()])).rows[0]!.value);
 }
 
+/** A bot's fall in total P&L (positive = loss) since its snapshot at the window's start (none yet: since it began at 0). */
+async function equityLoss(tx: Sql, botId: string, windowDays: number, now: number) {
+  const current = (await paperPerformance(tx, botId, now))[0];
+  if (!current) return 0n;
+  const base = (await tx.query(`SELECT (realised_paise+unrealised_paise)::text AS total FROM paper_performance_snapshots
+    WHERE bot_id=$1 AND day <= $2::date ORDER BY day DESC LIMIT 1`, [botId, indiaDay(now - windowDays * DAY_MS)])).rows[0];
+  return BigInt(base?.total ?? '0') - (BigInt(current.realisedPaise) + BigInt(current.unrealisedPaise));
+}
+
 export type Pause = { code: string; detail: string; until: string | null };
 
 /** The pauses holding a bot's new buys of `symbol` now (empty when none, or with no policy). */
@@ -60,10 +74,10 @@ export async function activePauses(tx: Sql, botId: string, symbol: string | null
   for (const [field, windowDays, code] of WINDOWS) {
     const limit = r[field];
     if (limit === null || budget <= 0n) continue;
-    const loss = await realisedLoss(tx, botId, windowDays, now);
+    const loss = r.measure === 'equity' ? await equityLoss(tx, botId, windowDays, now) : await realisedLoss(tx, botId, windowDays, now);
     // compare in basis points of the budget, in integers
     if (loss > 0n && loss * 10000n >= budget * BigInt(Math.round(limit * 100))) {
-      out.push({ code, detail: `realised loss ${loss} paise over the last ${windowDays} day(s) is at least ${limit}% of the budget`, until: null });
+      out.push({ code, detail: `${r.measure === 'equity' ? 'fall in value (open positions included)' : 'realised loss'} ${loss} paise over the last ${windowDays} day(s) is at least ${limit}% of the budget`, until: null });
     }
   }
   if (r.losingExits) {

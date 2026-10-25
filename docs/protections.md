@@ -11,14 +11,19 @@ the trading-skills circuit breaker; the code is our own.
 
 | Rule | Pauses new buys while |
 | --- | --- |
-| `dailyLossPct`, `weeklyLossPct`, `monthlyLossPct` (0.1–50) | the bot's realised loss over the last 1, 7 or 30 days is at least this share of its budget |
+| `dailyLossPct`, `weeklyLossPct`, `monthlyLossPct` (0.1–50) | the bot's loss over the last 1, 7 or 30 days is at least this share of its budget |
+| `measure`: `realised` (default) or `equity` | what those loss windows count (below) |
 | `losingExits: {inARow (2–10), pauseDays (1–30)}` | its last `inARow` exits all lost, for `pauseDays` after the last one |
 | `shareCooldownDays` (1–30) | for a share it sold within that many days (that share only) |
 
 How it is measured:
-- **Realised loss** comes from the ledger: fees, sales and dividends, per bot, over rolling calendar days. Open losses
-  are not counted; a drawdown halt on marked value is a separate decision (B4).
-- **A loss window** lifts when the losing sales roll out of it.
+- **`realised`** counts the ledger: fees, sales and dividends, per bot, over rolling calendar days. Open losses are not
+  counted. A loss window lifts when the losing sales roll out of it.
+- **`equity`** (27 Oct 2026) counts the fall in the bot's total P&L, open positions marked now, since its recorded
+  daily mark at the window's start. It pauses buying *during* a fall, even with nothing sold, and lifts once the window
+  starts after the fall stopped. Why it exists: in the 2020 crash replay, realised brakes stayed quiet through the March
+  fall and then tripped on the planned April rebalance, when the losses were finally sold, which kept the bot out of
+  the rebound.
 - **A streak or cooldown** lifts at the time shown in the status.
 
 ## Where it is enforced
