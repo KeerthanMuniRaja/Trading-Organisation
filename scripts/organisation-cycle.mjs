@@ -106,6 +106,17 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     { id: 'knowledge-refresh', cmd: PY, args: [desk('live_knowledge.py'), 'refresh'], timeoutMs: 120_000 },
     // MENTOR-01: the mentor's lessons, each re-checked on today's data (no model, no network)
     { id: 'mentor-refresh', cmd: PY, args: [desk('mentor.py'), 'refresh'], timeoutMs: 120_000 },
+    // RESEARCH-02: the NIFTY 500 research files (never traded) stay at most a month old, a few dozen downloads a day from
+    // the approved price source; the factor lab judges each month once it has closed; MENTOR-02 turns both findings
+    // into the organisation's own lessons, which the debate reads beside the mentor's
+    process.env.REPLAY_PRICES
+      ? { id: 'broad-data', skip: 'replay: no network' }
+      : { id: 'broad-data', cmd: PY, args: [desk('daily.py'), 'fetch', '--universe', 'nifty500', '--years', '10', '--refresh',
+          '--max-age-days', '28', '--limit', '40'], timeoutMs: 600_000,
+          requires: join(root, '.local', 'trading-desk', 'datasets', 'ind_nifty500list.csv') },
+    { id: 'factor-lab', cmd: PY, args: [desk('factor_lab.py'), '--monthly'], timeoutMs: 600_000,
+      requires: join(root, '.local', 'trading-desk', 'daily-nifty500') },
+    { id: 'organisation-lessons', cmd: PY, args: [desk('organisation_lessons.py')], timeoutMs: 120_000 },
     // the model-free rule bot proposes once a month, before the end-of-day trader reviews; it runs only once the owner
     // has created and qualified it and named it here (RULE_BOT_ID), with a trader credential bound to it
     // AUTO-05 self-repair: a code fix under the same rule is prepared as a release by the agents, and the standing

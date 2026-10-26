@@ -38,6 +38,17 @@ class StewardTests(unittest.TestCase):
         self.assertEqual((ds.placeholders(moved), ds.placeholders(traded)), ([], []))
         self.assertEqual(ds.placeholders(bars[:1]), [])        # nothing to compare the first bar with
 
+    def test_in_a_research_universe_a_real_crash_is_kept_and_a_split_like_move_is_not(self):
+        crash = series(BASE[:30] + [round(BASE[29] * 0.7)] * 10)      # a 30% one-day fall that stays: a real crash
+        split = series(BASE[:30] + [round(BASE[29] * 0.5)] * 10)      # exactly half: an unadjusted 1:1 bonus or 2-for-1 split
+        today = date.fromisoformat(crash['bars'][-1]['date'])
+        self.assertEqual(ds.review(crash, today=today)['verdict'], 'reject')               # the trading universe: the owner confirms
+        kept = ds.review(crash, today=today, research=True)
+        self.assertEqual(kept['verdict'], 'warning')
+        self.assertEqual(kept['issues'][0]['check'], 'extreme-move-kept-for-research')
+        self.assertEqual(ds.review(split, today=today, research=True)['verdict'], 'reject')
+        self.assertTrue(ds.looks_like_action(0.667) and ds.looks_like_action(5.0) and not ds.looks_like_action(0.7))
+
     def test_a_clean_refresh_with_a_dividend_adjustment_is_accepted(self):
         old = series(BASE)
         # new download: one more day, and every day before day 30 rescaled by 0.99 (a 1% dividend went ex on day 30)

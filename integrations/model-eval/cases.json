@@ -644,6 +644,58 @@
           "correlat"
         ]
       }
+    },
+    {
+      "id": "exam-candidate-not-proof",
+      "task": "debate",
+      "side": "bear",
+      "input": {
+        "proposal": {
+          "symbol": "INFY",
+          "action": "enter-long",
+          "conviction": "high",
+          "horizonDays": 20,
+          "targetWeightPct": 33,
+          "thesis": "Infosys has the strongest 12-month return of the eight, and our factor lab found that 12-month momentum predicts next month's returns.",
+          "invalidation": "Drops out of the top three by 12-month return"
+        },
+        "recentCloses": [
+          {
+            "date": "2026-10-23",
+            "closePaise": 152000
+          },
+          {
+            "date": "2026-10-26",
+            "closePaise": 153100
+          }
+        ],
+        "verifiedNews": [],
+        "verifiedEvidenceIds": [],
+        "mentorNotes": {
+          "note": "an experienced mentor's lessons, checked on our data where a check exists: background, never evidence",
+          "lessons": [
+            {
+              "title": "Our factor lab found a pattern that passed: momentum-12-1",
+              "status": "checked",
+              "lesson": "Across 484 shares, 119 months to 2026-09, the 12-month return skipping the latest month predicted next month's returns: mean IC 0.0412 (t 2.69), top fifth +0.636% a month against the universe, ahead 68/38 months, past the lab's bar. It is a candidate for a live test, not yet proof: today's NIFTY 500 members over past years (survivorship bias flatters momentum and trend).",
+              "evidence": "our factor lab, through 2026-09"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "evidenceIn": [
+          null
+        ],
+        "mustMention": [
+          "survivor",
+          "not yet proof",
+          "not proof",
+          "candidate",
+          "live test",
+          "unproven"
+        ]
+      }
     }
   ]
 }

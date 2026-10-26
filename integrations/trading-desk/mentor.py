@@ -208,14 +208,23 @@ def refresh(curriculum=CURRICULUM, out=OUT, cache=daily.DAILY, now=None):
     return report
 
 
+def method_of(model):
+    """The method family behind a proposal's model name (e.g. 'rules:top3-momentum-6m' -> 'momentum'), or None."""
+    text = str(model or '').lower()
+    return next((m for m in ('momentum', 'reversal', 'low-vol', 'trend', 'pullback') if m in text), None)
+
+
 def notes_for(symbol=None, events=(), regime=None, method=None, path=OUT, limit=MAX_NOTES):
     """The lessons that fit one decision, most specific first (its share, an event coming up, the regime, its method,
-    then the always-true ones), contradicted lessons left out; each as {title, lesson, status, evidence}."""
-    if not Path(path).exists():
+    then the always-true ones), contradicted lessons left out; each as {title, lesson, status, evidence}. Read from the
+    mentor's checked curriculum AND the organisation's own lessons beside it (organisation_lessons.py, MENTOR-02)."""
+    files = [p for p in (Path(path), Path(path).parent / 'organisation-lessons.json') if p.exists()]
+    if not files:
         return []
     share = (symbol or '').removesuffix('.NS')
     scored = []
-    for k, lesson in enumerate(json.loads(Path(path).read_text(encoding='utf-8'))['lessons']):
+    pool = [l for p in files for l in json.loads(p.read_text(encoding='utf-8'))['lessons']]
+    for k, lesson in enumerate(pool):
         if lesson['status'] == 'contradicted':
             continue
         a = lesson.get('appliesTo', {})

@@ -44,8 +44,29 @@ the whole catalogue (0.05 / 8), it is ahead of the basket in both halves of the 
 .local\replay-venv\Scripts\python.exe integrations\trading-desk\factor_lab.py [--through YYYY-MM]
 ```
 
-The report is saved to `.local/trading-desk/rnd/factor-lab-<month>.json`.
+The report is saved to `.local/trading-desk/rnd/factor-lab-<month>.json`. With `--monthly` (the daily cycle's
+`factor-lab` step) it does nothing once last month has a report.
 
-## Results
+**In the daily cycle.** The `broad-data` step keeps the files at most 28 days old, with at most 40 downloads a run. The
+`factor-lab` step judges each closed month. The `organisation-lessons` step turns the newest report into lessons that the
+debate reads ([mentor](mentor.md)).
 
-See the [project log](project-log/2026-10-27.md) for the first full run.
+**Research universe rule.** In the research universe, a large one-day move whose ratio does not look like a split or
+bonus (1/2, 1/3, 2/3 … 10) is kept and flagged `extreme-move-kept-for-research`, not rejected. Rejecting every big move
+left out the volatile companies, which tilted the universe towards calm shares. Split-like jumps are still rejected:
+they are probably unadjusted actions. The desk's own traded files keep the strict rule.
+
+## Results (through September 2026, 119 months)
+
+| Run | Shares | momentum-12-1 | momentum-6m | Low volatility | Basket after tax |
+| --- | --- | --- | --- | --- | --- |
+| Strict steward (98 shares held back) | 396 | IC t 2.23, **no pass** | top fifth ahead 72/40, IC t 1.82, no pass | top fifth behind the basket | 23.57% a year |
+| Research rule (88 of them restored) | 484 | IC t **2.69**, top fifth ahead 68/38: **passes** | IC t 2.35, ahead 75/37, no pass | behind the basket (ahead 43/73), no IC signal | 22.85% a year |
+
+momentum-12-1 is the first factor to pass. **It is a candidate, not proof.**
+
+- It passed only once the volatile shares were back. A result that rests on which shares were kept is fragile.
+- The universe is today's members: survivorship bias flatters momentum most.
+
+Next, under founder review B14: re-test it on point-in-time membership, then run a pre-registered forward test before any
+bot uses it. Trend-200d (IC t 1.92) and near-52w-high (1.84) point the same way but fail the bar.

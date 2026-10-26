@@ -98,6 +98,21 @@ test('the rule bot gets a second, release-gated pass after today\'s fills, so it
   } finally { if (before === undefined) delete process.env.RULE_BOT_ID; else process.env.RULE_BOT_ID = before; }
 });
 
+test('the broad research data is refreshed a little each day, never in a replay, and feeds the lab and the lessons', async () => {
+  const before = process.env.REPLAY_PRICES;
+  try {
+    delete process.env.REPLAY_PRICES;
+    const plan = await planSteps({ root: '/nowhere' });
+    const ids = plan.map(s => s.id);
+    assert.ok(ids.indexOf('broad-data') < ids.indexOf('factor-lab') && ids.indexOf('factor-lab') < ids.indexOf('organisation-lessons'));
+    const broad = plan.find(s => s.id === 'broad-data');
+    assert.ok(broad.args.includes('--max-age-days') && broad.args.includes('--limit') && broad.requires);
+    assert.ok(plan.find(s => s.id === 'factor-lab').args.includes('--monthly'));
+    process.env.REPLAY_PRICES = 'x';
+    assert.ok((await planSteps({ root: '/nowhere' })).find(s => s.id === 'broad-data').skip);
+  } finally { if (before === undefined) delete process.env.REPLAY_PRICES; else process.env.REPLAY_PRICES = before; }
+});
+
 test('a model step that keeps failing rests behind an open circuit, tries again later, and one success closes it', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'circuit-'));
   try {

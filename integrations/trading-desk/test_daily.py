@@ -37,6 +37,41 @@ class HistoryLengthTests(unittest.TestCase):
             self.assertEqual(daily.years_to_fetch(path, 5, today=date(2026, 10, 20)), 5)
 
 
+class StaleRefreshTests(unittest.TestCase):
+    def test_a_capped_refresh_downloads_only_stale_files_and_defers_the_rest(self):
+        import types
+        from unittest import mock
+        fake_yf = types.SimpleNamespace(set_tz_cache_location=lambda _: None)
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp)
+            for symbol, last in (('INFY.NS', '2026-10-23'), ('ITC.NS', '2026-08-01'), ('NTPC.NS', '2026-07-01'), ('SBIN.NS', '2026-06-01')):
+                data = synthetic_daily(symbol, years=2)
+                data['bars'][-1]['date'] = last
+                (cache / f'{symbol}-1d.json').write_text(json.dumps(data), encoding='utf-8')
+            got = []
+            with mock.patch.dict(sys.modules, {'yfinance': fake_yf}), \
+                    mock.patch.object(daily, '_download', lambda yf, s, *a: got.append(s) or {'symbol': s, 'state': 'unchanged'}):
+                results = daily.fetch(['INFY.NS', 'ITC.NS', 'NTPC.NS', 'SBIN.NS'], cache=cache, refresh=True, max_age_days=28, limit=2,
+                                      today=date(2026, 10, 27))
+            self.assertEqual(got, ['ITC.NS', 'NTPC.NS'])                # INFY is fresh; two stale files per run
+            self.assertEqual([r['state'] for r in results], ['cached', 'unchanged', 'unchanged', 'deferred'])
+
+
+class LabScheduleTests(unittest.TestCase):
+    def test_the_lab_reruns_only_until_last_month_has_a_report(self):
+        import factor_lab
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            (out / 'factor-lab-2026-08.json').write_text('{}', encoding='utf-8')
+            self.assertIsNone(factor_lab.up_to_date(out, today=date(2026, 10, 27)))     # September not judged yet
+            (out / 'factor-lab-2026-09.json').write_text('{}', encoding='utf-8')
+            self.assertEqual(factor_lab.up_to_date(out, today=date(2026, 10, 27)).name, 'factor-lab-2026-09.json')
+            self.assertIsNone(factor_lab.up_to_date(out, today=date(2026, 11, 2)))      # October's trade has closed
+            (out / 'factor-lab-2025-12.json').write_text('{}', encoding='utf-8')
+            self.assertIsNone(factor_lab.up_to_date(Path(tmp) / 'none', today=date(2026, 1, 5)))
+            self.assertEqual(factor_lab.up_to_date(out, today=date(2026, 1, 5)).name, 'factor-lab-2026-09.json')
+
+
 class SettledBarTests(unittest.TestCase):
     def test_todays_bar_is_kept_only_after_the_session_has_settled(self):
         from datetime import datetime, timezone

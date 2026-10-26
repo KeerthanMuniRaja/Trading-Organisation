@@ -235,10 +235,22 @@ def lab(cache=daily.BROAD, symbols=None, through=None):
             'at': datetime.now(timezone.utc).isoformat()}
 
 
+def up_to_date(out, today=None):
+    """The report that already judges last month, if any: a month is judged once its trade has closed (early next month),
+    so the daily cycle reruns the lab only until that report exists."""
+    today = today or datetime.now(timezone.utc).date()
+    last = f'{today.year - (today.month == 1)}-{(today.month - 2) % 12 + 1:02d}'
+    return next((p for p in sorted(out.glob('factor-lab-*.json'), reverse=True) if p.stem[len('factor-lab-'):] >= last), None)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--through', help='last month to judge (YYYY-MM)')
+    parser.add_argument('--monthly', action='store_true', help='for the daily cycle: skip once last month has a report')
     args = parser.parse_args(argv)
+    if args.monthly and up_to_date(OUT):
+        print(json.dumps({'skipped': 'last month already judged', 'report': up_to_date(OUT).name}))
+        return
     report = lab(through=args.through)
     OUT.mkdir(parents=True, exist_ok=True)
     batch.save(OUT / f"factor-lab-{report['through']}.json", report)

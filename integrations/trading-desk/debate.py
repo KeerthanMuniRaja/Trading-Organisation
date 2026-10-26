@@ -247,7 +247,8 @@ def run(llm, env=os.environ, cache=daily.DAILY, opener=None, headlines_path=HEAD
         contents = evidence_texts(checker, signal.get('evidenceIds', []), opener)
         risk = str((knowledge or {}).get('marketRegime', '')).split(' ')[0]
         notes = mentor.notes_for(signal['symbol'], events=[e['kind'] for e in calendar['events']],
-                                 regime=risk if risk in ('NORMAL', 'CAUTION', 'HIGH', 'SEVERE') else None)
+                                 regime=risk if risk in ('NORMAL', 'CAUTION', 'HIGH', 'SEVERE') else None,
+                                 method=mentor.method_of(signal.get('model')))
         ctx = context(signal, cache, headlines, knowledge, record, news_status, press, reads, calendar, contents, notes)
         # a real debate: the bear argues first and the bull answers the bear's case (same two calls as before)
         bear_case = (argued.get(bots['bear']) or {}).get('argument')

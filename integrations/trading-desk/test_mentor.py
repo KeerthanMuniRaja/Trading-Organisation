@@ -60,6 +60,12 @@ class MentorTests(unittest.TestCase):
         self.assertEqual(titles(symbol='ITC'), ['Costs'])                 # the bank lesson does not apply to ITC
         self.assertNotIn('Wrong', titles(symbol='SBIN'))                  # contradicted by our data: never shown
         self.assertEqual(mentor.notes_for(symbol='SBIN', path=Path(self.tmp.name) / 'none.json'), [])
+        # MENTOR-02: the organisation's own lessons beside the mentor's are read too, and reach the method they are about
+        (self.out.parent / 'organisation-lessons.json').write_text(json.dumps({'lessons': [
+            {'id': 'org-factor-momentum-6m', 'title': 'A lead, not an edge: momentum-6m', 'lesson': 'm', 'appliesTo': {'methods': ['momentum']}, 'status': 'checked'}]}), encoding='utf-8')
+        self.assertIn('A lead, not an edge: momentum-6m', titles(symbol='ITC', method=mentor.method_of('rules:top3-momentum-6m')))
+        self.assertNotIn('A lead, not an edge: momentum-6m', titles(symbol='ITC'))
+        self.assertEqual((mentor.method_of('rules:top3-momentum-6m'), mentor.method_of('qwen3.5-4b'), mentor.method_of(None)), ('momentum', None, None))
 
     def test_the_debate_sees_the_notes_as_background_data(self):
         signal = {'id': 's', 'symbol': 'SBIN', 'createdAt': '2026-10-23T11:00:00Z', 'evidenceIds': []}

@@ -11,7 +11,7 @@ answering in a session ("decision 3: yes"). This file is updated as items close.
   - `trend-bot` (₹1,000 budget) is +₹48 overall, and 1.8 points ahead of the basket since 16 Oct.
 - **Backend:** one full live cycle ran on 22 Oct, with all 35 steps done. Migrations 052–054 are applied. The backend
   was stopped again afterwards.
-- **Model:** Qwen 3.5-4B passes **7 of 8** evaluation tasks. R&D invention and the allocator wait on B10 and B11. It
+- **Model:** Qwen 3.5-4B passes **6 of 8** evaluation tasks (corrected 27 Oct; earlier copies said 7). R&D invention and the allocator wait on B10 and B11. It
   is installed but not yet switched on in the cycle (step A5).
 - **Research:** on 10 years of data, no strategy beats simply holding the 8 shares after costs and tax. The most
   consistent lead is quarterly momentum: all 4 neighbouring settings also beat the basket, but it is not proven (p 0.10).
@@ -103,6 +103,8 @@ with `npm run agenda`.
 | B4 | **Unrealised-loss protection and horizon exits** | A portfolio drawdown halt on marked value; optional trailing stops; close or renew a position when its horizon passes | **Yes to the drawdown halt and horizon renewal;** stops optional | [gap analysis A2](docs/research-notes/README.md) |
 | B26 | **The organisation exposure limit** | Today it equals the order limit (₹5,000). momentum-rules holds about ₹4,139, so trend-bot can barely use its ₹1,000 budget, and we learn little from it | **Raise it, for example `MAX_EXPOSURE_PAISE=1000000` (₹10,000) in `.env`,** then restart the backend. The digest's limits banner shows the loaded value | Found in the 22 Oct run |
 | B27 | **The lifetime realised-loss limit** | `MAX_REALISED_LOSS_PAISE` counts the organisation's net realised loss over its **whole life**; at the limit every new buy stops until you raise it. Today it is ₹1,000 | **Raise it to ₹2,500 (`MAX_REALISED_LOSS_PAISE=250000`) if you apply the charter.** The 2020 crash alone used ₹947 of ₹1,000, so a year unattended would freeze. The charter's stop (₹2,000, open losses included) then fires first, and this hard limit sits above it | [charter](docs/charter.md), 2020 replay |
+| B28 | **Real Indian trading charges on paper fills** (added 27 Oct) | `PAPER_COST_MODEL=flat` (today: 10 bps each side) or `nse-delivery` (STT 0.1% each side, stamp duty on buys, exchange and SEBI fees with GST, and a Rs 15.93 depository charge on every sale, the rates the research desk already uses) | **Switch to `nse-delivery`** in `.env`, then restart the backend. At your order sizes the depository charge is about 1.1% of a Rs 1,400 sale, so a monthly rebalance of three shares costs about Rs 48, roughly 1% of a Rs 5,000 budget a month, which the flat 10 bps never showed. It makes the paper record honest and strengthens the case for slower rebalancing (B1). Earlier fills keep the charges they were booked with | `backend/src/config.ts` `paperFee`; test in `backend/test/regression.test.ts` |
+| B29 | **A sector limit** (added 27 Oct) | `sectorLimit: {maxPct, sectors}` in the protections policy: no bot holds more than `maxPct` of its budget in one sector; the review sizes a buy down to the room left. Exits are never limited | **Yes, 50%**, applied with the brakes: `npm run protections -- set docs/policies/protections-with-sectors.json --reason "Brakes and a sector limit"`. Our four banks move together (correlation 0.47 against 0.26 with the rest); at 50% the momentum bot can still hold one bank fully and a second in part, never three | [protections](docs/protections.md) |
 | B5 | **The regime as a sizing input** | Today the regime is advice only. Option: size new buys down at HIGH or SEVERE | **Not yet.** Regime v2 (closer to the original specification) was tested on 21 Oct: it warns of falls less sharply than v1 and calls SEVERE on 42% of days. A re-entry signal is still untested | [market regime](docs/market-regime.md) |
 
 ### Research and scoring
@@ -127,7 +129,7 @@ with `npm run agenda`.
 | # | Approval | Why | Note |
 | --- | --- | --- | --- |
 | B13 | **Confirm the data terms:** Yahoo prices and publisher RSS headlines for personal paper research | Our only price and news sources | Publisher terms could not be read automatically |
-| B14 | **Point-in-time index membership** (NIFTY 200/500 as they were each month) | The biggest lever for proving any skill. Today's members over past years flatter every result | NSE reconstitution press releases (manual download) or a paid dataset |
+| B14 | **Point-in-time index membership** (NIFTY 200/500 as they were each month) | The biggest lever for proving any skill. Today's members over past years flatter every result. **Now urgent:** on 484 of today's NIFTY 500 members, 12-month momentum passed the factor lab (27 Oct 2026, [factor lab](docs/factor-lab.md#results-through-september-2026-119-months)). This list is the only way to tell whether that is real or survivorship | NSE reconstitution press releases (manual download) or a paid dataset |
 | B15 | **A fundamentals and filings data provider** | Results against expectations, promoter trades, flows: where the model can genuinely help | Most likely paid. NSE and BSE pages restrict scraping |
 | B16 | **A second price source** (NSE bhavcopy) and a catalyst calendar (results, RBI, Budget, FOMC) | Cross-checks prices; knows what is scheduled | Manual or approved download |
 
@@ -210,7 +212,8 @@ These are fixes from the gap analysis that need no decision.
   - an events calendar for the debate, the panel and the digest.
 - **Debate citations are now grounded:** a citation counts only when its quote is found in the evidence, or the code
   derives it from the argument's own words.
-- **Model:** **7 of 8 tasks pass** on Qwen 3.5-4B ([model evaluation](docs/model-eval.md)).
+- **Model:** **6 of 8 tasks pass** on Qwen 3.5-4B ([model evaluation](docs/model-eval.md)); R&D invention and the
+  allocator wait on B10 and B11.
 - **The first live run (22 Oct):** clean. It found and fixed a missing basket comparison for trend-bot.
 
 **Done 27 Oct: fast-forward replay** ([replay](docs/replay.md)). The real system, run over a past stretch of

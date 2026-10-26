@@ -16,6 +16,7 @@ so they reason better. The design keeps three rules:
 | The curriculum | `integrations/trading-desk/knowledge/mentor-curriculum.json` | Each lesson: what it teaches, when it applies (shares, events, regimes, methods) and which check proves it |
 | The checks | `mentor.py refresh`, cycle step `mentor-refresh` | Runs each check on today's data. Writes `.local/trading-desk/knowledge/mentor.json`, with each lesson `checked`, `contradicted` or `unverified`, plus its numbers |
 | The selection | `mentor.notes_for(symbol, events, regime, method)` | At most 3 lessons that fit one decision, most specific first |
+| The organisation's own lessons (MENTOR-02) | `organisation_lessons.py`, cycle step `organisation-lessons` | Turns the newest [factor lab](factor-lab.md) and R&D scout reports into lessons in the same format, written by the organisation, not the mentor, to `.local/trading-desk/knowledge/organisation-lessons.json`. `notes_for` reads them beside the mentor's. A lesson about a method (for example momentum) reaches only a member that uses it: the debate passes the member's method (`mentor.method_of`) |
 | Who reads them | The debate desk (`mentorNotes`), the scenario panel (market-wide, at most 2) | As data that explains itself, never as new instructions |
 | The exams | `integrations/model-eval/cases.json`, for example `exam-bank-concentration` | Checks that the model actually uses a lesson. Here, a bear must point out bank concentration |
 
