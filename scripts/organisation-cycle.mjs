@@ -100,7 +100,8 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     // evidence and a birth proposal for the owner's agenda only once the owner named an approved research source
     // RND-03: with the model on, R&D first invents new ideas (specifications only, at most 3 a month, each raising the bar)
     { id: 'rnd-scout', cmd: PY, args: [desk('rnd_scout.py'), ...(withModel ? ['--invent', 'model'] : []), ...(process.env.RND_SOURCE
-      ? ['--propose', '--source', process.env.RND_SOURCE, '--department', process.env.RND_DEPARTMENT || 'desk'] : [])], timeoutMs: 300_000 },
+      ? ['--propose', '--source', process.env.RND_SOURCE, '--department', process.env.RND_DEPARTMENT || 'desk'] : [])],
+      timeoutMs: withModel ? 900_000 : 300_000 }, // invention can take 9 minutes on the laptop CPU, then the scout itself
     // KNOW-05: the organisation's live knowledge (research, regime, news links, scenario record) for the agents and the digest
     { id: 'knowledge-refresh', cmd: PY, args: [desk('live_knowledge.py'), 'refresh'], timeoutMs: 120_000 },
     // MENTOR-01: the mentor's lessons, each re-checked on today's data (no model, no network)

@@ -86,7 +86,8 @@ The fixed catalogue is only the start: the research department proposes new idea
 - **Who invents.**
   - **With the model:** the cycle runs the scout with `--invent model` (cycle `--with-model`). The local model answers in a schema confined to the grammar and states why it proposes each idea; the answer is validated again before anything is stored.
   - **Without the model:** `--invent explorer` proposes close variants of the three best ideas. It never runs on its own; you choose it.
-- **Bounded and permanent.** At most 3 new ideas a calendar month, and duplicates of any earlier idea are refused. Every idea is appended to `.local/trading-desk/rnd/ideas.jsonl` with who proposed it and when, and is never removed.
+- **Bounded and permanent.** At most 3 new ideas a calendar month, and duplicates of any earlier idea are refused. Once
+  the month's 3 are in, the model is not asked again that month. Every idea is appended to `.local/trading-desk/rnd/ideas.jsonl` with who proposed it and when, and is never removed.
 - **The bar rises with every idea.** The scout tests the catalogue and every ledger idea together, at p < 0.05 ÷ the number of ideas ever tried. Inventing more ideas makes passing harder, never easier, so luck can't be mined. The ledger is part of the scout's fingerprint.
 - **The same road to trading.** A passing invented idea becomes verified evidence and a birth proposal. With standing approvals, it can go on to a release, qualification, a starting budget and monthly trading through `rnd_bot.py`, which runs ledger ideas exactly like catalogue ones.
 

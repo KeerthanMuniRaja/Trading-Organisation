@@ -249,6 +249,12 @@ def ledger(path=LEDGER):
     return [json.loads(line) for line in path.read_text(encoding='utf-8').splitlines() if line.strip()]
 
 
+def room(path=LEDGER, now=None):
+    """How many new ideas the ledger still accepts this calendar month."""
+    month = (now or datetime.now(timezone.utc)).strftime('%Y-%m')
+    return max(0, MAX_NEW_PER_MONTH - sum(e['at'][:7] == month for e in ledger(path)))
+
+
 def propose(specs, proposer, known_hashes=(), path=LEDGER, now=None):
     """Appends new, valid, non-duplicate ideas to the ledger, at most MAX_NEW_PER_MONTH a month. Returns what happened
     to each proposal. Rejected proposals are reported, never stored as ideas (they were never tested)."""

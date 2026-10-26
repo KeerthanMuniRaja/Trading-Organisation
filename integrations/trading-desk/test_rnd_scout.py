@@ -105,6 +105,11 @@ class ScoutTests(unittest.TestCase):
             outcomes = rs.invent('model', cache=self.cache, ledger_path=ledger, llm=llm, now=datetime(2026, 11, 3, tzinfo=timezone.utc))
             self.assertEqual([o['outcome'] for o in outcomes], ['duplicate', 'added'])
             self.assertEqual(outcomes[1]['why'], 'calm, out of downtrends')
+            # a month whose new ideas are all in: the model is not asked at all (it took minutes of CPU, only to be refused)
+            def must_not_run(system, user, schema):
+                raise AssertionError('the model was asked although the month is full')
+            full = rs.invent('model', cache=self.cache, ledger_path=ledger, llm=must_not_run)
+            self.assertEqual([o['outcome'] for o in full], ['monthly-limit'])
 
     def test_every_idea_is_reported_and_only_robust_skill_passes(self):
         r = self.report
