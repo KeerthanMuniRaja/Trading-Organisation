@@ -31,6 +31,21 @@ class MentorTests(unittest.TestCase):
         self.assertIn('correlate', by['bank-concentration']['evidence'])
         self.assertEqual(by['results-gap-risk']['status'], 'unverified')                 # no check yet: said plainly
         self.assertNotIn('evidence', by['results-gap-risk'])
+        # curriculum v2: every new check runs on the data and states a measured number
+        for lesson in ('small-sales-pay-the-dp-charge', 'volatility-clusters', 'diversification', 'losses-need-bigger-gains', 'base-rates-first'):
+            self.assertIn(by[lesson]['status'], ('checked', 'contradicted'), lesson)
+            self.assertTrue(by[lesson]['measured'], lesson)
+        # a check that cannot measure (a synthetic trend never sat on both sides of its 200-day average) says so, never guesses
+        self.assertIn(by['below-trend-falls-deeper']['status'], ('checked', 'contradicted', 'unverified'))
+        self.assertIn('evidence', by['below-trend-falls-deeper'])
+        self.assertEqual(by['small-sales-pay-the-dp-charge']['measured']['dpPctOfSale'], 0.96)  # Rs 15.93 on Rs 1,666
+        self.assertEqual(by['losses-need-bigger-gains']['status'], 'checked')                     # arithmetic always holds
+
+    def test_recovery_needs_more_than_the_fall(self):
+        dates = [f'2026-01-{d:02d}' for d in range(1, 6)]
+        table = {'A.NS': {d: {'closePaise': c} for d, c in zip(dates, (100, 50, 50, 75, 100))}}
+        r = mentor.recovery_maths(table, dates)
+        self.assertEqual((r['worstFallPct'], r['gainNeededPct'], r['longestUnderwaterSessions']), (-50.0, 100.0, 3))
 
     def test_a_decision_gets_only_the_lessons_that_fit_it_and_never_a_contradicted_one(self):
         lessons = [

@@ -97,8 +97,93 @@ def regime_warning(table, dates):
     return {'text': f'After SEVERE days the next 20 sessions\' average worst fall was {s}%, after NORMAL days {n}%.', 'holds': s is not None and n is not None and s < n}
 
 
+# ---------- curriculum v2 (27 Oct 2026) ----------
+LIVE_BUDGET_PAISE = 500_000   # the live rule bot's budget: the size at which costs are judged
+
+
+def _basket(table, dates):
+    """The equal-weight basket's daily returns over the whole aligned history."""
+    return [statistics.fmean(table[s][dates[k]]['closePaise'] / table[s][dates[k - 1]]['closePaise'] - 1 for s in table) for k in range(1, len(dates))]
+
+
+def dp_at_live_size(table, dates):
+    position = LIVE_BUDGET_PAISE // 3
+    dp_pct = round(100 * daily.DP_PER_SELL_PAISE / position, 2)
+    import rnd_scout
+    return {'positionPaise': position, 'depositoryChargePaise': daily.DP_PER_SELL_PAISE, 'dpPctOfSale': dp_pct,
+            'text': f'Selling a third of a Rs {LIVE_BUDGET_PAISE // 100:,} budget (Rs {position // 100:,}) pays a Rs {daily.DP_PER_SELL_PAISE / 100:.2f} '
+                    f'depository charge: {dp_pct}% of the sale, on top of the {rnd_scout.ONE_WAY_COST_PCT}% percentage costs.',
+            'holds': dp_pct > rnd_scout.ONE_WAY_COST_PCT}
+
+
+def volatility_clusters(table, dates):
+    r = [abs(x) for x in _basket(table, dates)]
+    c = round(_corr(r[:-1], r[1:]), 2)
+    return {'lagOneCorrelationOfAbsMoves': c,
+            'text': f'On our basket, the size of one day\'s move correlates {c} with the next day\'s: calm follows calm, storms follow storms.',
+            'holds': c > 0.05}
+
+
+def below_trend_falls(table, dates, window=200, ahead=20):
+    level, levels = 1.0, [1.0]
+    for x in _basket(table, dates):
+        level *= 1 + x
+        levels.append(level)
+    below, above = [], []
+    for i in range(window, len(levels) - ahead):
+        worst = min(levels[i + 1:i + ahead + 1]) / levels[i] - 1
+        (below if levels[i] < sum(levels[i - window + 1:i + 1]) / window else above).append(worst)
+    if not below or not above:
+        return {'text': 'Not enough history on both sides of the 200-day average.', 'holds': None}
+    b, a = round(100 * statistics.fmean(below), 2), round(100 * statistics.fmean(above), 2)
+    return {'daysBelow': len(below), 'worstFallBelowPct': b, 'worstFallAbovePct': a,
+            'text': f'When our basket was below its 200-day average ({len(below)} days), the next 20 sessions\' worst fall averaged {b}%, against {a}% when above.',
+            'holds': b < a}
+
+
+def diversification(table, dates):
+    r = _returns(table, dates)
+    single = statistics.fmean(statistics.pstdev(v) for v in r.values())
+    basket = statistics.pstdev([statistics.fmean(day) for day in zip(*r.values())])
+    ratio = round(basket / single, 2) if single else None
+    return {'basketToSingleVolatility': ratio,
+            'text': f'Over ~2 years the 8-share basket swung {ratio} times as much as the average single share: holding several cuts risk, less so when they are alike.',
+            'holds': ratio is not None and ratio < 0.85}
+
+
+def recovery_maths(table, dates):
+    level, peak, worst, under, longest = 1.0, 1.0, 0.0, 0, 0
+    for x in _basket(table, dates):
+        level *= 1 + x
+        if level >= peak:
+            peak, under = level, 0
+        else:
+            under += 1
+            longest = max(longest, under)
+            worst = min(worst, level / peak - 1)
+    need = round(100 * (1 / (1 + worst) - 1), 1) if worst > -1 else None
+    return {'worstFallPct': round(100 * worst, 1), 'gainNeededPct': need, 'longestUnderwaterSessions': longest,
+            'text': f'Our basket\'s worst fall was {round(100 * worst, 1)}%, which needed a {need}% gain to recover; its longest time below a previous peak was {longest} sessions.',
+            'holds': True}
+
+
+def base_rate(table, dates, horizon=21, cost_pct=0.3):
+    wins, total = 0, 0
+    for s in table:
+        closes = [table[s][d]['closePaise'] for d in dates]
+        for i in range(0, len(closes) - horizon, horizon):
+            total += 1
+            wins += 100 * (closes[i + horizon] / closes[i] - 1) > cost_pct
+    rate = round(100 * wins / total, 1) if total else None
+    return {'monthsJudged': total, 'roseMoreThanCostsPct': rate,
+            'text': f'Across our 8 shares, a month rose by more than the {cost_pct}% round-trip cost {rate}% of the time: a "buy" call must beat that base rate, not 50%.',
+            'holds': rate is not None and 35 <= rate <= 65}
+
+
 CHECKS = {'bank_correlation': bank_correlation, 'betas': betas, 'momentum_in_rebounds': momentum_in_rebounds,
-          'turnover_cost': turnover_cost, 'regime_warning': regime_warning}
+          'turnover_cost': turnover_cost, 'regime_warning': regime_warning,
+          'dp_at_live_size': dp_at_live_size, 'volatility_clusters': volatility_clusters, 'below_trend_falls': below_trend_falls,
+          'diversification': diversification, 'recovery_maths': recovery_maths, 'base_rate': base_rate}
 
 
 def refresh(curriculum=CURRICULUM, out=OUT, cache=daily.DAILY, now=None):

@@ -30,6 +30,18 @@ so they reason better. The design keeps three rules:
 | **Momentum fails when a fall turns into a rebound** | **contradicted** | On our 8 shares, momentum did *better* in the 6 months after a deep fall: +1.19% a month against the basket. It is not shown to the agents |
 | Results days carry gap risk; RBI and Fed days; Infosys earns in dollars; Reliance is several businesses; ex-dividend is not a loss; past winners mislead | unverified | No check yet. Shown as experience, clearly labelled |
 
+**Curriculum v2 (the same evening): ten more lessons, six checked on our data.**
+
+| Lesson | Status | Our data says |
+| --- | --- | --- |
+| Small positions pay a fixed charge on every sale | **checked** | Selling a third of a Rs 5,000 budget pays Rs 15.93 depository charge: 0.96% of the sale, against 0.15% percentage costs |
+| Big moves come in clusters | **checked** | The size of one day's basket move correlates 0.27 with the next day's |
+| Below the 200-day average, falls run deeper | **checked** | Next 20 sessions' worst fall −3.3% below the average (398 days) against −2.43% above |
+| Several shares are safer than one, if they differ | **checked** | The 8-share basket swings 0.61 times as much as the average single share |
+| A loss needs a bigger gain to recover | **checked** | The basket's worst fall was −42.4%, which needed +73.7%; 515 sessions below a previous peak |
+| Start from the base rate | **checked** | A month rose by more than the 0.3% round-trip cost 55.6% of the time |
+| Patience is taxed less; results come in seasons; most news is already in the price; size a position by what you can lose | unverified | Experience and tax rules, shown labelled |
+
 **The contradicted lesson is the point of the design.** General market wisdom (the "momentum crash") didn't hold on
 our 8 large caps in the few months we have. The organisation trusts its own evidence over any mentor.
 

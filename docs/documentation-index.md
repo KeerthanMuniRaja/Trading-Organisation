@@ -38,6 +38,7 @@ The preferred experimental model is constrained Qwen3.5-4B Q4_K_M on the direct 
 - [The founder charter: set the boundaries once, let it run](charter.md)
 - [The mentor programme: lessons checked on our own data](mentor.md)
 - [Roadmap to proven skill](skill-roadmap.md)
+- [Factor lab: patterns across 500 shares](factor-lab.md)
 - [Starter policy for standing approvals](policies/autonomy-starter.json)
 - [Live paper testing: the daily runbook](live-testing.md)
 - [Audit of 14 October 2026](audit-2026-10-14.md)
