@@ -12,6 +12,10 @@ Checks on a new download, against the previous version and the other shares:
   stale             the last bar is more than 7 calendar days old (warning)
   gaps              sessions missing where most other shares traded (warning)
 Rejected downloads leave the previous file in place (fail closed).
+Before review, placeholder bars are left out of a download (`without_placeholders`): zero volume and a flat bar at the
+previous close, which the provider repeats on a day the share did not trade (seen on 18 Mar 2025 and 15 Jan 2026 for
+nearly every share). Kept, they would pass as sessions in which nothing moved, and a fill priced at their open would be
+a fill on a day with no trading.
   .local\\replay-venv\\Scripts\\python.exe integrations\\trading-desk\\data_steward.py report
 """
 from __future__ import annotations
@@ -78,6 +82,19 @@ def suspected_action(old_bars, new_bars, r):
     factor = round(1 / scale, 3)
     return {'factor': factor, 'likelyExDate': first_new, 'sharesAfterPerShare': factor,
             'action': 'Possible split or bonus: check the exchange notice and record it (POST /v1/corporate-actions) so positions are rescaled'}
+
+
+def placeholders(bars):
+    """Dates of bars with no trading in them: zero volume, open = high = low = close, and that close equal to the previous
+    bar's close. A real session with no volume does not exist for these shares; the provider repeats the last close."""
+    return [b['date'] for a, b in zip(bars, bars[1:]) if b['volume'] == 0
+            and b['openPaise'] == b['highPaise'] == b['lowPaise'] == b['closePaise'] == a['closePaise']]
+
+
+def without_placeholders(bars):
+    """The bars without placeholders, and the dates left out. A gap is honest; an invented session is not."""
+    drop = set(placeholders(bars))
+    return [b for b in bars if b['date'] not in drop], sorted(drop)
 
 
 def gaps(bars, peer_dates, share=0.75):

@@ -24,6 +24,20 @@ BASE = [100000 + 100 * (i % 7) for i in range(40)]
 
 
 class StewardTests(unittest.TestCase):
+    def test_placeholder_bars_with_no_trading_are_left_out_and_named(self):
+        bars = series([100000, 101000, 101000, 101000, 102000])['bars']
+        bars[2]['volume'] = 0                                  # flat at the previous close with no volume: a placeholder
+        bars[3]['volume'] = 0                                  # and a second one in a row
+        kept, left_out = ds.without_placeholders(bars)
+        self.assertEqual(left_out, [bars[2]['date'], bars[3]['date']])
+        self.assertEqual([b['closePaise'] for b in kept], [100000, 101000, 102000])
+        # zero volume on a bar that moved, or a flat bar that traded, is not a placeholder: kept, never guessed away
+        moved = series([100000, 101000, 101500])['bars']
+        moved[2]['volume'] = 0
+        traded = series([100000, 101000, 101000])['bars']
+        self.assertEqual((ds.placeholders(moved), ds.placeholders(traded)), ([], []))
+        self.assertEqual(ds.placeholders(bars[:1]), [])        # nothing to compare the first bar with
+
     def test_a_clean_refresh_with_a_dividend_adjustment_is_accepted(self):
         old = series(BASE)
         # new download: one more day, and every day before day 30 rescaled by 0.99 (a 1% dividend went ex on day 30)

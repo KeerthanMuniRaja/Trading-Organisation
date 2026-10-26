@@ -129,11 +129,12 @@ def fetch(symbols, years=5, cache=DAILY, refresh=False):
             # Adjustment and rounding can break OHLC order by a paisa; restore the envelope without moving open/close.
             bars.append({'date': index.date().isoformat(), 'openPaise': o, 'highPaise': max(h, o, c), 'lowPaise': min(low, o, c),
                          'closePaise': c, 'volume': int(row['Volume'])})
-        bars = settled_only(bars, datetime.now(timezone.utc))
+        import data_steward
+        bars, left_out = data_steward.without_placeholders(settled_only(bars, datetime.now(timezone.utc)))
         dataset = {'schemaVersion': 1, 'symbol': symbol, 'interval': '1d', 'priceBasis': 'adjusted', 'source': 'yahoo-via-yfinance',
                    'providerVersion': yf.__version__, 'retrievedAt': datetime.now(timezone.utc).isoformat(), 'bars': bars}
         validate(dataset)
-        results.append(store(path, dataset, cache))
+        results.append({**store(path, dataset, cache), **({'placeholdersLeftOut': left_out} if left_out else {})})
     return results
 
 
