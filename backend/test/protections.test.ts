@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { owner, trader, evaluator, market, fixture, key } from './helpers.js';
-import { activePauses, Protections } from '../src/protections.js';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { activePauses, Protections, protectionRules } from '../src/protections.js';
 import { OwnerDigest } from '../src/owner-digest.js';
 import { TradeSignals, RULES_VERSION } from '../src/trade-signals.js';
 import { PaperPerformance } from '../src/paper-performance.js';
@@ -109,5 +111,42 @@ test('equity brakes pause new buys during a fall in open positions, with no sale
     // today's mark is recorded; a day later, with no further fall, the daily window measures from that mark and lifts
     await new PaperPerformance(f.db).snapshot(evaluator, key());
     assert.deepEqual(await pauses(Date.now() + 1.5 * DAY), []);
+  } finally { await f.db.close(); }
+});
+
+test('a sector limit sizes a buy down to the room left in its sector; other sectors and exits are untouched', async () => {
+  const f = await fixture();
+  try {
+    const e = await f.evidence(); await f.deposit('2000000');
+    await f.org.bot(owner, key(), { id: 'bot-one', name: 'Fixture', department: 'research', specialty: 'demo', method: 'test', contribution: 'Sector fixture', budgetPaise: '1000000' });
+    await f.db.transaction(tx => tx.query("UPDATE bots SET state='paper' WHERE id='bot-one'"));
+    for (const s of ['BANKA', 'BANKB', 'BANKC', 'TECH'])
+      await f.paper.quote(market, key(), { symbol: s, bidPaise: '10000', askPaise: '10000', observedAt: new Date().toISOString(), sourceId: e.sourceId });
+    // 40% of the Rs 10,000 budget already in one bank
+    const held = await f.paper.reserve(trader, key(), { botId: 'bot-one', symbol: 'BANKA', side: 'buy', quantity: 40, evidenceId: e.evidenceId });
+    await f.paper.fill(trader, key(), { orderId: held.id });
+    const signals = new TradeSignals(f.db, f.cfg), protections = new Protections(f.db);
+    const buy = async (symbol: string) => signals.review(evaluator, key(), { signalId: (await signals.propose(trader, key(), { botId: 'bot-one', symbol,
+      action: 'enter-long', horizonDays: 30, conviction: 'high', targetWeightPct: 33, thesis: 't', invalidation: 'i',
+      expiresAt: new Date(Date.now() + DAY).toISOString(), evidenceIds: [e.evidenceId] })).id });
+    const sectors = { BANKA: 'Financial Services', BANKB: 'Financial Services', BANKC: 'Financial Services', TECH: 'Information Technology' };
+    assert.throws(() => protections.setPolicy(owner, key(), { rules: { sectorLimit: { maxPct: 2, sectors } }, reason: 'too tight' }));
+    await protections.setPolicy(owner, key(), { rules: { sectorLimit: { maxPct: 50, sectors } }, reason: 'At most half in one sector' });
+    // a second bank fits only the 10% left in the sector (Rs 1,000: 10 shares), not its 33% target
+    const bank = await buy('BANKB');
+    assert.equal(bank.outcome, 'accepted');
+    assert.equal(bank.quantity, '10');
+    assert.ok(bank.reasons.includes('sized-by-sector-limit'), bank.reasons.join());
+    // another sector is sized by its own target, as before
+    const tech = await buy('TECH');
+    assert.equal(tech.quantity, '33');
+    assert.ok(tech.reasons.includes('sized-by-target-weight'));
+    // the suggested founder files are valid policies as written
+    for (const file of ['protections-suggested.json', 'protections-with-sectors.json'])
+      protectionRules.parse(JSON.parse(readFileSync(join('docs', 'policies', file), 'utf8')).rules);
+    // the accepted bank intent counts too: a third bank finds no room left in the sector at all
+    const full = await buy('BANKC');
+    assert.equal(full.outcome, 'rejected');
+    assert.ok(full.reasons.includes('size-below-one-share') && full.reasons.includes('sector-limit'), full.reasons.join());
   } finally { await f.db.close(); }
 });

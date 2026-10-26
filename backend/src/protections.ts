@@ -32,6 +32,12 @@ export const protectionRules = z.object({
    *  many paise, the guard halts all new risk with a critical incident and the owner is alerted. It does not lift by
    *  itself: only the owner resumes (resolve the incident, then resume operations). */
   organisationLossPaise: z.string().regex(/^[1-9][0-9]{0,13}$/).nullable().default(null),
+  /** PROTECT-02 (27 Oct 2026, from Lean's sector exposure model): a bot's holdings in one sector (held, reserved and
+   *  accepted-but-unexecuted buys, at cost) may not pass `maxPct` of its budget. The review sizes a buy down to the room
+   *  left in its sector (reason `sized-by-sector-limit`); exits are never limited. `sectors` maps each share to its sector
+   *  (NSE's industry names, from the NIFTY 500 constituent file); a share not in the map is not limited. */
+  sectorLimit: z.object({ maxPct: z.number().min(5).max(100), sectors: z.record(z.string().regex(/^[A-Z0-9&_-]{1,30}$/), z.string().trim().min(1).max(80))
+    .refine(m => Object.keys(m).length <= 600, 'At most 600 shares') }).strict().nullable().default(null),
 }).strict();
 const policySchema = z.object({ rules: protectionRules, reason: z.string().trim().min(1).max(600) }).strict();
 const statusSchema = z.object({ botId: id.optional() }).strict();
@@ -61,6 +67,14 @@ async function equityLoss(tx: Sql, botId: string, windowDays: number, now: numbe
   const base = (await tx.query(`SELECT (realised_paise+unrealised_paise)::text AS total FROM paper_performance_snapshots
     WHERE bot_id=$1 AND day <= $2::date ORDER BY day DESC LIMIT 1`, [botId, indiaDay(now - windowDays * DAY_MS)])).rows[0];
   return BigInt(base?.total ?? '0') - (BigInt(current.realisedPaise) + BigInt(current.unrealisedPaise));
+}
+
+/** PROTECT-02: the sector limit that applies to a share, with every share of its sector; null when none applies. */
+export async function sectorLimitFor(tx: Sql, symbol: string) {
+  const limit = (await currentProtections(tx))?.rules.sectorLimit;
+  const sector = limit?.sectors[symbol];
+  if (!limit || !sector) return null;
+  return { sector, maxPct: limit.maxPct, symbols: Object.keys(limit.sectors).filter(s => limit.sectors[s] === sector) };
 }
 
 export type Pause = { code: string; detail: string; until: string | null };

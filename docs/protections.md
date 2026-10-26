@@ -24,6 +24,18 @@ How it is measured:
   starts after the fall stopped.
 - **A streak or cooldown** lifts at the time shown in the status.
 
+## The sector limit (PROTECT-02, 27 Oct 2026)
+
+`sectorLimit: {maxPct, sectors}` caps how much of a bot's budget may sit in one sector: what it holds, what it has
+reserved and what the review has accepted but not yet executed, all at cost. It is not a pause: the review **sizes a buy
+down** to the room left in its sector and records `sized-by-sector-limit`; with no room left, the buy is turned down as
+`size-below-one-share` with `sector-limit`. Exits are never limited. `sectors` maps each share to its NSE industry, from the
+NIFTY 500 constituent file (`datasets.industries()`); a share not in the map is not limited.
+
+Why: four of our eight shares are banks, their daily moves correlate 0.47 with each other against 0.26 with the rest
+(the mentor's first lesson), and the live momentum bot once held three of them at once: closer to one bet than three.
+The suggested value is in founder review B29.
+
 ## Where it is enforced
 
 The brakes are checked in the same three places as the halt:
