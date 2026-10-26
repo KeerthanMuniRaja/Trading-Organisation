@@ -11,15 +11,30 @@ the trading-skills circuit breaker; the code is our own.
 
 | Rule | Pauses new buys while |
 | --- | --- |
-| `dailyLossPct`, `weeklyLossPct`, `monthlyLossPct` (0.1–50) | the bot's realised loss over the last 1, 7 or 30 days is at least this share of its budget |
+| `dailyLossPct`, `weeklyLossPct`, `monthlyLossPct` (0.1–50) | the bot's loss over the last 1, 7 or 30 days is at least this share of its budget |
+| `measure`: `realised` (default) or `equity` | what those loss windows count (below) |
 | `losingExits: {inARow (2–10), pauseDays (1–30)}` | its last `inARow` exits all lost, for `pauseDays` after the last one |
 | `shareCooldownDays` (1–30) | for a share it sold within that many days (that share only) |
 
 How it is measured:
-- **Realised loss** comes from the ledger: fees, sales and dividends, per bot, over rolling calendar days. Open losses
-  are not counted; a drawdown halt on marked value is a separate decision (B4).
-- **A loss window** lifts when the losing sales roll out of it.
+- **`realised`** counts the ledger: fees, sales and dividends, per bot, over rolling calendar days. Open losses are not
+  counted. A loss window lifts when the losing sales roll out of it.
+- **`equity`** (27 Oct 2026) counts the fall in the bot's total P&L, open positions marked now, since its recorded
+  daily mark at the window's start. It pauses buying *during* a fall, even with nothing sold, and lifts once the window
+  starts after the fall stopped.
 - **A streak or cooldown** lifts at the time shown in the status.
+
+## The sector limit (PROTECT-02, 27 Oct 2026)
+
+`sectorLimit: {maxPct, sectors}` caps how much of a bot's budget may sit in one sector: what it holds, what it has
+reserved and what the review has accepted but not yet executed, all at cost. It is not a pause: the review **sizes a buy
+down** to the room left in its sector and records `sized-by-sector-limit`; with no room left, the buy is turned down as
+`size-below-one-share` with `sector-limit`. Exits are never limited. `sectors` maps each share to its NSE industry, from the
+NIFTY 500 constituent file (`datasets.industries()`); a share not in the map is not limited.
+
+Why: four of our eight shares are banks, their daily moves correlate 0.47 with each other against 0.26 with the rest
+(the mentor's first lesson), and the live momentum bot once held three of them at once: closer to one bet than three.
+The suggested value is in founder review B29.
 
 ## Where it is enforced
 
@@ -41,12 +56,20 @@ npm run protections                                                        the p
 npm run protections -- set docs/policies/protections-suggested.json --reason "Founder thresholds"
 ```
 
-The suggested starting thresholds are in
-[`docs/policies/protections-suggested.json`](policies/protections-suggested.json):
-- 2% of budget in a day;
-- 5% in a week;
-- 8% in a month;
-- a 1-day pause after 2 losing exits in a row.
+The suggested thresholds are in
+[`docs/policies/protections-suggested.json`](policies/protections-suggested.json), revised on 27 Oct 2026:
+- measured on value (`equity`);
+- 3% of budget in a day;
+- 6% in a week;
+- no monthly window and no losing-streak brake.
+
+**Why they changed (2020 crash replay, Feb–May, ₹5,000 budget).** The first suggestion (realised losses: 2% a day, 5% a
+week, 8% a month, and a 1-day pause after 2 losing exits) made the bot −15.0%. With no brakes it made −7.5%, and with
+the revised set −6.7%. The basket made −20.6%. The monthly window and the streak brake tripped when the bot's planned
+April rebalance sold March's losers, after the fall was over. They then turned down every retry of the new entries
+until 4 May, through most of the rebound. For a bot that trades once a month, brakes over a month only hurt. No brake
+changed the worst fall (33% in every run), because brakes never touch shares already held. That needs a drawdown rule
+(founder review B4).
 
 ## Where you see it
 

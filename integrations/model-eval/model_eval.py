@@ -134,6 +134,10 @@ def judge(case, given, value):
         ok = cited in expect.get('evidenceIn', [cited])
         if not ok:
             notes.append(f'cited {cited!r}, not allowed')
+        # MENTOR-01 exams: the argument must use the lesson it was given (any of the words, case-insensitive)
+        words = expect.get('mustMention')
+        if words and not any(w.lower() in value['argument'].lower() for w in words):
+            ok = False; notes.append(f'did not use the mentor lesson (none of {words})')
         # MODEL-04: what production keeps is the GROUNDED citation (its quote found in the evidence); that is the decision
         texts = {e['id']: e['excerpt'] for e in given.get('verifiedEvidence', [])}
         kept = cited is not None and debate.grounded(value.get('evidenceQuote'), texts.get(cited))

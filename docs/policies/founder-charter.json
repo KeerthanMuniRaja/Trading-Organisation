@@ -1,0 +1,28 @@
+{
+  "note": "The founder charter (CHARTER-01): the boundaries the owner sets once; inside them the organisation decides and acts by itself. Apply with: npm run charter -- set docs/policies/founder-charter.json --reason \"...\". Change any number before applying. Never automatic, whatever this says: the hard limits in .env (order, exposure, realised loss), permissions, departments, retirement, and real money. Amounts are in paise (100 paise = Rs 1).",
+  "autonomy": {
+    "suspendOnRecommendation": true,
+    "acknowledgeWatch": true,
+    "raiseBudget": { "maxPctPerChange": 25, "maxTotalPaisePerMonth": "200000" },
+    "reduceBudget": true,
+    "reinstateSuspended": true,
+    "approveBirths": true,
+    "activateReleases": true,
+    "qualifyBots": true,
+    "startingBudgetPaise": "100000",
+    "trialNewReleases": true,
+    "promoteCanaries": true,
+    "rollbackFailingReleases": true,
+    "maxActionsPerRun": 10
+  },
+  "protectionsNote": "Brakes on the fall in value, daily and weekly only, and the last-resort stop at Rs 2,000 (40% of a Rs 5,000 budget). Replay of the 2020 crash (Feb-May): these brakes cost nothing (-6.7% vs the basket's -20.6%); the earlier realised set with a monthly window and a losing-streak brake kept the bot out of the April rebound (-15.0%); the bot's worst point was -Rs 1,542, so a Rs 1,500 stop would have halted the organisation at the bottom, and it never resumes by itself. Revisit the stop when budgets grow.",
+  "protections": {
+    "measure": "equity",
+    "dailyLossPct": 3,
+    "weeklyLossPct": 6,
+    "monthlyLossPct": null,
+    "losingExits": null,
+    "shareCooldownDays": null,
+    "organisationLossPaise": "200000"
+  }
+}

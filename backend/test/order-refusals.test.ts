@@ -51,7 +51,7 @@ test('a refused order is kept after its rollback, once per request, and the answ
     assert.equal(d.trading.refusedOrders, 3);
     assert.deepEqual(d.trading.topRefusals.map(x => x.count), [1, 1, 1]);
     assert.deepEqual(d.limits, { maxOrderPaise: f.cfg.maxOrder.toString(), maxExposurePaise: f.cfg.maxExposure.toString(), maxRealisedLossPaise: f.cfg.maxLoss.toString(),
-      feeBps: f.cfg.feeBps, slippageBps: f.cfg.slippageBps, realisedLossPaise: '0', lossLimitUsedPct: 0 });
+      feeBps: f.cfg.feeBps, slippageBps: f.cfg.slippageBps, costModel: 'flat', realisedLossPaise: '0', lossLimitUsedPct: 0 });
     assert.equal((await new OwnerDigest(f.db).digest(owner, {})).limits, null); // older wiring: no config, no banner
   } finally { await f.db.close(); }
 });

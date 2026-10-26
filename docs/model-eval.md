@@ -98,7 +98,8 @@ The training-data builder now recognises and labels both new tasks.
 
 ## Where the model stands, 23 Oct 2026 (Qwen 3.5-4B, laptop CPU)
 
-**7 of 8 tasks pass** (against 2 of 6 on 21 Oct):
+**6 of 8 tasks pass** (against 2 of 6 on 21 Oct). *Corrected 27 Oct: this line said 7 of 8, but the table below
+has six SHIPs and two DON'T SHIPs.*
 
 | Task | 21 Oct | 23 Oct | What changed |
 | --- | --- | --- | --- |

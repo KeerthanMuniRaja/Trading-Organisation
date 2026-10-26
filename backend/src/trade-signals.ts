@@ -1,13 +1,13 @@
 import { Body, Controller, Headers, Post, Req } from '@nestjs/common';
 import { z } from 'zod';
-import { Config } from './config.js';
+import { Config, paperFee } from './config.js';
 import { Actor, ceilBps, digest, id, parse, permit, requireThat, symbol, timestamp, uuid } from './core.js';
 import { Database, Sql, audit } from './database.js';
 import { PaperTrading } from './paper.js';
 import { liveReleases } from './bot-releases.js';
 import { restated } from './corporate-actions.js';
 import { isSuspended } from './bot-control.js';
-import { activePauses } from './protections.js';
+import { activePauses, sectorLimitFor } from './protections.js';
 import { Allow } from './security.js';
 import { available, balance, tradingLoss } from './treasury.js';
 import { verifiedPrice } from './price-evidence.js';
@@ -237,7 +237,7 @@ export class TradeSignals {
           for (const p of await activePauses(tx, signal.bot_id, signal.symbol)) reasons.push(p.code);
           if (fresh && !reasons.length) {
             const price = BigInt(quote.ask) + ceilBps(BigInt(quote.ask), this.config.slippageBps);
-            const perShare = price + ceilBps(price, this.config.feeBps);
+            const perShare = price + paperFee(this.config, 'buy', price); // per share, rounded up: never undersizes the charges
             const sum = async (sql: string, params: unknown[]) => BigInt((await tx.query(sql, params)).rows[0]!.value);
             // accepted buy intents not yet executed (and not expired) are already committed: without this, concurrent reviews
             // would each size against the same room (found by the load test). An intent that already has its order is left
@@ -268,6 +268,15 @@ export class TradeSignals {
                 + await pending('AND s.bot_id=$1 AND s.symbol=$2', [signal.bot_id, signal.symbol]);
               const toTarget = BigInt(bot.budget) * BigInt(signal.target_weight_pct) / 100n - inSymbol;
               if (toTarget < allowance) [binding, allowance] = ['target-weight', toTarget];
+            }
+            // PROTECT-02: never more than the owner's share of the budget in one sector, counting the whole sector's holdings
+            const sector = await sectorLimitFor(tx, signal.symbol);
+            if (sector) {
+              const inSector = await sum('SELECT COALESCE(SUM(cost_paise),0)::text AS value FROM positions WHERE bot_id=$1 AND symbol = ANY($2)', [signal.bot_id, sector.symbols])
+                + await sum("SELECT COALESCE(SUM(reserved_paise),0)::text AS value FROM orders WHERE bot_id=$1 AND symbol = ANY($2) AND status='reserved'", [signal.bot_id, sector.symbols])
+                + await pending('AND s.bot_id=$1 AND s.symbol = ANY($2)', [signal.bot_id, sector.symbols]);
+              const toSector = BigInt(bot.budget) * BigInt(Math.round(sector.maxPct * 100)) / 10000n - inSector;
+              if (toSector < allowance) [binding, allowance] = ['sector-limit', toSector];
             }
             quantity = allowance > 0n ? allowance / perShare : 0n;
             if (quantity < 1n) { quantity = null; reasons.push('size-below-one-share', binding); }

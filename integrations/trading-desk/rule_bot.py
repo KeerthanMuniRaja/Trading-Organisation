@@ -100,6 +100,20 @@ def load(cache):
     return datasets, combined
 
 
+TEMPORARY = ('protection-', 'no-fresh-approved-quote', 'system-halted')
+
+
+def retryable(signal):
+    """A proposal turned down ONLY for a reason that passes by itself (a loss-brake pause, a stale quote, a halt): it is
+    sent again on a later run instead of leaving the money in cash for the rest of the month. Found by the replay of the
+    2020 crash: a one-week brake kept the bot out of the whole April rebound."""
+    review = signal.get('review')
+    if not review or review['outcome'] != 'rejected':
+        return False
+    reasons = [r for r in review.get('reasons', []) if r != 'priced-from-verified-close']
+    return bool(reasons) and all(r.startswith(TEMPORARY) for r in reasons)
+
+
 def settled(signal):
     """A proposal that will not change the holdings any more: executed, lapsed, or not accepted at review."""
     review = signal.get('review')
@@ -143,7 +157,12 @@ def run(bot_id, source_id, env=os.environ, cache=daily.DAILY, opener=None, now=N
         path.write_text(json.dumps(decision, indent=2), encoding='utf-8')
     rows = [tuple(r) for r in decision['ranking']]
     top = [r[0] for r in rows[:KEEP]]
-    sent = {(s['action'], s['symbol']) for s in mine}
+    # a proposal refused only for a passing reason counts as not sent, so it is tried again on a later day, at most once a
+    # day (the newest attempt decides)
+    latest, today = {}, now.strftime('%Y-%m-%d')
+    for s in sorted(mine, key=lambda x: x['createdAt']):
+        latest[(s['action'], s['symbol'])] = s
+    sent = {k for k, s in latest.items() if not (retryable(s) and s['createdAt'][:10] < today)}
     plan = [p for p in proposals(rows, holdings, bot_id, decision['evidenceId'], now) if (p['action'], p['symbol']) not in sent]
     exits = [p for p in plan if p['action'] == 'exit']
     if not plan:

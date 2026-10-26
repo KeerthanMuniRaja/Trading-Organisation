@@ -32,6 +32,8 @@ The organisation's agents make and carry out decisions themselves; the owner app
 | `suspendOnRecommendation` | Suspend a bot the management review flags (no new risk; exits stay allowed) |
 | `acknowledgeWatch` | Acknowledge a "watch" recommendation (it changes nothing) |
 | `raiseBudget` | Accept a recommended raise of at most `maxPctPerChange`. All automatic increases in a calendar month together stay within `maxTotalPaisePerMonth`, and department ceilings and the exposure limit still apply |
+| `reduceBudget` | Accept a recommended budget cut for a bot that keeps trailing the basket (a cut only lowers risk) |
+| `reinstateSuspended` | Accept a recommended reinstatement of a bot the loss limit suspended (management-v4): the suspension lifts and its budget is cut by 25%, never below ₹1,000. Other suspensions are never lifted automatically |
 | `approveBirths` | Approve a proposed new bot (it starts in school with zero budget) |
 | `activateReleases` | Activate a release whose newest evaluation, under 180 days old, allows it |
 | `qualifyBots` | Qualify a bot for paper trading on its active, freshly evaluated release |

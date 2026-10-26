@@ -3,7 +3,8 @@ version is archived with its fingerprint so any earlier result can be reproduced
 
 Checks on a new download, against the previous version and the other shares:
   extreme-move      a close-to-close move beyond 20% in one session: large NSE shares rarely move that much, so it is
-                    most likely an unadjusted split/bonus or a bad print (reject)
+                    most likely an unadjusted split/bonus or a bad print (reject; in a research-only universe only when
+                    its size matches a split or bonus ratio, otherwise a warning)
   history-rewrite   on overlapping days, adjusted prices may be rescaled by ONE factor (a new dividend or split moves
                     the whole past); differences that are not a single scale mean history changed (reject)
   shrunk-history    the new file covers fewer old days than the previous one (reject)
@@ -12,6 +13,10 @@ Checks on a new download, against the previous version and the other shares:
   stale             the last bar is more than 7 calendar days old (warning)
   gaps              sessions missing where most other shares traded (warning)
 Rejected downloads leave the previous file in place (fail closed).
+Before review, placeholder bars are left out of a download (`without_placeholders`): zero volume and a flat bar at the
+previous close, which the provider repeats on a day the share did not trade (seen on 18 Mar 2025 and 15 Jan 2026 for
+nearly every share). Kept, they would pass as sessions in which nothing moved, and a fill priced at their open would be
+a fill on a day with no trading.
   .local\\replay-venv\\Scripts\\python.exe integrations\\trading-desk\\data_steward.py report
 """
 from __future__ import annotations
@@ -40,8 +45,19 @@ def extreme_moves(bars, limit=EXTREME_MOVE):
     for a, b in zip(bars, bars[1:]):
         change = b['closePaise'] / a['closePaise'] - 1
         if abs(change) > limit:
-            out.append({'date': b['date'], 'changePct': round(change * 100, 1)})
+            out.append({'date': b['date'], 'changePct': round(change * 100, 1), 'ratio': round(1 + change, 4)})
     return out
+
+
+# The price ratios an unadjusted split or bonus leaves behind (a 1:1 bonus halves the price, a 1:2 bonus takes it to
+# two thirds, a split of a Rs 10 face value into Rs 2 to a fifth, a consolidation multiplies it).
+ACTION_RATIOS = (1 / 2, 1 / 3, 2 / 3, 1 / 4, 2 / 5, 1 / 5, 1 / 10, 2.0, 3.0, 4.0, 5.0, 10.0)
+ACTION_TOLERANCE = 0.03
+
+
+def looks_like_action(ratio):
+    """True when a one-day move matches a split or bonus ratio within 3%: probably an unadjusted corporate action."""
+    return any(abs(ratio / r - 1) <= ACTION_TOLERANCE for r in ACTION_RATIOS)
 
 
 MAX_ADJUSTMENT_STEPS = 4    # e.g. quarterly dividends since the previous download
@@ -80,6 +96,19 @@ def suspected_action(old_bars, new_bars, r):
             'action': 'Possible split or bonus: check the exchange notice and record it (POST /v1/corporate-actions) so positions are rescaled'}
 
 
+def placeholders(bars):
+    """Dates of bars with no trading in them: zero volume, open = high = low = close, and that close equal to the previous
+    bar's close. A real session with no volume does not exist for these shares; the provider repeats the last close."""
+    return [b['date'] for a, b in zip(bars, bars[1:]) if b['volume'] == 0
+            and b['openPaise'] == b['highPaise'] == b['lowPaise'] == b['closePaise'] == a['closePaise']]
+
+
+def without_placeholders(bars):
+    """The bars without placeholders, and the dates left out. A gap is honest; an invented session is not."""
+    drop = set(placeholders(bars))
+    return [b for b in bars if b['date'] not in drop], sorted(drop)
+
+
 def gaps(bars, peer_dates, share=0.75):
     """Sessions (within this file's span) on which at least `share` of peers traded but this share has no bar."""
     mine = {b['date'] for b in bars}
@@ -93,16 +122,23 @@ def gaps(bars, peer_dates, share=0.75):
     return sorted(d for d, n in counts.items() if n >= need and d not in mine)
 
 
-def review(new, old=None, peers=(), today=None, accepted=()):
+def review(new, old=None, peers=(), today=None, accepted=(), research=False):
     """Verdict for a new download: 'ok', 'warning' (usable) or 'reject' (keep the previous file). `accepted`: session
-    dates of large moves the owner checked and confirmed as real (daily.py accept-move)."""
+    dates of large moves the owner checked and confirmed as real (daily.py accept-move). `research`: a research-only
+    universe of hundreds of shares, where nobody can confirm each move by hand: a large move is accepted as a warning
+    unless its size matches a split or bonus ratio (then it is most likely an unadjusted corporate action and still
+    rejected). Leaving every volatile share out would bias the research toward calm companies."""
     bars = new['bars']
     issues = []
     # a large move the previous (accepted) file already had, or that the owner confirmed, is known; any other large move,
     # new or rewritten into the past, is rejected
     known = ({m['date'] for m in extreme_moves(old['bars'])} if old else set()) | set(accepted)
     for move in extreme_moves(bars):
-        if move['date'] not in known:
+        if move['date'] in known:
+            continue
+        if research and not looks_like_action(move['ratio']):
+            issues.append({'check': 'extreme-move-kept-for-research', 'severity': 'warning', **move})
+        else:
             issues.append({'check': 'extreme-move', 'severity': 'reject', **move})
     if old:
         r = rewrite(old['bars'], bars)

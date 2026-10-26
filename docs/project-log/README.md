@@ -13,5 +13,6 @@ A dated record of what happened each day, including the days with no code change
 | [19 Oct](2026-10-19.md) | No cycle ran; the buys are still valid until 23 October |
 | [20 Oct](2026-10-20.md) | Rule bot release v2; the three buys filled at Monday's open; standing approvals built; world news, market regime, research checks, 10-year history, knowledge base and playbook, intraday monitor, roadmap to proven skill |
 | [21 Oct](2026-10-21.md) | Tax-aware rebalancing, the autonomy rehearsal, the starter policy, supervisor catch-up and heartbeat, the preflight, the model evaluation suite and training data, the source-code review of 13 projects with the gap analysis and scout fixes, and the founder review |
+| [27 Oct](2026-10-27.md) | The founder charter, the mentor programme and training on reality, the 2020 crash replays, value-based loss brakes, and the year-long hands-off replay |
 
 For the current status, see the [audit of 14 October](../audit-2026-10-14.md) and the [daily runbook](../live-testing.md).

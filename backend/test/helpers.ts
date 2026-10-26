@@ -19,7 +19,7 @@ export const key=()=>randomBytes(16).toString('hex');
 export function config() {
   const pair=generateKeyPairSync('ed25519');
   const coordinator:Actor={id:'coordinator',role:'coordinator'};
-  const cfg:Config={mode:'paper',host:'127.0.0.1',port:3000,databasePath:':memory:',principals:[owner,researcher,evaluator,trader,treasuryActor,market,coordinator].map(a=>({...a,token:randomBytes(32).toString('base64url')})),ownerPublicKey:pair.publicKey.export({type:'spki',format:'pem'}).toString(),maxOrder:10000000n,maxExposure:50000000n,maxLoss:1000000n,feeBps:0,slippageBps:0};
+  const cfg:Config={mode:'paper',host:'127.0.0.1',port:3000,databasePath:':memory:',principals:[owner,researcher,evaluator,trader,treasuryActor,market,coordinator].map(a=>({...a,token:randomBytes(32).toString('base64url')})),ownerPublicKey:pair.publicKey.export({type:'spki',format:'pem'}).toString(),maxOrder:10000000n,maxExposure:50000000n,maxLoss:1000000n,feeBps:0,slippageBps:0,costModel:'flat'};
   return {cfg,privateKey:pair.privateKey};
 }
 export async function fixture() {

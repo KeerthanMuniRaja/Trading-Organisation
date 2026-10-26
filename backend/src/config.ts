@@ -8,6 +8,23 @@ export interface Config {
   ownerPublicKey: string;
   maxOrder: bigint; maxExposure: bigint; maxLoss: bigint;
   feeBps: number; slippageBps: number;
+  /** How a paper fill's charges are computed: 'flat' (feeBps on each side, the original model) or 'nse-delivery' (the
+   *  statutory charges of an Indian delivery trade plus the depository charge on each sale; see paperFee). */
+  costModel: 'flat' | 'nse-delivery';
+}
+
+/** NSE equity delivery charges on a discount broker with zero delivery brokerage, the same rates as the research desk
+ *  (integrations/trading-desk/daily.py): STT 0.1% each side, stamp duty 0.015% on buys, exchange 0.00297% and SEBI
+ *  0.0001% with 18% GST on them, and a Rs 15.93 depository (DP) charge on each sale. Illustrative: confirm with the broker.
+ *  Rates in parts per 10^10 so the arithmetic stays in integer paise. */
+export const NSE_DELIVERY = { sttPer1e10: 10_000_000n, stampBuyPer1e10: 1_500_000n, exchangeSebiWithGstPer1e10: 362_260n, dpPerSalePaise: 1593n };
+
+/** The charges on one paper fill of `gross` paise. With 'nse-delivery' a small sale is dominated by the fixed DP charge:
+ *  on a Rs 1,400 sale it is about 1.1%, which a flat 10 bps never showed. */
+export function paperFee(config: Pick<Config, 'feeBps' | 'costModel'>, side: 'buy' | 'sell', gross: bigint): bigint {
+  if (config.costModel === 'flat') return (gross * BigInt(config.feeBps) + 9999n) / 10000n;
+  const c = NSE_DELIVERY, rate = c.sttPer1e10 + c.exchangeSebiWithGstPer1e10 + (side === 'buy' ? c.stampBuyPer1e10 : 0n);
+  return (gross * rate + 9_999_999_999n) / 10_000_000_000n + (side === 'sell' ? c.dpPerSalePaise : 0n);
 }
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   if (env.APP_MODE !== 'paper') throw new Error('APP_MODE must explicitly be paper. Live execution is not implemented.');
@@ -27,5 +44,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     databasePath: env.DATABASE_PATH ?? '.data/paper', databaseUrl: env.DATABASE_URL,
     principals, ownerPublicKey, maxOrder: limit('MAX_ORDER_PAISE'), maxExposure: limit('MAX_EXPOSURE_PAISE'),
     maxLoss: limit('MAX_REALISED_LOSS_PAISE'), feeBps: bps('PAPER_FEE_BPS'), slippageBps: bps('PAPER_SLIPPAGE_BPS'),
+    costModel: z.enum(['flat', 'nse-delivery']).parse(env.PAPER_COST_MODEL ?? 'flat'),
   };
 }

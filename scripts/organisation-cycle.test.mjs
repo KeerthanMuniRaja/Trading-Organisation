@@ -84,6 +84,35 @@ test('every run keeps a manifest: the code and switches it started with and the 
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('the rule bot gets a second, release-gated pass after today\'s fills, so its entries are reviewed at the same close', async () => {
+  const before = process.env.RULE_BOT_ID;
+  try {
+    process.env.RULE_BOT_ID = 'momentum-rules';
+    const ids = (await planSteps({ root: '/nowhere' })).map(s => s.id);
+    const at = id => ids.indexOf(id);
+    assert.ok(at('rule-bot') < at('eod-trading') && at('eod-trading') < at('rule-bot-entries') && at('rule-bot-entries') < at('eod-trading-entries'));
+    assert.ok(at('eod-trading-entries') < at('score-signals'));
+    assert.ok((await planSteps({ root: '/nowhere' })).find(s => s.id === 'rule-bot-entries').releaseGate);
+    delete process.env.RULE_BOT_ID;
+    assert.equal((await planSteps({ root: '/nowhere' })).some(s => s.id === 'rule-bot-entries'), false);
+  } finally { if (before === undefined) delete process.env.RULE_BOT_ID; else process.env.RULE_BOT_ID = before; }
+});
+
+test('the broad research data is refreshed a little each day, never in a replay, and feeds the lab and the lessons', async () => {
+  const before = process.env.REPLAY_PRICES;
+  try {
+    delete process.env.REPLAY_PRICES;
+    const plan = await planSteps({ root: '/nowhere' });
+    const ids = plan.map(s => s.id);
+    assert.ok(ids.indexOf('broad-data') < ids.indexOf('factor-lab') && ids.indexOf('factor-lab') < ids.indexOf('organisation-lessons'));
+    const broad = plan.find(s => s.id === 'broad-data');
+    assert.ok(broad.args.includes('--max-age-days') && broad.args.includes('--limit') && broad.requires);
+    assert.ok(plan.find(s => s.id === 'factor-lab').args.includes('--monthly'));
+    process.env.REPLAY_PRICES = 'x';
+    assert.ok((await planSteps({ root: '/nowhere' })).find(s => s.id === 'broad-data').skip);
+  } finally { if (before === undefined) delete process.env.REPLAY_PRICES; else process.env.REPLAY_PRICES = before; }
+});
+
 test('a model step that keeps failing rests behind an open circuit, tries again later, and one success closes it', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'circuit-'));
   try {

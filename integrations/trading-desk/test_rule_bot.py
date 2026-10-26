@@ -123,6 +123,27 @@ class RuleBotTests(unittest.TestCase):
             rerun = Fake(signals=sent_one)  # only the first proposal got through
             self.assertEqual([p['symbol'] for p in rb.run('momentum-rules', 'src', ENV, cache, rerun, NOW, state_dir=state)['proposals']], ['ICICIBANK', 'NTPC'])
 
+    def test_a_proposal_refused_only_by_a_passing_brake_is_sent_again_and_a_lasting_refusal_is_not(self):
+        def refused(symbol, reasons, at='2026-11-04T12:00:00Z'):
+            return {'botId': 'momentum-rules', 'model': rb.MODEL, 'createdAt': at, 'action': 'enter-long', 'symbol': symbol,
+                    'review': {'outcome': 'rejected', 'reasons': reasons}}
+        self.assertTrue(rb.retryable(refused('A', ['protection-weekly-loss', 'priced-from-verified-close'])))
+        self.assertTrue(rb.retryable(refused('A', ['no-fresh-approved-quote'])))
+        self.assertFalse(rb.retryable(refused('A', ['protection-weekly-loss', 'order-limit-exceeded'])))  # one lasting reason
+        self.assertFalse(rb.retryable(refused('A', ['priced-from-verified-close'])))
+        self.assertFalse(rb.retryable({'review': {'outcome': 'accepted', 'reasons': []}}))
+        with tempfile.TemporaryDirectory() as tmp:
+            cache, state = cache_with(tmp), Path(tmp) / 'state'
+            rb.run('momentum-rules', 'src', ENV, cache, Fake(), NOW, state_dir=state)  # the month's ranking is decided
+            braked = Fake(signals=[refused('RELIANCE', ['protection-daily-loss']), refused('ICICIBANK', ['order-limit-exceeded']),
+                                   refused('NTPC', ['protection-daily-loss']),
+                                   {**refused('NTPC', []), 'createdAt': '2026-11-04T13:00:00Z', 'review': {'outcome': 'accepted'}}])
+            again = rb.run('momentum-rules', 'src', ENV, cache, braked, NOW, state_dir=state)['proposals']
+            self.assertEqual([p['symbol'] for p in again], ['RELIANCE'])  # NTPC's later attempt went through
+            same_day = Fake(signals=[refused('RELIANCE', ['protection-daily-loss'], at='2026-11-05T10:00:00Z')])
+            later = rb.run('momentum-rules', 'src', ENV, cache, same_day, NOW, state_dir=state)['proposals']
+            self.assertNotIn('RELIANCE', [p['symbol'] for p in later])  # refused earlier today: at most one attempt a day
+
     def test_holding_the_leaders_decides_nothing_to_change_for_the_whole_month(self):
         with tempfile.TemporaryDirectory() as tmp:
             cache, state = cache_with(tmp), Path(tmp) / 'state'

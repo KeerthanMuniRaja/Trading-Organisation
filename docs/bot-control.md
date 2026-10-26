@@ -19,4 +19,4 @@ Code: [`backend/src/bot-control.ts`](../backend/src/bot-control.ts) and `organis
 
 **In the digest.** The owner digest lists suspended bots under "Organisation".
 
-**A note on budget changes and equity curves.** A daily snapshot records the budget of its day, so a budget change appears as a step in that bot's equity curve. Read the history around a change with that in mind.
+**A note on budget changes and equity curves.** A daily snapshot records the budget of its day, so a budget change appears as a step in that bot's raw equity (`equityPaise` in the history). Since 27 Oct 2026 the return, worst fall, risk figures, basket comparison, drawdown alert and management rules all treat a budget change as money moving in or out, not as performance (`performanceCurve`).

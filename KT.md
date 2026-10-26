@@ -51,7 +51,8 @@ The organisation now manages itself like a firm, with the owner as CEO:
   the data export carries to the private data repository.
 - **First live run, 22 Oct:** 35 steps done, migrations 052–054 applied. It found and fixed the benchmark start for
   bots whose record predates the basket marks.
-- **Model:** 7 of 8 evaluation tasks pass on Qwen 3.5-4B ([model evaluation](docs/model-eval.md)).
+- **Model:** 6 of 8 evaluation tasks pass on Qwen 3.5-4B ([model evaluation](docs/model-eval.md); an earlier "7 of 8"
+  was a miscount).
   - The headline reader is on prompt v2.
   - Debate citations are grounded (MODEL-04): a quote checked in the evidence, or a citation derived from the argument.
   - Playbook phrases are escaped literals (`playbook_drafts.literal`).
@@ -122,10 +123,39 @@ The organisation now manages itself like a firm, with the owner as CEO:
   - **Digest:** a limits banner (what the running backend loaded, with a name-only warning when settings differ),
     arithmetic checks, crashed runs, refused-order counts and the loss-brake state.
   - **Loss brakes** (migration 054, `protections.ts`, `npm run protections`, [protections](docs/protections.md)):
-    - daily, weekly and monthly realised-loss pauses, a losing-streak pause and a per-share cooldown;
+    - daily, weekly and monthly loss pauses, measured on realised losses or on the fall in value (`measure: equity`,
+      27 Oct), a losing-streak pause and a per-share cooldown;
     - they pause new buys only and lift by themselves;
     - they are set by the owner only, and are off until then (founder review B3);
     - the review rules are now `signal-risk-v3`, identical to v2 with no policy.
+
+### Added on 27 October 2026 ([project log](docs/project-log/2026-10-27.md))
+
+- **Founder charter** (`npm run charter`, [charter](docs/charter.md)): autonomy rules and brakes applied together.
+  - `management-v2` also cuts budgets (`reduce-budget`, migration 055; standing approval `reduceBudget`).
+  - `management-v3` only watches, rather than suspends, a bot at the 15% loss limit that is ahead of the basket
+    (`market-fall`). Found by the year-long 2020 replay ([management](docs/management.md)).
+  - Cycle step `charter-guard` (`POST /v1/protections/guard`, evaluator) halts all new buying at the organisation loss
+    limit (`organisationLossPaise`). It never resumes by itself.
+  - `management-v4` (evening, migration 056) gives a loss-limit suspension a way back: `reinstate` after 20 days, once
+    the bot holds nothing or has recovered, with 25% less budget; afterwards only its loss since returning counts.
+    Standing approval `reinstateSuspended` (in the charter, not the starter policy).
+  - `management-v5`: losses, the worst fall and the basket comparison take budget changes out (`performanceCurve`), so a
+    budget cut no longer reads as a fall, as trailing the basket, or as a bigger loss.
+- **New machine (27 Oct evening):** the organisation now runs from `C:\Keerthan\Project\Trading-Organisation`
+  (STARTUP.md done, 23 Oct backup restored, starter policy and suggested brakes set, model members created). The
+  llama.cpp runtime is a separate install: `npm run model:local -- install runtime` (STARTUP.md step 7 now says so).
+- **Mentor** (`mentor.py`, `knowledge/mentor-curriculum.json`, cycle step `mentor-refresh`, [mentor](docs/mentor.md)):
+  lessons checked on our data; the debate and the panel read at most 3 as data; contradicted lessons are never shown.
+- **Training on reality:** the debate log plus `outcome_labels.py` (cycle step `outcome-labels`) feed
+  `build_dataset.py`'s `<task>/outcome-kto.jsonl`. Claude's outputs are never training targets.
+- **Rule bot:** a second pass the same day once exits fill (`rule-bot-entries`, `eod-trading-entries`). It also
+  retries, at most once a day, a buy refused only for a passing reason.
+- **Replay:**
+  - `run --protections/--autonomy/--charter` and `prepare --limits`;
+  - the report has `tradingWholeRun` with rejection reasons, and equity curves;
+  - the 2020 crash runs revised B3 (value-based brakes, daily and weekly), raised the charter stop to ₹2,000 and added
+    B27 (the lifetime realised-loss limit) ([replay](docs/replay.md)).
 
 ### Added in the evening of 20 October 2026
 

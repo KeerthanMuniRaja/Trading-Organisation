@@ -144,8 +144,13 @@ def exchanges(journal=JOURNAL, evals=EVALS):
                 yield 'evaluation', e['system'], e['user'], e['answer']
 
 
-def build(journal=JOURNAL, evals=EVALS, out=OUT):
+LABELS = ROOT / '.local' / 'trading-desk' / 'outcome-labels.json'
+
+
+def build(journal=JOURNAL, evals=EVALS, out=OUT, labels_path=LABELS):
     seen, counts, files = set(), {}, {}
+    # MODEL-DATA-02: the real outcome of what an answer argued, keyed by the fingerprint of what the model saw
+    outcomes = json.loads(Path(labels_path).read_text(encoding='utf-8')).get('labels', {}) if Path(labels_path).exists() else {}
     for source, system, user, answer in exchanges(journal, evals):
         task = task_of(system)
         if task is None:
@@ -158,6 +163,11 @@ def build(journal=JOURNAL, evals=EVALS, out=OUT):
         bucket = counts.setdefault(task, {}).setdefault(source, {})
         bucket[verdict] = bucket.get(verdict, 0) + 1
         prompt = [{'role': 'system', 'content': system}, {'role': 'user', 'content': user}]
+        real = outcomes.get(hashlib.sha256(user.encode()).hexdigest()[:16]) if source == 'production' else None
+        if real is not None and verdict != 'bad':
+            # reality as the teacher: a usable answer is desirable when what it argued came true, undesirable when not
+            files.setdefault((task, 'outcome-kto'), []).append({'source': source, 'prompt': prompt, 'label': bool(real['right']),
+                'signalId': real['signalId'], 'completion': [{'role': 'assistant', 'content': json.dumps(answer, ensure_ascii=False)}]})
         # evaluation rows come from invented fixtures: they go to eval-only/, never into a training file (Soup review)
         folder = 'eval-only' if source == 'evaluation' else task
         name = f'{task}-{{}}' if source == 'evaluation' else '{}'
@@ -184,7 +194,8 @@ def build(journal=JOURNAL, evals=EVALS, out=OUT):
                 'fingerprint': hashlib.sha256(json.dumps(written, sort_keys=True).encode()).hexdigest()[:16],
                 'note': 'Labelled by the organisation\'s own checks. <task>/sft.jsonl: chat messages; <task>/preference.jsonl: '
                         'prompt/chosen/rejected (chosen is the same answer corrected by the check); <task>/kto.jsonl: unusable answers '
-                        'labelled undesirable. Rows from evaluation runs (invented fixtures) are only in eval-only/ and never in a '
+                        'labelled undesirable; <task>/outcome-kto.jsonl: usable answers labelled by what really happened to the call '
+                        'they argued (outcome_labels.py). Rows from evaluation runs (invented fixtures) are only in eval-only/ and never in a '
                         'training file. Shuffle before training: Soup takes its validation split from the end of a file.'}
     (out / 'manifest.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
     return manifest

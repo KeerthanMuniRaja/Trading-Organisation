@@ -20,5 +20,6 @@ test('the owner sets protections with a reason and a stable key, and sees who is
   await assert.rejects(() => show({ PRINCIPALS_JSON: '[]' }, fetchImpl), /exactly one owner/);
   // the suggested file is a valid policy shape: thresholds the founder can accept or change
   const suggested = JSON.parse(await readFile(new URL('../docs/policies/protections-suggested.json', import.meta.url), 'utf8'));
-  assert.deepEqual(Object.keys(suggested.rules).sort(), ['dailyLossPct', 'losingExits', 'monthlyLossPct', 'shareCooldownDays', 'weeklyLossPct']);
+  assert.deepEqual(Object.keys(suggested.rules).sort(), ['dailyLossPct', 'losingExits', 'measure', 'monthlyLossPct', 'shareCooldownDays', 'weeklyLossPct']);
+  assert.equal(suggested.rules.measure, 'equity'); // the 2020 replay: realised brakes tripped on the rebalance, after the fall
 });

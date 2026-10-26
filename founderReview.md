@@ -11,7 +11,7 @@ answering in a session ("decision 3: yes"). This file is updated as items close.
   - `trend-bot` (₹1,000 budget) is +₹48 overall, and 1.8 points ahead of the basket since 16 Oct.
 - **Backend:** one full live cycle ran on 22 Oct, with all 35 steps done. Migrations 052–054 are applied. The backend
   was stopped again afterwards.
-- **Model:** Qwen 3.5-4B passes **7 of 8** evaluation tasks. R&D invention and the allocator wait on B10 and B11. It
+- **Model:** Qwen 3.5-4B passes **6 of 8** evaluation tasks (corrected 27 Oct; earlier copies said 7). R&D invention and the allocator wait on B10 and B11. It
   is installed but not yet switched on in the cycle (step A5).
 - **Research:** on 10 years of data, no strategy beats simply holding the 8 shares after costs and tax. The most
   consistent lead is quarterly momentum: all 4 neighbouring settings also beat the basket, but it is not proven (p 0.10).
@@ -22,13 +22,13 @@ answering in a session ("decision 3: yes"). This file is updated as items close.
 
 ---
 
-## Part 0: your next three days, without Claude (Sat 24 – Mon 26 Oct)
+## Part 0: your first three days on the new machine, without Claude
 
 Follow [STARTUP.md](STARTUP.md) for every command. Keep a notes file as you go, `.local/owner-notes.txt`, with the date, what you did, and anything odd:
 the exact message and which step. It is never committed to the code repository, and the weekly data export carries it
 to your private data repository, where Claude can read it later.
 
-**Day 1 (Saturday): move to the new machine and switch on.** Markets are closed, so nothing trades today.
+**Day 1 (best on a Saturday): move to the new machine and switch on.** Markets are closed, so nothing trades.
 1. Set up the new machine: STARTUP.md section 1, steps 1–8. Finish only when `verify` says ALL CHECKS PASSED and
    `preflight` says READY.
 2. Run Part A below, A3 to A12, in order:
@@ -40,29 +40,29 @@ to your private data repository, where Claude can read it later.
    - create `.local/nse-holidays.json` from NSE's holiday circular (A9).
 4. Check: `npm run status` should show Backend up, Supervisor alive and no failed steps.
 
-**Day 2 (Sunday): let it run, and decide.** Markets are closed again. The supervisor still polls news every 30 minutes.
-1. `npm run status`: the supervisor should be alive, and its next job the readiness check on Monday at 09:00.
+**Day 2 (Sunday, or the next evening): let it run, and decide.** The supervisor polls news every 30 minutes, on any day.
+1. `npm run status`: the supervisor should be alive, and its next job the readiness check of the next trading day at 09:00.
 2. Read Part B and write your answers in your notes. The five that unblock the most work: **B1, B3, B4, B6 and the
    limits (B26)**. "All recommended" is a valid answer.
 3. Optional (B14, the biggest data lever): download NSE's NIFTY 50 reconstitution notices and write the monthly member
    lists into `.local/trading-desk/datasets/nifty50-membership.json` (format in
    [research methods](docs/research-methods.md)).
 
-**Day 3 (Monday): the first trading day on the new machine.**
+**Day 3 (the first trading day on the new machine).**
 1. Around 09:00 the readiness check runs by itself. `npm run readiness` shows it.
 2. After 16:05 the cycle runs by itself, with the model if A5 is on. That takes 30–60 minutes.
 3. Read `.local/digests/<today>.md`:
    - "Needs you" first;
    - then "Can you trust this digest?": it should say "Yes", or tell you what to check;
    - then answer `npm run agenda`.
-4. Monday evening, backend stopped: run the backup and the data export (A13), then push `.local/data-repo`.
+4. That evening, with the backend stopped: run the backup and the data export (A13), then push `.local/data-repo`.
 
 **When you come back to Claude:** say "Read founderReview.md Part 0 and my notes", and paste your notes and your
 decisions. Development continues from there.
 
 ---
 
-## Part A: the switch-on (Saturday 24 Oct, on the new machine), in order
+## Part A: the switch-on (on the new machine), in order
 
 On the new machine, A1 and A2 are already covered by STARTUP.md section 1: the preflight, and the restore of the 23 Oct
 backup.
@@ -73,7 +73,7 @@ backup.
 | A2 | **Backup first** (backend stopped) | `npm run backup -- create` | Migrations 052 (standing approvals), 053 (refused orders) and 054 (loss brakes) apply on the next start. A backup makes them reversible, and the preflight wants a backup newer than 054 |
 | A3 | **Start the backend** | `npm start` | Nothing runs while it is down |
 | A4 | **Apply the starter policy** | `npm run autonomy -- set docs/policies/autonomy-starter.json --reason "Starter: protect, repair, roll back"` | The agents may suspend losing bots, roll back failing releases and trial same-rule fixes by themselves. No money moves by itself ([autonomy](docs/autonomy.md#the-starter-policy)) |
-| A4b | **Set the loss brakes** (decision B3) | `npm run protections -- set docs/policies/protections-suggested.json --reason "Founder thresholds"` | Built and switched off. Until you set them, losses never pause a bot. Suggested: 2% of budget in a day, 5% in a week, 8% in a month, and a 1-day pause after 2 losing exits. Only new buys pause, each pause lifts by itself, and exits stay allowed ([protections](docs/protections.md)) |
+| A4b | **Set the loss brakes** (decision B3) | `npm run protections -- set docs/policies/protections-suggested.json --reason "Founder thresholds"` | Built and switched off. Until you set them, losses never pause a bot. Suggested (revised 27 Oct after the 2020 replay): a 3% fall in value in a day or 6% in a week. Only new buys pause, each pause lifts by itself, and exits stay allowed ([protections](docs/protections.md)) |
 | A4c | **Check the limits banner** | Read "Can you trust this digest?" in the first digest | It shows the limits the running backend actually loaded, and says by name when a setting differs (the stale `MAX_ORDER` problem) |
 | A5 | **Turn on the model** | Add `MODEL_AUTOSTART=qwen3.5-4b-q4km` to `.env` | Switches on the claim analyst, learning, R&D invention, the debate desk, the scenario panel, TradingAgents and playbook drafts |
 | A6 | **Set up the model members** (after A5) | `npm run members -- apply tradingagents --yes` and `npm run members -- apply debaters --yes`, then restart the backend | Gives TradingAgents and the bull/bear debaters their identities and credentials. They start in shadow |
@@ -99,9 +99,12 @@ with `npm run agenda`.
 | --- | --- | --- | --- | --- |
 | B1 | **The live momentum bot** | (a) keep it monthly on ₹5,000; (b) make a yearly-rebalanced release; (c) stop it | **(b), or (a) as a pure experiment.** After tax over 10 years: monthly 9.8%, yearly 11.2%, basket 12.55%. Neither beats holding | [roadmap](docs/skill-roadmap.md) |
 | B2 | **The basket as the default home for money** | Bots get budget only by beating holding the 8 shares after tax on their live record | **Yes.** It is the honest benchmark, and no strategy beats it yet | [roadmap](docs/skill-roadmap.md) |
-| B3 | **Self-expiring loss brakes: the thresholds** | The mechanism is **built and off** (21 Oct, migration 054). You choose the numbers, or `{}` for none, with one command (step A4b) | **Yes, the suggested file:** pause at 2% of budget lost in a day, 5% in a week or 8% in a month, and for a day after 2 losing exits in a row. Optional: a per-share cooldown after an exit | [protections](docs/protections.md) |
+| B3 | **Self-expiring loss brakes: the thresholds** | The mechanism is **built and off** (21 Oct, migration 054). You choose the numbers, or `{}` for none, with one command (step A4b) | **Yes, the suggested file, revised 27 Oct:** measured on value (open positions included), pause at a 3% fall in a day or 6% in a week; no monthly window, no losing-streak brake. In the 2020 crash replay the first suggestion (realised losses, with a monthly window) made the bot −15.0% against −6.7% with these, −7.5% with none, and −20.6% for the basket: it tripped on the April rebalance and kept the bot out of the rebound | [protections](docs/protections.md) |
 | B4 | **Unrealised-loss protection and horizon exits** | A portfolio drawdown halt on marked value; optional trailing stops; close or renew a position when its horizon passes | **Yes to the drawdown halt and horizon renewal;** stops optional | [gap analysis A2](docs/research-notes/README.md) |
 | B26 | **The organisation exposure limit** | Today it equals the order limit (₹5,000). momentum-rules holds about ₹4,139, so trend-bot can barely use its ₹1,000 budget, and we learn little from it | **Raise it, for example `MAX_EXPOSURE_PAISE=1000000` (₹10,000) in `.env`,** then restart the backend. The digest's limits banner shows the loaded value | Found in the 22 Oct run |
+| B27 | **The lifetime realised-loss limit** | `MAX_REALISED_LOSS_PAISE` counts the organisation's net realised loss over its **whole life**; at the limit every new buy stops until you raise it. Today it is ₹1,000 | **Raise it to ₹2,500 (`MAX_REALISED_LOSS_PAISE=250000`) if you apply the charter.** The 2020 crash alone used ₹947 of ₹1,000, so a year unattended would freeze. The charter's stop (₹2,000, open losses included) then fires first, and this hard limit sits above it | [charter](docs/charter.md), 2020 replay |
+| B28 | **Real Indian trading charges on paper fills** (added 27 Oct) | `PAPER_COST_MODEL=flat` (today: 10 bps each side) or `nse-delivery` (STT 0.1% each side, stamp duty on buys, exchange and SEBI fees with GST, and a Rs 15.93 depository charge on every sale, the rates the research desk already uses) | **Switch to `nse-delivery`** in `.env`, then restart the backend. At your order sizes the depository charge is about 1.1% of a Rs 1,400 sale, so a monthly rebalance of three shares costs about Rs 48, roughly 1% of a Rs 5,000 budget a month, which the flat 10 bps never showed. It makes the paper record honest and strengthens the case for slower rebalancing (B1). Earlier fills keep the charges they were booked with | `backend/src/config.ts` `paperFee`; test in `backend/test/regression.test.ts` |
+| B29 | **A sector limit** (added 27 Oct) | `sectorLimit: {maxPct, sectors}` in the protections policy: no bot holds more than `maxPct` of its budget in one sector; the review sizes a buy down to the room left. Exits are never limited | **Yes, 50%**, applied with the brakes: `npm run protections -- set docs/policies/protections-with-sectors.json --reason "Brakes and a sector limit"`. Our four banks move together (correlation 0.47 against 0.26 with the rest); at 50% the momentum bot can still hold one bank fully and a second in part, never three | [protections](docs/protections.md) |
 | B5 | **The regime as a sizing input** | Today the regime is advice only. Option: size new buys down at HIGH or SEVERE | **Not yet.** Regime v2 (closer to the original specification) was tested on 21 Oct: it warns of falls less sharply than v1 and calls SEVERE on 42% of days. A re-entry signal is still untested | [market regime](docs/market-regime.md) |
 
 ### Research and scoring
@@ -126,7 +129,7 @@ with `npm run agenda`.
 | # | Approval | Why | Note |
 | --- | --- | --- | --- |
 | B13 | **Confirm the data terms:** Yahoo prices and publisher RSS headlines for personal paper research | Our only price and news sources | Publisher terms could not be read automatically |
-| B14 | **Point-in-time index membership** (NIFTY 200/500 as they were each month) | The biggest lever for proving any skill. Today's members over past years flatter every result | NSE reconstitution press releases (manual download) or a paid dataset |
+| B14 | **Point-in-time index membership** (NIFTY 200/500 as they were each month) | The biggest lever for proving any skill. Today's members over past years flatter every result. **Now urgent:** on 484 of today's NIFTY 500 members, 12-month momentum passed the factor lab (27 Oct 2026, [factor lab](docs/factor-lab.md#results-through-september-2026-119-months)). This list is the only way to tell whether that is real or survivorship | NSE reconstitution press releases (manual download) or a paid dataset |
 | B15 | **A fundamentals and filings data provider** | Results against expectations, promoter trades, flows: where the model can genuinely help | Most likely paid. NSE and BSE pages restrict scraping |
 | B16 | **A second price source** (NSE bhavcopy) and a catalyst calendar (results, RBI, Budget, FOMC) | Cross-checks prices; knows what is scheduled | Manual or approved download |
 
@@ -209,11 +212,16 @@ These are fixes from the gap analysis that need no decision.
   - an events calendar for the debate, the panel and the digest.
 - **Debate citations are now grounded:** a citation counts only when its quote is found in the evidence, or the code
   derives it from the argument's own words.
-- **Model:** **7 of 8 tasks pass** on Qwen 3.5-4B ([model evaluation](docs/model-eval.md)).
+- **Model:** **6 of 8 tasks pass** on Qwen 3.5-4B ([model evaluation](docs/model-eval.md)); R&D invention and the
+  allocator wait on B10 and B11.
 - **The first live run (22 Oct):** clean. It found and fixed a missing basket comparison for trend-bot.
 
+**Done 27 Oct: fast-forward replay** ([replay](docs/replay.md)). The real system, run over a past stretch of
+trading days in an isolated copy. Three months of 2025 replayed with no failures in 46 minutes, and the rule bot again
+trailed the basket (+6.6% against +8.6%). You can run it yourself: `node scripts/replay-org.mjs prepare`, then
+`run --from <date> --to <date>`.
+
 **Still to do, no decision needed:**
-- the replay clock for the whole backend (fast-forward testing). The brakes already take an injectable clock;
 - the NSE bhavcopy price cross-check, which stays off until you approve the source (B16).
 
 ## Part D: things you should know
@@ -225,4 +233,4 @@ These are fixes from the gap analysis that need no decision.
   question for the copyleft ones (FinceptTerminal, MiroFish, backtesting.py, freqtrade).
 - **The office laptop:** nothing is downloaded, installed, run in the background or pushed without your OK, except
   what you have authorised (pushes to `dev` when asked).
-- **The new machine:** run the organisation there only, from 24 Oct. Don't run it on the office laptop as well.
+- **The new machine:** once you switch on there, run the organisation there only. Don't run it on the office laptop as well.

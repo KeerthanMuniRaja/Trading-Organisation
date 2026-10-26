@@ -445,11 +445,19 @@ def propose(report, department, source, env=os.environ, opener=None, recompute=N
     return outcomes
 
 
+# the invention prompt carries the grammar, every method card and every result (about 4,500 tokens on 27 Oct 2026); on the
+# laptop CPU (about 5 tokens a second) that passed the shared 240-second limit
+INVENT_TIMEOUT_SECONDS = 540
+
+
 def invent(how, through=None, cache=daily.DAILY, ledger_path=None, llm=None, now=None):
     """RND-03: R&D proposes new ideas into the ledger before the scout tests everything. 'model' asks the local model
     (schema-constrained to the idea grammar); 'explorer' proposes close variants of the three best ideas. Either way the
     ledger refuses duplicates and caps new ideas per month, and every idea raises the bar for all."""
     import rnd_ideas
+    if how == 'model' and rnd_ideas.room(ledger_path or rnd_ideas.LEDGER, now) == 0:
+        # the month's new ideas are in: whatever the model proposed would be refused, and asking costs minutes of CPU
+        return [{'outcome': 'monthly-limit', 'reason': f'at most {rnd_ideas.MAX_NEW_PER_MONTH} new ideas a month; the model was not asked'}]
     current = scout(through, cache, ledger_path)
     known = {rnd_ideas.spec_hash(s) for s in CATALOGUE_SPECS.values()}
     if how == 'explorer':
@@ -459,7 +467,7 @@ def invent(how, through=None, cache=daily.DAILY, ledger_path=None, llm=None, now
         if llm is None:
             sys.path.insert(0, str(daily.ROOT / 'integrations' / 'claims'))
             import claims
-            llm, endpoint = claims.model_client(claims.local_settings(os.environ), 240)
+            llm, endpoint = claims.model_client(claims.local_settings(os.environ), INVENT_TIMEOUT_SECONDS)
             proposer = 'model:' + endpoint.model
         else:
             proposer = 'model:test'

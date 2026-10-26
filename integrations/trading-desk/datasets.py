@@ -44,7 +44,32 @@ NIFTY50 = {
     'TMPV.NS': 'Tata Motors Passenger Vehicles', 'TATASTEEL.NS': 'Tata Steel', 'TECHM.NS': 'Tech Mahindra', 'TITAN.NS': 'Titan Company',
     'TRENT.NS': 'Trent', 'ULTRACEMCO.NS': 'UltraTech Cement',
 }
-KNOWN = {**UNIVERSE, **NIFTY50}  # files the desk may read; trading still uses UNIVERSE only
+# RESEARCH ONLY (never traded): the NIFTY 500 members, from NSE Indices' constituent file (ind_nifty500list.csv, fetched
+# once on 27 Oct 2026). Today's members over past years: the same survivorship bias as above, larger. Point-in-time
+# membership (founder review B14) removes it.
+NIFTY500_LIST = CACHE / 'ind_nifty500list.csv'
+
+
+def _nifty500_rows(path=None):
+    import csv
+    p = Path(path) if path else NIFTY500_LIST
+    if not p.exists():
+        return []
+    with p.open(encoding='utf-8-sig', newline='') as handle:
+        return [r for r in csv.DictReader(handle) if (r.get('Series') or '').strip() == 'EQ' and (r.get('Symbol') or '').strip()]
+
+
+def nifty500(path=None):
+    """{'<SYMBOL>.NS': company name} for the NIFTY 500 members in the constituent file; empty without the file."""
+    return {r['Symbol'].strip() + '.NS': r['Company Name'].strip() for r in _nifty500_rows(path)}
+
+
+def industries(path=None):
+    """{'<SYMBOL>.NS': NSE industry} from the same file: the sector map a concentration limit or a sector study needs."""
+    return {r['Symbol'].strip() + '.NS': r['Industry'].strip() for r in _nifty500_rows(path)}
+
+
+KNOWN = {**UNIVERSE, **NIFTY50, **nifty500()}  # files the desk may read; trading still uses UNIVERSE only
 
 
 def validate(dataset):

@@ -4,17 +4,43 @@ The organisation is run like a firm. Every day a management review looks at each
 
 ## The daily management review
 
-The cycle step `management-review` (after the paper snapshot) has the evaluator apply fixed, published rules, `management-v1`, to every bot in paper trading. The first matching rule decides:
+The cycle step `management-review` (after the paper snapshot) has the evaluator apply fixed, published rules, now `management-v5`, to every bot in paper trading. The first matching rule decides:
 
 | Rule | When | Recommendation |
 | --- | --- | --- |
 | `live-worse-than-cash` | Its live paper calls lose to holding cash, significantly (sign test) | **Suspend**: no new risk; exits stay allowed |
-| `loss-limit` | It has lost 15% or more of its budget | **Suspend** |
+| `loss-limit` | It has lost 15% or more of its budget, and is behind simply holding the basket (or has no basket comparison yet) | **Suspend** |
+| `market-fall` (v3) | It has lost 15% or more of its budget, but is **ahead** of the basket: the market fell, the bot did not fail | **Watch** |
 | `losing` | It has lost 8% or more of its budget | **Watch** |
 | `deep-drawdown` | Its equity fell 20% or more from a peak | **Watch** |
 | `not-executing` | 3 or more accepted proposals lapsed in 30 days, and none was executed | **Watch**: check its pipeline |
 | `proven-skill` | Its live calls beat cash significantly, it is ahead of the basket and up on its budget, over at least 60 daily snapshots, with no budget change in 90 days | **Raise its budget by 25%**, capped by the department's unallocated ceiling and the exposure limit |
 | `suspended-and-still-worse` | Suspended for 30 days or more, holds nothing, and its live calls still lose to cash | **Retire** |
+| `suspension-served` (v4) | Suspended by `loss-limit` for 20 days or more, holds nothing or has recovered above the 15% loss, and its live calls do not lose to cash | **Reinstate**, with 25% less budget (never below ₹1,000) |
+
+`management-v2` (27 Oct 2026) added `trails-basket`: a bot 3 or more points behind the basket over 60+ days, without
+proven skill, is recommended 25% less budget, never below ₹1,000 ([charter](charter.md)).
+
+**Why v3.** In the hands-off replay of 2020, v2 suspended momentum-rules on 12 March, a week into the crash, for
+losing 15% of its budget, while it was falling *less* than the basket. The charter's standing approvals applied the
+suspension. A suspension is only ever lifted by the owner, so the bot sold what it held and sat in cash for the rest
+of the year: −13.0% against the basket's +7.8%. A real disaster is still caught by the charter's organisation stop and
+the `.env` limits.
+
+**Why v4.** v3 still left a suspended bot with no way back except the owner, which an organisation that runs alone
+cannot rely on. `suspension-served` brings back a bot that the **loss limit** suspended once it has served 20 days,
+holds nothing (or has recovered), and its live calls do not lose to cash. It returns with a smaller budget. From then on
+the loss rules (`loss-limit`, `losing`) count only what it lost **since it was reinstated**, so its old loss cannot
+suspend it again the next morning. Suspensions for calls that lose to cash, rollbacks, and the owner's own suspensions
+have no automatic way back: they stay the owner's call.
+
+**Why v5.** Every measure here used to read the equity as budget plus P&L, so a budget change looked like performance.
+A 25% cut read as a 25% fall (a `deep-drawdown` watch and a drawdown alert), as 25 points behind the basket (which
+called for the next cut once the budget had been quiet for 90 days, and made a later loss read as "behind the basket"),
+and the same rupee loss became a third larger as a share of the smaller budget (a bot at −12% read −16%: suspended).
+From v5 the loss rules, the worst fall and the basket comparison use the bot's value with budget changes taken out
+(`performanceCurve` in `paper-performance.ts`, a time-weighted return). For a bot whose budget never changed, nothing
+differs.
 
 How recommendations behave:
 - **No repeats:** a concern is not filed again while it waits for the owner, nor within 30 days after the owner decided it.
@@ -38,6 +64,7 @@ The agenda lists every decision waiting on the owner. An `<id>` can be shortened
 | Recommendation: raise budget | Raises the budget, after checking the department ceiling and exposure limit again | Recorded |
 | Recommendation: retire | Retires the bot, handing on all its verified lessons, then records the decision | Recorded |
 | Recommendation: watch | Acknowledged | Recorded |
+| Recommendation: reinstate | Lifts the suspension and applies the smaller budget in the same transaction | Recorded; not repeated for 30 days |
 | Birth proposal | Creates the bot in school with zero budget | Rejected |
 | Department proposal | Opens it (needs `--budget-paise=<paise>`) or closes it | Rejected |
 | Release ready | Activates the release | **Revokes** it for good (register a new one instead) |

@@ -40,6 +40,27 @@ export function curveStats(equity: bigint[]) {
   return { returnPct: first > 0n ? Number((last - first) * 1_000_000n / first) / 10_000 : null, maxDrawdownPct: Number(worst) / 10_000 };
 }
 
+/** Daily snapshots -> a performance curve in which a budget change is money moving in or out, not a gain or a loss (a
+ *  time-weighted return): it starts at the first day's equity and then moves only by each day's P&L change, measured on
+ *  the previous day's capital. For a bot whose budget never changed it equals budget + P&L exactly. Without this, a 25%
+ *  budget cut read as a 25% fall: a deep-drawdown watch, a drawdown alert, and 25 points "behind the basket", which
+ *  invited the next cut. */
+export function performanceCurve(snaps: { budget: string; realised: string; unrealised: string }[]): bigint[] {
+  const out: bigint[] = [];
+  let base = 0n, pnlBefore = 0n;
+  for (const s of snaps) {
+    const pnl = BigInt(s.realised) + BigInt(s.unrealised);
+    if (!out.length) out.push(BigInt(s.budget) + pnl);
+    else {
+      const before = base + pnlBefore, last = out[out.length - 1]!;
+      out.push(before > 0n ? last * (base + pnl) / before : last);
+    }
+    base = BigInt(s.budget);
+    pnlBefore = pnl;
+  }
+  return out;
+}
+
 export async function compute(tx: Sql, only: string | null, now: number) {
   const bots = (await tx.query(`SELECT id,name,state,budget_paise::text AS budget FROM bots
     WHERE ($1::text IS NULL OR id=$1) AND (state='paper' OR id IN (SELECT bot_id FROM orders)) ORDER BY id`, [only])).rows;
@@ -119,24 +140,24 @@ export type Benchmark = { botId: string; days: number; verdict: string; from?: s
 
 /** Per bot with at least two snapshots: its return against the basket's over the same days. */
 export async function compare(tx: Sql, botId: string | null): Promise<Benchmark[]> {
-  const rows = (await tx.query(`SELECT bot_id,to_char(day,'YYYY-MM-DD') AS d,(budget_paise+realised_paise+unrealised_paise)::text AS equity
-    FROM paper_performance_snapshots WHERE ($1::text IS NULL OR bot_id=$1) ORDER BY bot_id,day`, [botId])).rows;
+  const rows = (await tx.query(`SELECT bot_id,to_char(day,'YYYY-MM-DD') AS d,budget_paise::text AS budget,realised_paise::text AS realised,
+      unrealised_paise::text AS unrealised FROM paper_performance_snapshots WHERE ($1::text IS NULL OR bot_id=$1) ORDER BY bot_id,day`, [botId])).rows;
   const bots = new Map<string, Row[]>();
   for (const r of rows) bots.set(r.bot_id, [...(bots.get(r.bot_id) ?? []), r]);
   const out: Benchmark[] = [];
   for (const [id, list] of bots) {
     if (list.length < 2) { out.push({ botId: id, days: list.length, verdict: 'not-enough-days' }); continue; }
-    const last = list[list.length - 1]!;
+    const last = list[list.length - 1]!, curve = performanceCurve(list as { budget: string; realised: string; unrealised: string }[]);
     // a bot whose snapshots began before the basket's verified closes did is compared from the first of its days the
     // basket covers (same days on both sides), instead of not at all
     let start = 0, basket = await basketReturn(tx, list[0]!.d, last.d);
     while (!basket && start < list.length - 2) basket = await basketReturn(tx, list[++start]!.d, last.d);
-    const first = list[start]!, days = list.slice(start);
-    const own = BigInt(first.equity) > 0n ? Number(((BigInt(last.equity) - BigInt(first.equity)) * 1_000_000n / BigInt(first.equity))) / 10_000 : null;
+    const first = list[start]!, days = curve.slice(start), from = curve[start]!, to = curve[curve.length - 1]!;
+    const own = from > 0n ? Number((to - from) * 1_000_000n / from) / 10_000 : null;
     const excess = own === null || !basket ? null : Number((own - basket.returnPct).toFixed(2));
     out.push({ botId: id, from: first.d, to: last.d, days: days.length, returnPct: own === null ? null : Number(own.toFixed(2)),
       basketReturnPct: basket?.returnPct ?? null, basketShares: basket?.shares ?? 0, excessPct: excess,
-      ...(start > 0 && basket ? { firstSnapshot: list[0]!.d } : {}), risk: riskStats(days.map(r => BigInt(r.equity))),
+      ...(start > 0 && basket ? { firstSnapshot: list[0]!.d } : {}), risk: riskStats(days),
       verdict: excess === null ? 'no-basket-marks' : excess > 0 ? 'ahead-of-basket' : excess < 0 ? 'behind-basket' : 'level-with-basket' });
   }
   return out;
@@ -230,8 +251,9 @@ export class PaperPerformance {
       return { bots: [...bots.entries()].map(([id, list]) => {
         const curve = list.map(r => ({ day: r.d as string, equityPaise: money(BigInt(r.budget) + BigInt(r.realised) + BigInt(r.unrealised)),
           totalPnlPaise: money(BigInt(r.realised) + BigInt(r.unrealised)), unpricedOrStale: r.unpriced_or_stale as number }));
-        return { botId: id, days: curve.length, ...curveStats(curve.map(c => BigInt(c.equityPaise))), risk: riskStats(curve.map(c => BigInt(c.equityPaise))), curve };
-      }), note: 'Equity is budget plus paper P&L at each daily snapshot. Days with unpriced or stale marks are flagged.' };
+        const performance = performanceCurve(list as { budget: string; realised: string; unrealised: string }[]);
+        return { botId: id, days: curve.length, ...curveStats(performance), risk: riskStats(performance), curve };
+      }), note: 'Equity is budget plus paper P&L at each daily snapshot. Return, worst fall and risk treat a budget change as money moving in or out, not as performance. Days with unpriced or stale marks are flagged.' };
     }, false);
   }
 }

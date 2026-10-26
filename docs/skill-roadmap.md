@@ -56,6 +56,8 @@ rebalancing then pays short-term tax every year, which a buyer-and-holder defers
    - *Data needed:* each index's membership history. NSE publishes reconstitutions as press releases, usually twice a
      year, and its site terms restrict automated download, so the files would be downloaded by hand or bought.
    - *Data needed:* daily prices for every past member, including those that later left the index.
+   - *Started 27 Oct 2026:* today's NIFTY 500 members with 10 years of prices, and the [factor lab](factor-lab.md)
+     that tests cross-sectional patterns on them (still survivorship-biased until the membership history arrives).
 2. **Slower, tax-aware rules: built on 21 Oct 2026.** Every R&D family now takes `rebalance`: 1, 3, 6 or 12 months. The
    decision is taken at the start of each quarter, half-year or year and then held. A yearly rule is assumed to sell lots
    only after 12 months, so they pay long-term tax. Two pre-registered ideas test the live bot's own rule traded less

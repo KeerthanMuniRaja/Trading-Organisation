@@ -38,7 +38,11 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
   const desk = p => join(root, 'integrations', 'trading-desk', p);
   const steps = [
     { id: 'backend-health', critical: true, kind: 'http', path: '/v1/health' },
-    { id: 'market-data', cmd: PY, args: [desk('daily.py'), 'fetch', '--refresh'], timeoutMs: 600_000, retries: 2, verify: verifyMarketData },
+    // REPLAY-02: in a replay workspace the prices come from the full history, cut at the virtual day (no network)
+    process.env.REPLAY_PRICES
+      ? { id: 'market-data', cmd: NODE, args: [join(root, 'scripts', 'replay-prices.mjs'), process.env.REPLAY_PRICES,
+          join(root, '.local', 'trading-desk', 'daily')], timeoutMs: 120_000, verify: verifyMarketData }
+      : { id: 'market-data', cmd: PY, args: [desk('daily.py'), 'fetch', '--refresh'], timeoutMs: 600_000, retries: 2, verify: verifyMarketData },
     // REGIME-01: distribution days, breadth and trend of the eight shares, with an advisory exposure ceiling, and the
     // study of how the regime and later falls went together (no model, no network, changes no limit)
     { id: 'market-regime', cmd: PY, args: [desk('market_regime.py'), 'now'], timeoutMs: 120_000 },
@@ -80,8 +84,11 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
       : { id: 'headline-reader', skip: 'model steps not enabled (--with-model)' },
     { id: 'chain-links', cmd: PY, args: [desk('chains.py'), 'expand', '--headlines', join('.local', 'claims', 'auto', 'verified-headlines.json')],
       timeoutMs: 120_000, requires: join(root, '.local', 'claims', 'auto', 'verified-headlines.json') },
-    { id: 'forward-daily-rules', cmd: PY, args: [desk('daily.py'), 'forward', '--name', 'forward-from-2026-10-09'], timeoutMs: 300_000 },
-    { id: 'forward-portfolio', cmd: PY, args: [desk('portfolio_daily.py'), 'forward', '--name', 'portfolio-forward-from-2026-10-09'], timeoutMs: 300_000 },
+    // the live organisation's pre-registered forward tests (from 9 Oct 2026): meaningless in a replay of earlier days
+    ...(process.env.REPLAY_PRICES
+      ? [{ id: 'forward-daily-rules', skip: 'replay: the live forward tests start on 9 Oct 2026' }, { id: 'forward-portfolio', skip: 'replay: the live forward tests start on 9 Oct 2026' }]
+      : [{ id: 'forward-daily-rules', cmd: PY, args: [desk('daily.py'), 'forward', '--name', 'forward-from-2026-10-09'], timeoutMs: 300_000 },
+        { id: 'forward-portfolio', cmd: PY, args: [desk('portfolio_daily.py'), 'forward', '--name', 'portfolio-forward-from-2026-10-09'], timeoutMs: 300_000 }]),
     // ORG-03: the academy and lifecycle run every day. Each backend cycle answers 'disabled' until the owner enables its
     // policy, so these cost nothing until then: exams and remediation for students, lifecycle (births from blueprints,
     // school to college, reputation, retirement requests), research dispatch, registered experiments, reviewed memory.
@@ -93,9 +100,23 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     // evidence and a birth proposal for the owner's agenda only once the owner named an approved research source
     // RND-03: with the model on, R&D first invents new ideas (specifications only, at most 3 a month, each raising the bar)
     { id: 'rnd-scout', cmd: PY, args: [desk('rnd_scout.py'), ...(withModel ? ['--invent', 'model'] : []), ...(process.env.RND_SOURCE
-      ? ['--propose', '--source', process.env.RND_SOURCE, '--department', process.env.RND_DEPARTMENT || 'desk'] : [])], timeoutMs: 300_000 },
+      ? ['--propose', '--source', process.env.RND_SOURCE, '--department', process.env.RND_DEPARTMENT || 'desk'] : [])],
+      timeoutMs: withModel ? 900_000 : 300_000 }, // invention can take 9 minutes on the laptop CPU, then the scout itself
     // KNOW-05: the organisation's live knowledge (research, regime, news links, scenario record) for the agents and the digest
     { id: 'knowledge-refresh', cmd: PY, args: [desk('live_knowledge.py'), 'refresh'], timeoutMs: 120_000 },
+    // MENTOR-01: the mentor's lessons, each re-checked on today's data (no model, no network)
+    { id: 'mentor-refresh', cmd: PY, args: [desk('mentor.py'), 'refresh'], timeoutMs: 120_000 },
+    // RESEARCH-02: the NIFTY 500 research files (never traded) stay at most a month old, a few dozen downloads a day from
+    // the approved price source; the factor lab judges each month once it has closed; MENTOR-02 turns both findings
+    // into the organisation's own lessons, which the debate reads beside the mentor's
+    process.env.REPLAY_PRICES
+      ? { id: 'broad-data', skip: 'replay: no network' }
+      : { id: 'broad-data', cmd: PY, args: [desk('daily.py'), 'fetch', '--universe', 'nifty500', '--years', '10', '--refresh',
+          '--max-age-days', '28', '--limit', '40'], timeoutMs: 600_000,
+          requires: join(root, '.local', 'trading-desk', 'datasets', 'ind_nifty500list.csv') },
+    { id: 'factor-lab', cmd: PY, args: [desk('factor_lab.py'), '--monthly'], timeoutMs: 600_000,
+      requires: join(root, '.local', 'trading-desk', 'daily-nifty500') },
+    { id: 'organisation-lessons', cmd: PY, args: [desk('organisation_lessons.py')], timeoutMs: 120_000 },
     // the model-free rule bot proposes once a month, before the end-of-day trader reviews; it runs only once the owner
     // has created and qualified it and named it here (RULE_BOT_ID), with a trader credential bound to it
     // AUTO-05 self-repair: a code fix under the same rule is prepared as a release by the agents, and the standing
@@ -129,13 +150,25 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
       ? { id: 'debate', cmd: PY, args: [desk('debate.py')], timeoutMs: 1_800_000, computeGate: { botId: process.env.DEBATE_BEAR_BOT } }
       : { id: 'debate', skip: withModel ? 'no debaters configured (scripts/debate-setup.mjs)' : 'model steps not enabled (--with-model)' },
     { id: 'eod-trading', cmd: PY, args: [desk('eod_trader.py'), '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 },
+    // the rule bot's entries follow its exits: once eod-trading has filled today's exits, a second short pass proposes
+    // the entries and has them reviewed at the same close, so a rebalance takes two sessions, not three (found by the
+    // replay, 27 Oct 2026); both passes are release-gated, and a pass with nothing to do changes nothing
+    ...(process.env.RULE_BOT_ID ? [
+      { id: 'rule-bot-entries', cmd: PY, args: [desk('rule_bot.py'), '--bot', process.env.RULE_BOT_ID, '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'],
+        timeoutMs: 300_000, releaseGate: { botId: process.env.RULE_BOT_ID, cmd: PY, args: [desk('rule_bot.py'), '--describe'] } },
+      { id: 'eod-trading-entries', cmd: PY, args: [desk('eod_trader.py'), '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 },
+    ] : []),
     { id: 'score-signals', cmd: PY, args: [desk('signal_scorer.py'), '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 },
     // LEARN-03: every scored call becomes a verified factual lesson for its bot (no model)
     { id: 'reflections', cmd: PY, args: [desk('reflections.py')], timeoutMs: 300_000 },
+    // MODEL-DATA-02: each posted debate argument labelled by its call's real outcome (read-only), for a future fine-tune
+    { id: 'outcome-labels', cmd: PY, args: [desk('outcome_labels.py')], timeoutMs: 120_000 },
     // TRUST-02: how the calls the review took and turned down went, by reason and by the regime at the time (read-only)
     { id: 'review-scorecard', cmd: PY, args: [desk('review_scorecard.py')], timeoutMs: 120_000 },
     { id: 'live-fitness', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'live-fitness.mjs')], timeoutMs: 120_000 },
     { id: 'paper-snapshot', kind: 'http', method: 'POST', path: '/v1/paper/performance/snapshots', role: 'evaluator' },
+    // CHARTER-01 last-resort stop: total P&L (open losses included) against the charter's limit; halts and alerts the owner
+    { id: 'charter-guard', kind: 'http', method: 'POST', path: '/v1/protections/guard', role: 'evaluator' },
     // ORG-02: the daily management review of every working bot; it only recommends, the owner decides (npm run agenda)
     { id: 'management-review', kind: 'http', method: 'POST', path: '/v1/management/reviews', role: 'evaluator' },
     // AUTO-03: the agents carry out what the owner's standing approvals cover (nothing without a policy)

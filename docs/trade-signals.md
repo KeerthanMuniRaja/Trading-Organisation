@@ -101,6 +101,16 @@ The prices come from the steward-checked daily data. One identity reports them a
 
 `scripts/eod-loop.test.mjs` proves it end to end against the real backend. Today's proposal is reviewed at the verified close and waits for tomorrow's open. An earlier-accepted proposal fills at the verified next open. A second run repeats nothing.
 
+**Charges (27 Oct 2026, founder review B28).** `PAPER_COST_MODEL` chooses how a fill is charged:
+- `flat` (the default): `PAPER_FEE_BPS` on each side.
+- `nse-delivery`: the charges of an Indian delivery trade on a zero-brokerage discount broker, the same rates the
+  research desk uses (`daily.py`): STT 0.1% each side, stamp duty 0.015% on buys, exchange 0.00297% and SEBI 0.0001%
+  with 18% GST on them, and a Rs 15.93 depository charge on each sale. On a Rs 1,400 sale the depository charge alone is
+  about 1.1%.
+
+Slippage (`PAPER_SLIPPAGE_BPS`) applies under both. The review sizes buys with the same charges, and the digest's limits
+banner names the model the backend loaded.
+
 ## Independent challengers (SPECIALIST-01, migration 041)
 
 Before a proposal is reviewed, **another bot** may challenge it with `POST /v1/trading/signals/challenges` (trader or researcher bot credential):

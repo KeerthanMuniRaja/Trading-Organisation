@@ -32,7 +32,9 @@ import datasets  # noqa: E402
 ROOT = Path(__file__).resolve().parents[2]
 DAILY = ROOT / '.local' / 'trading-desk' / 'daily'
 RESEARCH = ROOT / '.local' / 'trading-desk' / 'daily-research'   # NIFTY 50 files for research only, never traded
-UNIVERSES = {'desk': (lambda: datasets.UNIVERSE, DAILY), 'nifty50': (lambda: datasets.NIFTY50, RESEARCH)}
+BROAD = ROOT / '.local' / 'trading-desk' / 'daily-nifty500'   # NIFTY 500 files, research only, never traded
+UNIVERSES = {'desk': (lambda: datasets.UNIVERSE, DAILY), 'nifty50': (lambda: datasets.NIFTY50, RESEARCH),
+             'nifty500': (lambda: datasets.nifty500(), BROAD)}
 TOURNAMENTS = ROOT / '.local' / 'trading-desk' / 'daily-tournaments'
 CAPITAL = 5_000_000           # Rs 50,000 notional per share, so the fixed depository charge is realistic
 SLIPPAGE_BPS = 5
@@ -99,42 +101,69 @@ def years_to_fetch(path, years, today=None):
     return min(MAX_YEARS, max(years, held))
 
 
-def fetch(symbols, years=5, cache=DAILY, refresh=False):
+def fetch(symbols, years=5, cache=DAILY, refresh=False, keep_going=False, pause=0.0, research=False, max_age_days=None, limit=None, today=None):
     """Owner-run download of adjusted daily bars. Existing files are kept unless `refresh` re-downloads them
     (needed to score forward tests on new days; adjusted history may shift slightly after new dividends). A refresh
-    keeps at least the span a file already covers, so a longer history, once fetched, stays long."""
+    keeps at least the span a file already covers, so a longer history, once fetched, stays long.
+    For a large research universe: `keep_going` records a share that fails (delisted, too short, odd metadata) as
+    skipped instead of stopping the run, and `pause` waits that many seconds between downloads, so the provider sees an
+    unhurried, sequential client. `max_age_days` refreshes only files whose last bar is older than that, and `limit`
+    caps the downloads of one run (the rest are reported as deferred), so a daily cycle spreads a month's refresh."""
+    import time
     import yfinance as yf
     cache.mkdir(parents=True, exist_ok=True)
     yf.set_tz_cache_location(str(ROOT / '.local' / 'market-replay-cache'))
-    results = []
+    # every share's session dates, loaded once: the steward's gap check compares each download with all the others
+    peers = {p: {'bars': [{'date': b['date']} for b in json.loads(p.read_text(encoding='utf-8'))['bars']]} for p in sorted(cache.glob('*-1d.json'))}
+    results, downloads, stale_before = [], 0, ((today or date.today()) - timedelta(days=max_age_days)).isoformat() if max_age_days else None
     for symbol in symbols:
         path = cache / f'{symbol}-1d.json'
-        if path.exists() and not refresh:
+        last = peers[path]['bars'][-1]['date'] if path in peers and peers[path]['bars'] else None
+        if path.exists() and (not refresh or (stale_before and last and last >= stale_before)):
             results.append({'symbol': symbol, 'state': 'cached', 'bars': len(validate(json.loads(path.read_text(encoding='utf-8'))))})
             continue
-        ticker = yf.Ticker(symbol)
-        frame = ticker.history(period=f'{years_to_fetch(path, years)}y', interval='1d', auto_adjust=True, actions=False, timeout=20)
-        if frame.empty:
-            results.append({'symbol': symbol, 'state': 'skipped', 'reason': 'EMPTY_PROVIDER_DATA'})
+        if limit is not None and downloads >= limit:
+            results.append({'symbol': symbol, 'state': 'deferred'})
             continue
-        datasets.check_metadata(ticker, symbol)
-
-        def paise(value):
-            return int((Decimal(str(float(value))) * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
-        bars = []
-        for index, row in frame.iterrows():
-            if not all(math.isfinite(float(row[k])) for k in ('Open', 'High', 'Low', 'Close', 'Volume')):
-                continue  # a provider gap is left out, never invented
-            o, h, low, c = (paise(row[k]) for k in ('Open', 'High', 'Low', 'Close'))
-            # Adjustment and rounding can break OHLC order by a paisa; restore the envelope without moving open/close.
-            bars.append({'date': index.date().isoformat(), 'openPaise': o, 'highPaise': max(h, o, c), 'lowPaise': min(low, o, c),
-                         'closePaise': c, 'volume': int(row['Volume'])})
-        bars = settled_only(bars, datetime.now(timezone.utc))
-        dataset = {'schemaVersion': 1, 'symbol': symbol, 'interval': '1d', 'priceBasis': 'adjusted', 'source': 'yahoo-via-yfinance',
-                   'providerVersion': yf.__version__, 'retrievedAt': datetime.now(timezone.utc).isoformat(), 'bars': bars}
-        validate(dataset)
-        results.append(store(path, dataset, cache))
+        if downloads and pause:
+            time.sleep(pause)
+        downloads += 1
+        try:
+            result = _download(yf, symbol, path, years, cache, [v for p, v in peers.items() if p != path], research)
+        except Exception as error:  # noqa: BLE001
+            if not keep_going:
+                raise
+            result = {'symbol': symbol, 'state': 'skipped', 'reason': str(error)[:120] or type(error).__name__}
+        if result.get('state') == 'downloaded':
+            peers[path] = {'bars': [{'date': b['date']} for b in json.loads(path.read_text(encoding='utf-8'))['bars']]}
+        results.append(result)
     return results
+
+
+def _download(yf, symbol, path, years, cache, peers, research=False):
+    """One share: the provider's adjusted daily bars, checked, then stored through the data steward."""
+    import data_steward
+    ticker = yf.Ticker(symbol)
+    frame = ticker.history(period=f'{years_to_fetch(path, years)}y', interval='1d', auto_adjust=True, actions=False, timeout=20)
+    if frame.empty:
+        return {'symbol': symbol, 'state': 'skipped', 'reason': 'EMPTY_PROVIDER_DATA'}
+    datasets.check_metadata(ticker, symbol)
+
+    def paise(value):
+        return int((Decimal(str(float(value))) * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+    bars = []
+    for index, row in frame.iterrows():
+        if not all(math.isfinite(float(row[k])) for k in ('Open', 'High', 'Low', 'Close', 'Volume')):
+            continue  # a provider gap is left out, never invented
+        o, h, low, c = (paise(row[k]) for k in ('Open', 'High', 'Low', 'Close'))
+        # Adjustment and rounding can break OHLC order by a paisa; restore the envelope without moving open/close.
+        bars.append({'date': index.date().isoformat(), 'openPaise': o, 'highPaise': max(h, o, c), 'lowPaise': min(low, o, c),
+                     'closePaise': c, 'volume': int(row['Volume'])})
+    bars, left_out = data_steward.without_placeholders(settled_only(bars, datetime.now(timezone.utc)))
+    dataset = {'schemaVersion': 1, 'symbol': symbol, 'interval': '1d', 'priceBasis': 'adjusted', 'source': 'yahoo-via-yfinance',
+               'providerVersion': yf.__version__, 'retrievedAt': datetime.now(timezone.utc).isoformat(), 'bars': bars}
+    validate(dataset)
+    return {**store(path, dataset, cache, peers, research), **({'placeholdersLeftOut': left_out} if left_out else {})}
 
 
 def accepted_moves(cache=DAILY):
@@ -156,13 +185,15 @@ def accept_move(symbol, day, cache=DAILY):
     return moves[symbol]
 
 
-def store(path, dataset, cache=DAILY):
+def store(path, dataset, cache=DAILY, peers=None, research=False):
     """The data steward decides: a rejected download leaves the previous file in place (fail closed); an accepted one
-    archives the version it replaces, by fingerprint, so earlier results stay reproducible."""
+    archives the version it replaces, by fingerprint, so earlier results stay reproducible. `peers`: the other shares'
+    bars (dates are enough), when the caller already holds them."""
     import data_steward
     old = json.loads(path.read_text(encoding='utf-8')) if path.exists() else None
-    peers = [json.loads(p.read_text(encoding='utf-8')) for p in sorted(cache.glob('*-1d.json')) if p != path]
-    quality = data_steward.review(dataset, old, peers, accepted=accepted_moves(cache).get(dataset['symbol'], []))
+    if peers is None:
+        peers = [json.loads(p.read_text(encoding='utf-8')) for p in sorted(cache.glob('*-1d.json')) if p != path]
+    quality = data_steward.review(dataset, old, peers, accepted=accepted_moves(cache).get(dataset['symbol'], []), research=research)
     bars = dataset['bars']
     summary = {'symbol': dataset['symbol'], 'bars': len(bars), 'from': bars[0]['date'], 'to': bars[-1]['date'],
                'quality': quality['verdict'], 'fingerprint': quality['fingerprint']}
@@ -438,7 +469,11 @@ def main(argv=None):
     f = sub.add_parser('fetch')
     f.add_argument('--years', type=int, default=5, choices=range(2, 11))
     f.add_argument('--refresh', action='store_true', help='Re-download cached shares to include the newest days')
-    f.add_argument('--universe', choices=sorted(UNIVERSES), default='desk', help='nifty50: research-only files in daily-research')
+    f.add_argument('--universe', choices=sorted(UNIVERSES), default='desk',
+                   help='nifty50 / nifty500: research-only files (daily-research / daily-nifty500), never traded')
+    f.add_argument('--pause', type=float, default=None, help='Seconds between downloads (default 1 for nifty500, else 0)')
+    f.add_argument('--max-age-days', type=int, default=None, help='With --refresh: only files whose last bar is older than this')
+    f.add_argument('--limit', type=int, default=None, help='At most this many downloads in one run; the rest wait for the next')
     for name in ('run', 'finalise', 'register', 'forward'):
         p = sub.add_parser(name)
         p.add_argument('--name', required=True)
@@ -450,7 +485,18 @@ def main(argv=None):
     symbols = sorted(datasets.UNIVERSE)
     if args.command == 'fetch':
         members, cache = UNIVERSES[args.universe]
-        print(json.dumps(fetch(sorted(members()), args.years, cache=cache, refresh=args.refresh), indent=2))
+        broad = args.universe == 'nifty500'  # hundreds of shares: one failure is recorded, not fatal, and the client is unhurried
+        results = fetch(sorted(members()), args.years, cache=cache, refresh=args.refresh, keep_going=broad,
+                        pause=args.pause if args.pause is not None else (1.0 if broad else 0.0), research=broad,
+                        max_age_days=args.max_age_days, limit=args.limit)
+        if broad:  # a short summary instead of 500 lines
+            states = {}
+            for r in results:
+                states[r['state']] = states.get(r['state'], 0) + 1
+            print(json.dumps({'universe': args.universe, 'shares': len(results), 'states': states,
+                              'skipped': [{k: r[k] for k in ('symbol', 'reason') if k in r} for r in results if r['state'] in ('skipped', 'rejected', 'kept-previous')]}, indent=2))
+        else:
+            print(json.dumps(results, indent=2))
         return
     if args.command == 'accept-move':
         print(json.dumps({'symbol': args.symbol, 'acceptedMoves': accept_move(args.symbol, args.date, UNIVERSES[args.universe][1])}))

@@ -1,10 +1,11 @@
 {
-  "note": "Suggested starting thresholds for the founder (founderReview.md B3). Nothing is paused until the owner sets a policy: npm run protections -- set docs/policies/protections-suggested.json --reason \"...\". Losses are realised paper P&L (including fees) as a share of each bot's budget, over rolling calendar days. Pauses hold new buys only and lift by themselves.",
+  "note": "Suggested thresholds for the founder (founderReview.md B3), revised 27 Oct 2026 after the 2020 crash replay. Nothing is paused until the owner sets a policy: npm run protections -- set docs/policies/protections-suggested.json --reason \"...\". Losses are the fall in each bot's value (open positions included) as a share of its budget, over rolling calendar days, daily and weekly only. The earlier set (realised losses, 2% a day, 5% a week, 8% a month, a 1-day pause after 2 losing exits) tripped on the planned April 2020 rebalance and kept the bot out of the rebound: -15.0% against -6.7% with these and -7.5% with none. Pauses hold new buys only and lift by themselves.",
   "rules": {
-    "dailyLossPct": 2,
-    "weeklyLossPct": 5,
-    "monthlyLossPct": 8,
-    "losingExits": { "inARow": 2, "pauseDays": 1 },
+    "measure": "equity",
+    "dailyLossPct": 3,
+    "weeklyLossPct": 6,
+    "monthlyLossPct": null,
+    "losingExits": null,
     "shareCooldownDays": null
   }
 }

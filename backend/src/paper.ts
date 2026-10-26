@@ -1,6 +1,6 @@
 import { HttpException } from '@nestjs/common';
 import { z } from 'zod';
-import { Config } from './config.js';
+import { Config, paperFee } from './config.js';
 import { Actor, bounded, ceilBps, id, parse, permit, positiveMoney, requireThat, symbol, timestamp, uuid } from './core.js';
 import { Database, Sql, audit } from './database.js';
 import { verifiedEvidence } from './organisation.js';
@@ -104,7 +104,7 @@ export class PaperTrading {
         const ownCost=BigInt((await tx.query('SELECT COALESCE(SUM(cost_paise),0)::text AS value FROM positions WHERE bot_id=$1',[bot.id])).rows[0]!.value);
         const ownReserved=BigInt((await tx.query("SELECT COALESCE(SUM(reserved_paise),0)::text AS value FROM orders WHERE bot_id=$1 AND status='reserved'",[bot.id])).rows[0]!.value);
         const free=await available(tx),exposureRoom=this.config.maxExposure-await balance(tx,'POSITION')-allReserved,budgetRoom=BigInt(bot.budget)-ownCost-ownReserved;
-        const cost=(q:bigint)=>{const g=bounded(price*q);return bounded(g+ceilBps(g,this.config.feeBps));};
+        const cost=(q:bigint)=>{const g=bounded(price*q);return bounded(g+paperFee(this.config,'buy',g));};
         // A reviewed buy filled at a later price (e.g. the next open above the close it was sized at) buys as many of the
         // reviewed shares as still fit every limit, never more; a direct order keeps its exact quantity or is refused.
         if(link){const per=cost(1n),room=[this.config.maxOrder,free,exposureRoom,budgetRoom].reduce((a,b)=>b<a?b:a);
@@ -128,7 +128,7 @@ export class PaperTrading {
     return this.refusing(actor,'fill',key,{orderId:input.orderId},()=>this.db.command(actor,'fill-order',key,input,async tx=>{
       const order=(await tx.query('SELECT *,quantity::text AS qty,reserved_paise::text AS reserved FROM orders WHERE id=$1',[input.orderId])).rows[0];requireThat(order,'Order not found',404);
       const bot=await this.tradingBot(tx,actor,order.bot_id);requireThat(order.status==='reserved','Order is not reserved');await verifiedEvidence(tx,order.evidence_id);
-      const price=await this.price(tx,order.symbol,order.side,input.priceEvidence,order.signal_id?String(order.signal_id):null),quantity=BigInt(order.qty),gross=bounded(price*quantity),fee=ceilBps(gross,this.config.feeBps);
+      const price=await this.price(tx,order.symbol,order.side,input.priceEvidence,order.signal_id?String(order.signal_id):null),quantity=BigInt(order.qty),gross=bounded(price*quantity),fee=paperFee(this.config,order.side,gross);
       const position=(await tx.query('SELECT quantity::text,cost_paise::text FROM positions WHERE bot_id=$1 AND symbol=$2',[order.bot_id,order.symbol])).rows[0];
       let positionQty=BigInt(position?.quantity??0),positionCost=BigInt(position?.cost_paise??0),journalId:string;
       if(order.side==='buy') {

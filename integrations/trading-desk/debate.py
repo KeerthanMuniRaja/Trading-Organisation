@@ -17,6 +17,7 @@ Configure DEBATE_BULL_BOT and DEBATE_BEAR_BOT (bots with trader credentials: scr
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 import re
@@ -28,6 +29,7 @@ import daily  # noqa: E402
 import eod_trader  # noqa: E402
 import events_calendar  # noqa: E402
 import headline_reader  # noqa: E402
+import mentor  # noqa: E402
 import signal_scorer as sc  # noqa: E402
 
 HEADLINES = daily.ROOT / '.local' / 'claims' / 'auto' / 'verified-headlines.json'
@@ -123,7 +125,8 @@ def press_dossier(symbol, as_of, index=None):
             'stories': [f"{x['firstSeen'][:10]} ({', '.join(x['countries'])}) {x['title']}" for x in d['stories'][:3]]}
 
 
-def context(signal, cache, headlines, knowledge=None, record=None, news_status='ok', press='unset', reads=None, calendar=None, evidence=None):
+def context(signal, cache, headlines, knowledge=None, record=None, news_status='ok', press='unset', reads=None, calendar=None, evidence=None,
+            mentor_notes=None):
     """What a debater sees. Everything is as of the proposal: no headline published after it was made (so a replay of a
     past day never sees the future), and dataStatus says plainly what is missing (TradingAgents' 'no data' vs
     'unavailable' markers)."""
@@ -155,7 +158,11 @@ def context(signal, cache, headlines, knowledge=None, record=None, news_status='
             # data itself, not in the instructions (an extra instruction sentence made the 4B model's citations flip, 23 Oct)
             **({'upcomingEvents': {'note': 'scheduled dates the owner keeps; background, never evidence', 'events': calendar['events']}}
                if calendar and calendar['status'] == 'available' else {}),
-            **({'organisationKnowledge': knowledge} if knowledge else {})}
+            **({'organisationKnowledge': knowledge} if knowledge else {}),
+            # MENTOR-01: the few mentor lessons that fit this decision, each with its check on our data; in the data, not
+            # the instructions (an instruction change flipped this model's citations once)
+            **({'mentorNotes': {'note': "an experienced mentor's lessons, checked on our data where a check exists: background, never evidence",
+                                'lessons': mentor_notes}} if mentor_notes else {})}
 
 
 def argue(llm, side, signal, ctx, opposing=None, contents=None):
@@ -163,8 +170,10 @@ def argue(llm, side, signal, ctx, opposing=None, contents=None):
     (`contents`: id -> full text); otherwise the argument stands without it and `meta['citationDropped']` says why."""
     stance, task = ROLES[side]
     payload = {**ctx, **({'opposingArgument': opposing[:600]} if opposing else {})}
-    value, meta = llm(SYSTEM.format(side=side, task=task), json.dumps(payload, ensure_ascii=False), schema(ctx['verifiedEvidenceIds']))
-    meta = dict(meta or {})
+    user = json.dumps(payload, ensure_ascii=False)
+    value, meta = llm(SYSTEM.format(side=side, task=task), user, schema(ctx['verifiedEvidenceIds']))
+    # the fingerprint of exactly what the model saw, so the model-call journal row can later be joined to the outcome
+    meta = {**dict(meta or {}), 'userHash': hashlib.sha256(user.encode()).hexdigest()[:16]}
     argument = str((value or {}).get('argument', '')).strip()[:600]
     cited = (value or {}).get('evidenceId')
     if len(argument) < 20:
@@ -178,6 +187,21 @@ def argue(llm, side, signal, ctx, opposing=None, contents=None):
         if derived:
             cited, meta['citationDerived'] = derived[0], derived[1]  # the argument itself quotes this evidence
     return {'signalId': signal['id'], 'stance': stance, 'argument': argument, **({'evidenceId': cited} if cited else {})}, meta
+
+
+DEBATE_LOG = daily.ROOT / '.local' / 'trading-desk' / 'debate-log.jsonl'
+
+
+def log_argument(entry, path=None):
+    """MODEL-DATA-02: which proposal each posted argument was about, its stance and the fingerprint of what the model saw;
+    outcome_labels.py later joins it to the call's real outcome. Recording never breaks the debate."""
+    try:
+        p = Path(path or DEBATE_LOG)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open('a', encoding='utf-8') as handle:
+            handle.write(json.dumps(entry, sort_keys=True) + '\n')
+    except OSError:
+        pass
 
 
 def evidence_texts(checker, ids, opener):
@@ -221,7 +245,11 @@ def run(llm, env=os.environ, cache=daily.DAILY, opener=None, headlines_path=HEAD
         calendar = events_calendar.context(signal.get('createdAt') or datetime.now(timezone.utc).isoformat(), signal['symbol'],
                                            days=max(10, int(signal.get('horizonDays') or 10)))
         contents = evidence_texts(checker, signal.get('evidenceIds', []), opener)
-        ctx = context(signal, cache, headlines, knowledge, record, news_status, press, reads, calendar, contents)
+        risk = str((knowledge or {}).get('marketRegime', '')).split(' ')[0]
+        notes = mentor.notes_for(signal['symbol'], events=[e['kind'] for e in calendar['events']],
+                                 regime=risk if risk in ('NORMAL', 'CAUTION', 'HIGH', 'SEVERE') else None,
+                                 method=mentor.method_of(signal.get('model')))
+        ctx = context(signal, cache, headlines, knowledge, record, news_status, press, reads, calendar, contents, notes)
         # a real debate: the bear argues first and the bull answers the bear's case (same two calls as before)
         bear_case = (argued.get(bots['bear']) or {}).get('argument')
         for side in ('bear', 'bull'):
@@ -230,6 +258,8 @@ def run(llm, env=os.environ, cache=daily.DAILY, opener=None, headlines_path=HEAD
             try:
                 body, meta = argue(llm, side, signal, ctx, opposing=bear_case if side == 'bull' else None, contents=contents)
                 sc.post(*creds[side], '/v1/trading/signals/challenges', body, opener)
+                log_argument({'signalId': signal['id'], 'side': side, 'stance': body['stance'], 'userHash': meta['userHash'],
+                              'at': datetime.now(timezone.utc).isoformat()})
                 if side == 'bear':
                     bear_case = body['argument']
                 out.append({'signalId': signal['id'], 'side': side, 'state': 'argued', 'cited': body.get('evidenceId'),
