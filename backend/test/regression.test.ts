@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { owner,researcher,evaluator,trader,market,treasuryActor,fixture,key,bars } from './helpers.js';
+import { paperFee } from '../src/config.js';
 
 test('fills revalidate current limits and nonzero execution costs reconcile through partial exits',async()=>{
   const f=await fixture();
@@ -23,6 +24,29 @@ test('fills revalidate current limits and nonzero execution costs reconcile thro
     }
     const result=await f.treasury.snapshot(owner);assert.equal(result.realisedNetProfitPaise,'1935');assert.equal(result.wallet1Paise,'101935');
     const allocation=await f.treasury.allocate(treasuryActor,key());assert.equal(allocation.protectedPaise,'774');
+  }finally{await f.db.close();}
+});
+
+test('NSE delivery charges: statutory costs on both sides and the fixed depository charge on each sale, as the research desk models them',async()=>{
+  // the research desk's own vectors (integrations/trading-desk/test_daily.py): Rs 1,00,000 bought, then sold
+  const nse={feeBps:10,costModel:'nse-delivery' as const};
+  assert.equal(paperFee(nse,'buy',10_000_000n),11_863n);assert.equal(paperFee(nse,'sell',10_000_000n),11_956n);
+  assert.equal(paperFee({feeBps:10,costModel:'flat'},'sell',10_000_000n),10_000n); // the original flat model is unchanged
+  const f=await fixture();
+  try{
+    const e=await f.evidence();await f.deposit('100000');f.cfg.slippageBps=5;f.cfg.costModel='nse-delivery';
+    await f.org.bot(owner,key(),{id:'bot-one',name:'Fixture',department:'research',specialty:'costs',method:'test',contribution:'Cost accounting fixture',budgetPaise:'100000'});
+    await f.db.transaction(tx=>tx.query("UPDATE bots SET state='paper' WHERE id='bot-one'"));
+    await f.paper.quote(market,key(),{symbol:'COST',bidPaise:'10000',askPaise:'10000',observedAt:new Date().toISOString(),sourceId:e.sourceId});
+    const buy=await f.paper.reserve(trader,key(),{botId:'bot-one',symbol:'COST',side:'buy',quantity:2,evidenceId:e.evidenceId});
+    const fill=await f.paper.fill(trader,key(),{orderId:buy.id});assert.equal(fill.feePaise,'24'); // Rs 200.10 bought: 0.119%
+    await f.paper.quote(market,key(),{symbol:'COST',bidPaise:'11000',askPaise:'11000',observedAt:new Date().toISOString(),sourceId:e.sourceId});
+    for(let i=0;i<2;i++){
+      const sell=await f.paper.reserve(trader,key(),{botId:'bot-one',symbol:'COST',side:'sell',quantity:1,evidenceId:e.evidenceId});
+      assert.equal((await f.paper.fill(trader,key(),{orderId:sell.id})).feePaise,'1605'); // Rs 0.12 statutory + Rs 15.93 DP on a Rs 109.94 sale
+    }
+    // the same trades that made Rs 19.35 under a flat 10 bps lose Rs 12.56: on small sales the DP charge decides
+    assert.equal((await f.treasury.snapshot(owner)).realisedNetProfitPaise,'-1256');
   }finally{await f.db.close();}
 });
 

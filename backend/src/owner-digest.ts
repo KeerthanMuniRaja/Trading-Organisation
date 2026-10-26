@@ -92,7 +92,7 @@ export class OwnerDigest {
       const loss = this.config ? await tradingLoss(tx) : 0n;
       const limits = this.config ? { maxOrderPaise: this.config.maxOrder.toString(), maxExposurePaise: this.config.maxExposure.toString(),
         maxRealisedLossPaise: this.config.maxLoss.toString(), feeBps: this.config.feeBps, slippageBps: this.config.slippageBps,
-        realisedLossPaise: (loss > 0n ? loss : 0n).toString(),
+        costModel: this.config.costModel, realisedLossPaise: (loss > 0n ? loss : 0n).toString(),
         lossLimitUsedPct: this.config.maxLoss > 0n ? Number((loss > 0n ? loss : 0n) * 1000n / this.config.maxLoss) / 10 : null } : null;
       const needsOwner = [
         ...(halted ? ['New risk is HALTED.'] : []),

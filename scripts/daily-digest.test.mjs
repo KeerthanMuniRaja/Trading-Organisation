@@ -108,6 +108,10 @@ test('the limits banner shows what the backend loaded and flags settings that di
   const stale = render(d, null, null, null, { ...trust, env: { MAX_ORDER_PAISE: '100000', PAPER_SLIPPAGE_BPS: '5' } });
   assert.match(stale, /Check first: the running backend loaded different limits from this digest's settings \(MAX_ORDER_PAISE\)/);
   assert.doesNotMatch(stale, /100000/); // names only, never the value it expected
+  // B28: under NSE delivery charges the banner says so, and a shell still set to flat is flagged by name
+  const nse = { ...d, limits: { ...limits, costModel: 'nse-delivery' } };
+  assert.match(render(nse, null, null, null, trust), /charges: NSE delivery \(STT, stamp duty, exchange, GST, Rs 15\.93 DP per sale\), slippage 5 bps/);
+  assert.match(render(nse, null, null, null, { ...trust, env: { PAPER_COST_MODEL: 'flat' } }), /different limits from this digest's settings \(PAPER_COST_MODEL\)/);
   assert.doesNotMatch(render(digest), /order\(s\) refused|Limits the backend|Loss brakes/);
   assert.match(render({ ...digest, protections: { policySet: false, paused: [] } }), /- Loss brakes: not set, so losses never pause a bot \(founderReview B3/);
   assert.match(render({ ...digest, protections: { policySet: true, paused: [] } }), /- Loss brakes: set; nothing paused/);

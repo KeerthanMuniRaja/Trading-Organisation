@@ -1,6 +1,6 @@
 import { Body, Controller, Headers, Post, Req } from '@nestjs/common';
 import { z } from 'zod';
-import { Config } from './config.js';
+import { Config, paperFee } from './config.js';
 import { Actor, ceilBps, digest, id, parse, permit, requireThat, symbol, timestamp, uuid } from './core.js';
 import { Database, Sql, audit } from './database.js';
 import { PaperTrading } from './paper.js';
@@ -237,7 +237,7 @@ export class TradeSignals {
           for (const p of await activePauses(tx, signal.bot_id, signal.symbol)) reasons.push(p.code);
           if (fresh && !reasons.length) {
             const price = BigInt(quote.ask) + ceilBps(BigInt(quote.ask), this.config.slippageBps);
-            const perShare = price + ceilBps(price, this.config.feeBps);
+            const perShare = price + paperFee(this.config, 'buy', price); // per share, rounded up: never undersizes the charges
             const sum = async (sql: string, params: unknown[]) => BigInt((await tx.query(sql, params)).rows[0]!.value);
             // accepted buy intents not yet executed (and not expired) are already committed: without this, concurrent reviews
             // would each size against the same room (found by the load test). An intent that already has its order is left

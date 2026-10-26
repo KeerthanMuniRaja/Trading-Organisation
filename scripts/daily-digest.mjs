@@ -121,7 +121,7 @@ export async function trustCheck(root = join(dirname(fileURLToPath(import.meta.u
 
 // TRUST-03: the limit settings, by the name the backend reads them from (values are limits, not secrets)
 export const LIMIT_SETTINGS = { MAX_ORDER_PAISE: 'maxOrderPaise', MAX_EXPOSURE_PAISE: 'maxExposurePaise', MAX_REALISED_LOSS_PAISE: 'maxRealisedLossPaise',
-  PAPER_FEE_BPS: 'feeBps', PAPER_SLIPPAGE_BPS: 'slippageBps' };
+  PAPER_FEE_BPS: 'feeBps', PAPER_SLIPPAGE_BPS: 'slippageBps', PAPER_COST_MODEL: 'costModel' };
 
 /** Settings in this script's environment that differ from what the running backend loaded: a stale shell variable or a
  *  backend not restarted after a change. Only names are reported. */
@@ -133,7 +133,9 @@ export function limitMismatches(limits, env = {}) {
 export function limitsLine(l) {
   if (!l) return null;
   return `Max order ${rupees(l.maxOrderPaise)} · organisation exposure ${rupees(l.maxExposurePaise)} · realised-loss limit ${rupees(l.maxRealisedLossPaise)}`
-    + ` (${rupees(l.realisedLossPaise)} used${l.lossLimitUsedPct !== null ? `, ${l.lossLimitUsedPct}%` : ''}) · fees ${l.feeBps} bps, slippage ${l.slippageBps} bps`;
+    + ` (${rupees(l.realisedLossPaise)} used${l.lossLimitUsedPct !== null ? `, ${l.lossLimitUsedPct}%` : ''}) · `
+    + (l.costModel === 'nse-delivery' ? 'charges: NSE delivery (STT, stamp duty, exchange, GST, Rs 15.93 DP per sale)' : `fees ${l.feeBps} bps`)
+    + `, slippage ${l.slippageBps} bps`;
 }
 
 /** The digest's own arithmetic: figures that must agree with each other (paise as integers, shares of one). */
