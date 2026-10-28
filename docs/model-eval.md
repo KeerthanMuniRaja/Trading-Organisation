@@ -129,6 +129,38 @@ tested.
   - In the reworded case the same citation is derived from its argument.
   - The bull ignored an injected fake evidence id.
 
+## Teaching exams and the debate's second pass, 28 Oct 2026
+
+**Eight lesson exams**, each a debate case with the lesson in the context. The answer must use the lesson
+(`mustMention`) and must not say what the context does not support (`mustNotMention`, new today):
+
+| Exam | Checks that the model |
+| --- | --- |
+| `exam-bank-concentration` | raises the four banks' correlation |
+| `exam-candidate-not-proof` | calls a factor-lab pass a candidate, not proof |
+| `exam-momentum-after-deep-fall` | uses momentum's weakness after deep falls |
+| `exam-sector-and-breadth` | uses its share's sector rank and the market breadth |
+| `exam-dont-chase-a-big-day` | does not treat a one-day jump as a trend |
+| `exam-a-stop-is-not-an-edge` | explains what a stop costs |
+| `exam-press-is-not-proof` | calls an unverified press report unverified, and never "verified evidence" |
+| `exam-bull-answers-with-the-sector` | answers a bear's case with the sector's real strength (a bull exam) |
+
+**Results on Qwen 3.5-4B:** all 11 debate cases passed, before and after the stricter judging. Reading the answers found
+two faults that word checks alone had missed:
+- "the verified evidence shows a promoter block deal" (about an unverified press report);
+- "a stop sells 41% of shares that recover" (41% were stopped out; 58% of those recovered).
+
+**The second pass** (`debate.self_check`, MODEL-CHECK-01). The debater re-reads its argument against the data and
+corrects:
+- numbers the data does not give;
+- causes it does not state;
+- anything called verified that the data marks unverified.
+
+A failed check keeps the first answer. The exams judge the checked argument, as production posts it. On the real model
+it fixed the "verified evidence" mistake and removed two unsupported claims, but kept the 41% misreading. A typical
+debate call now takes about 96 s instead of 37 s; debates are few, so this is affordable. The bigger decision model
+(`npm run model:upgrade`) is the next lever for what a 4B model still misses.
+
 ## Training data from our own work (`build_dataset.py`)
 
 **The source.** Every production model call is now recorded locally in `.local/model-calls/<day>.jsonl` by the shared
