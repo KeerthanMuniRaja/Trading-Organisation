@@ -178,6 +178,7 @@ with `npm run agenda`.
 
 | # | Question | Options |
 | --- | --- | --- |
+| — | **A prototype to react to (28 Oct)** | `npm run page`, then open `.local/owner-page.html` in a browser. It is the "Home" tab only: view-only, laptop-only (a file, no server), light or dark with Windows, with tiles for what needs you, the organisation, members and money, the market, research and predictions, and models. The cycle refreshes it daily. Say what to add, drop or change |
 | B19 | **Tabs** | 8 (Home, Decisions, Members, Trading, Money, Research, Knowledge & News, Operations), 6 (merged) or 9 (with an AI Model tab) |
 | B20 | **Where it runs** | Laptop only, or phone too (exposing it needs care; phone alerts via ntfy may be enough) |
 | B21 | **Can it act?** | View-only, or accept, decline and suspend with confirmation (money stays signed) |
