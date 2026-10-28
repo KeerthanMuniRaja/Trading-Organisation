@@ -36,7 +36,14 @@ orders fill at verified prices; every result is scored and audited. It is paper 
    - checks everything and starts the supervisor (optionally at every logon).
 
    It stops with a plain message when only you can act: a program to install, or your three secret files. Run it
-   again afterwards; finished steps are skipped. Options:
+   again afterwards; finished steps are skipped.
+
+   **How long:** about 2–3 hours in all.
+   - The 4B model is a 2.6 GB download; measuring its speed takes about 10 minutes.
+   - The bigger decision model is a 6–9 GB download, then about an hour of exams.
+
+   In a hurry: run it with `-SkipUpgrade` (about an hour), then `npm run model:upgrade` some evening; the
+   organisation runs on the 4B meanwhile. Options:
    - `-Check`: first, to preview: it looks only, and changes nothing;
    - `-SkipUpgrade`: no bigger model;
    - `-NoStart`.
