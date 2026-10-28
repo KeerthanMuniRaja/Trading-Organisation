@@ -127,12 +127,33 @@ def from_scout(report):
              'appliesTo': {'always': True}, 'measured': {'ideasTried': report['ideasTried'], 'passing': passing, 'basketAfterTaxCagrPct': basket}}]
 
 
-def build(rnd=RND, out=OUT, now=None):
+def from_reactions(report, least_t=2.0):
+    """AWARE-02: a kind of news whose aftermath stands out (enough cases, |t| of at least 2) becomes a lesson."""
+    if not report:
+        return []
+    out = []
+    for t in report.get('byKind', []):
+        if not t.get('enough') or abs(t.get('tStat') or 0) < least_t:
+            continue
+        cont = (t['avgNextWeekPct'] > 0) == (t['direction'] == 'up')
+        out.append({'id': f"org-news-{t['kind']}-{t['direction']}",
+                    'title': f"After a press-reported {'rise' if t['direction'] == 'up' else 'fall'} on {t['kind'].replace('-', ' ')} news, "
+                             f"the move {'continued' if cont else 'gave back'}",
+                    'lesson': (f"In {t['cases']} reports, the next {report['horizonSessions']} sessions went {t['avgNextWeekPct']:+}% against the market "
+                               f"(the move continued {t['continuedPct']}% of the time, t {t['tStat']}). Unverified press read by rules: "
+                               'weigh it, never act on it alone.'),
+                    'appliesTo': {'always': True}, 'measured': {k: t[k] for k in ('cases', 'avgNextWeekPct', 'continuedPct', 'tStat')}})
+    return out
+
+
+def build(rnd=RND, out=OUT, now=None, reactions=daily.ROOT / '.local' / 'world' / 'news-reactions.json'):
     lab = _latest('factor-lab-*.json', rnd)
+    news = json.loads(Path(reactions).read_text(encoding='utf-8')) if reactions and Path(reactions).exists() else None
     scout = _latest('scout-2*.json', rnd)  # the desk scout (scout-<month>), not the NIFTY 50 one (scout-nifty50-<month>)
     # the numbers are in the lesson itself; the evidence names the report they come from (the model reads every word)
     lessons = [{**l, 'status': 'checked', 'author': 'organisation', 'evidence': f"our factor lab, through {lab['through']}"} for l in from_factor_lab(lab) + from_conditions(lab)] \
-        + [{**l, 'status': 'checked', 'author': 'organisation', 'evidence': f"our R&D scout, through {scout['through']}"} for l in from_scout(scout)]
+        + [{**l, 'status': 'checked', 'author': 'organisation', 'evidence': f"our R&D scout, through {scout['through']}"} for l in from_scout(scout)] \
+        + [{**l, 'status': 'checked', 'author': 'organisation', 'evidence': 'our news-reaction study'} for l in from_reactions(news)]
     report = {'version': 1, 'generatedAt': (now or datetime.now(timezone.utc)).isoformat(),
               'sources': {'factorLab': lab and {'through': lab['through'], 'fingerprint': lab['fingerprint']},
                           'scout': scout and {'through': scout['through'], 'fingerprint': scout['fingerprint']}},

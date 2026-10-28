@@ -59,6 +59,8 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     // AWARE-01: who is moving and why, big players and FII/DII flows, read from every collected headline across the
     // NIFTY 500 names (no model, no network), and how unusual each desk share's last move was
     { id: 'market-pulse', cmd: PY, args: [desk('market_pulse.py')], timeoutMs: 120_000, requires: join(root, '.local', 'world', 'headline-history.json') },
+    // AWARE-02: every reported move is kept, and measured against the market over the next week once prices exist
+    { id: 'reaction-study', cmd: PY, args: [desk('news_reactions.py')], timeoutMs: 120_000, requires: join(root, '.local', 'world', 'market-pulse.json') },
     // KNOW-06: everything collected, connected and searchable, point-in-time (items, stories, drivers, regimes, ideas, calls)
     { id: 'knowledge-index', cmd: PY, args: [desk('knowledge_index.py'), 'build'], timeoutMs: 300_000 },
     // SCENARIO-01: five personas rehearse the day's two biggest linked world stories (model needed; shadow only), and

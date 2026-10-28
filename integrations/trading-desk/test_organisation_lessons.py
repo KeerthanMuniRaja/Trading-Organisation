@@ -52,6 +52,16 @@ class OrganisationLessonsTests(unittest.TestCase):
         [calm] = ol.from_conditions({**lab, 'now': {'universeSixMonthPct': 4.0, 'afterDeepFall': False}})
         self.assertIn('the condition does not hold now', calm['lesson'])
 
+    def test_a_kind_of_news_speaks_only_when_it_stands_out(self):
+        report = {'horizonSessions': 5, 'byKind': [
+            {'kind': 'results', 'direction': 'up', 'cases': 40, 'avgNextWeekPct': 1.2, 'continuedPct': 62, 'tStat': 2.4, 'enough': True},
+            {'kind': 'broker-call', 'direction': 'up', 'cases': 35, 'avgNextWeekPct': -0.2, 'continuedPct': 48, 'tStat': -0.5, 'enough': True},
+            {'kind': 'deal-or-stake', 'direction': 'down', 'cases': 5, 'avgNextWeekPct': -6.0, 'continuedPct': 100, 'tStat': -5.0, 'enough': False}]}
+        [lesson] = ol.from_reactions(report)
+        self.assertEqual(lesson['title'], 'After a press-reported rise on results news, the move continued')
+        self.assertIn('never act on it alone', lesson['lesson'])
+        self.assertEqual(ol.from_reactions(None), [])
+
     def test_the_lessons_are_rebuilt_from_the_newest_reports(self):
         with tempfile.TemporaryDirectory() as tmp:
             rnd = Path(tmp)
@@ -59,7 +69,7 @@ class OrganisationLessonsTests(unittest.TestCase):
             (rnd / 'factor-lab-2026-09.json').write_text(json.dumps(LAB), encoding='utf-8')
             (rnd / 'scout-2026-09.json').write_text(json.dumps(SCOUT), encoding='utf-8')
             (rnd / 'scout-nifty50-2026-09.json').write_text(json.dumps({**SCOUT, 'ideasTried': 99}), encoding='utf-8')
-            report = ol.build(rnd=rnd, out=rnd / 'out.json')
+            report = ol.build(rnd=rnd, out=rnd / 'out.json', reactions=None)
             self.assertEqual(report['sources']['factorLab']['through'], '2026-09')   # the newest lab
             self.assertIn('none of the 22 ideas', next(l for l in report['lessons'] if l['id'] == 'org-scout-summary')['lesson'])  # the desk scout
             self.assertTrue(all(l['author'] == 'organisation' and l['status'] == 'checked' for l in report['lessons']))

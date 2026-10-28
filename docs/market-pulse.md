@@ -40,6 +40,22 @@ First reading, to 27 Oct 2026:
 In the debate, a share's `marketPulse.sector` gives its sector, the sector's rank and month, and the market breadth,
 as of the proposal.
 
+## What happened next: the news-reaction study (AWARE-02)
+
+`news_reactions.py`, the cycle step `reaction-study`, keeps every reported same-day move in an append-only history
+(`.local/world/pulse-history.jsonl`). Once the prices exist, it measures the next 5 sessions against the market,
+starting from the close of the session the report came in, or the next session if it came after 15:30 IST. Reports
+are grouped by kind of news and by direction:
+- the kinds are results, broker call, deal or stake, order or contract, policy, and other;
+- for each group: the cases, the average next-week move against the market, how often the move continued, and a
+  t-statistic.
+
+A group says nothing until it has 30 cases. With 30 or more and |t| of at least 2 it becomes an organisation lesson
+the debate reads, for example "after a press-reported rise on results news, the move continued".
+
+**First run, 28 Oct:** 26 reports from 15 days, 15 measured. After the 6 "results, up" reports, every share kept
+rising the next week. Six cases prove nothing; the study waits for 30.
+
 ## What it refuses to count
 
 - **Profit is not a share move.** "KEI Industries Q2 profit jumps 29%" is left out: the shares must be what moved.
