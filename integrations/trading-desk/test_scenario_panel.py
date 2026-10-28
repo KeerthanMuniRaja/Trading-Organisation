@@ -56,6 +56,15 @@ class PanelTests(unittest.TestCase):
         self.assertLessEqual(calls['RELIANCE.NS']['asOf'], '2023-06-01')
         self.assertEqual(sp.run(llm, now=now, stories_path=self.stories, out=self.out, cache=self.cache)['state'], 'already-run')
 
+    def test_a_day_when_nobody_answered_is_not_filed_and_can_be_rerun(self):
+        now = datetime(2023, 6, 1, 12, tzinfo=timezone.utc)
+        r = sp.run(fake_model({p: 'fail' for p in sp.PERSONAS}), now=now, stories_path=self.stories, out=self.out, cache=self.cache)
+        self.assertEqual((r['state'], r['failedVoices']), ('no-voices', 10))   # 5 voices on 2 shares, none answered
+        self.assertFalse((self.out / 'calls.jsonl').exists())                   # no day of empty calls on file
+        later = sp.run(fake_model({p: {'RELIANCE.NS': 'up', 'HDFCBANK.NS': 'flat'} for p in sp.PERSONAS}),
+                       now=now, stories_path=self.stories, out=self.out, cache=self.cache)
+        self.assertEqual((later['state'], later['directional']), ('rehearsed', 1))  # the model came back: the same day is rehearsed
+
     def test_calls_are_scored_against_the_basket_for_the_panel_and_each_persona(self):
         llm = fake_model({p: {'RELIANCE.NS': 'up', 'HDFCBANK.NS': 'down'} for p in sp.PERSONAS})
         for day in (1, 2, 5):

@@ -159,6 +159,11 @@ def run(llm, now=None, stories_path=STORIES, out=OUT, cache=daily.DAILY, limit=2
     notes = mentor.notes_for(None, events=[e['kind'] for e in events], regime=risk if risk in ('NORMAL', 'CAUTION', 'HIGH', 'SEVERE') else None, limit=2)
     calls = [c for story in stories for c in panel_calls(story, ask_panel(llm, story, regime if regime != 'unknown' else None, lessons, events=events,
                                                                           mentor_notes=notes), day, as_of)]
+    if calls and all(c['failedVoices'] == len(c['personas']) for c in calls):
+        # nobody answered (the model was down or timing out): nothing is recorded, so a rerun today can still rehearse,
+        # and the step fails visibly instead of filing a day of empty calls
+        return {'day': day, 'state': 'no-voices', 'stories': len(stories), 'failedVoices': sum(c['failedVoices'] for c in calls),
+                'reason': 'every voice failed: the model was unreachable or timing out'}
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open('a', encoding='utf-8') as handle:
         for c in calls:
@@ -318,7 +323,10 @@ def main(argv=None):
             results = reflect(llm)
             print(json.dumps({'learned': sum(r['state'] == 'learned' for r in results), 'failed': sum(r['state'] == 'failed' for r in results)}))
             return
-        print(json.dumps(run(llm, limit=args.stories)))
+        result = run(llm, limit=args.stories)
+        print(json.dumps(result))
+        if result['state'] == 'no-voices':
+            raise SystemExit('ENDPOINT_UNREACHABLE: ' + result['reason'])  # the cycle's playbook knows this code
         return
     r = score()
     print(json.dumps({'calls': r['calls'], 'waiting': r['waiting'], 'panel': r['panel'],
