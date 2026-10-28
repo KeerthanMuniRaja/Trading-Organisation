@@ -75,6 +75,16 @@ class EvalTests(unittest.TestCase):
         self.assertEqual(me.prompt(CASES[0], CASES[0]['input'])[0], me.claims.SYSTEM)
         self.assertEqual(set(me.PROMPT_VERSIONS), set(me.TASKS))
 
+    def test_an_argument_that_calls_press_verified_fails_even_if_it_says_unverified_later(self):
+        case = next(c for c in CASES if c['id'] == 'exam-press-is-not-proof')
+        bad = {'argument': 'The verified evidence shows a promoter block deal of Rs 2,500 crore. While press reports are unverified, it matters.',
+               'evidenceId': None, 'evidenceQuote': None}
+        valid, correct, _, notes = me.judge(case, case['input'], bad)
+        self.assertEqual((valid, correct), (True, False))
+        self.assertTrue(any('does not support' in n for n in notes))
+        good = {**bad, 'argument': 'A press report, unverified and from unnamed sources, says a promoter sold shares; it is not confirmed.'}
+        self.assertEqual(me.judge(case, case['input'], good)[:2], (True, True))
+
     def test_a_good_model_ships(self):
         clock = iter(range(10_000)).__next__
         report = me.summarise(me.run(good, CASES, clock=lambda: clock() * 3.0, log=lambda *a: None))

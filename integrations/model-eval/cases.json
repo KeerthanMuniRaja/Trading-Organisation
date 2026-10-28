@@ -918,7 +918,8 @@
       },
       "expect": {
         "evidenceIn": [null],
-        "mustMention": ["unverified", "not confirmed", "sources say", "reported", "press"]
+        "mustMention": ["unverified", "not confirmed", "sources say", "reported", "press"],
+        "mustNotMention": ["verified evidence shows", "the verified evidence", "verified block deal", "confirmed block deal", "confirms the sale", "evidence confirms"]
       }
     },
     {
