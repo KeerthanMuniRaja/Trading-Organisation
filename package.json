@@ -14,6 +14,7 @@
     "model:upgrade": "node --env-file-if-exists=.env scripts/model-upgrade.mjs",
     "handover": "node scripts/handover.mjs",
     "weekly": "node scripts/weekly-review.mjs",
+    "page": "node --env-file-if-exists=.env scripts/owner-page.mjs",
     "verify:real-model": "npm run build && node --env-file=.env scripts/verify-real-model.mjs",
     "model:doctor": "node --env-file=.env scripts/run-model-tool.mjs doctor",
     "model:benchmark": "node --env-file=.env scripts/run-model-tool.mjs benchmark",

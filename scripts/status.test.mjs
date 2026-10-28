@@ -45,6 +45,11 @@ test('one screen: health, autonomy, agenda, every member, money, the day and wha
   assert.doesNotMatch(render(FACTS).join('\n'), /Models /);                     // nothing measured yet: no line
   assert.match(render({ ...FACTS, supervisor: { state: 'stuck', next: 'news', nextAt: '2026-10-28T07:00:00.000Z' } }).join('\n'),
     /Supervisor STUCK: news was due at 07:00 UTC and did not start; restart it/);
+  // between jobs under a live supervisor the backend is off on purpose: no "npm start" advice, and the schedule still shows
+  const between = render({ ...FACTS, backend: false, model: false, supervisor: { state: 'alive' } }).join('\n');
+  assert.match(between, /Backend   off between jobs \(the supervisor starts it for each job\)    Model off between jobs/);
+  assert.doesNotMatch(between, /npm start/);
+  assert.match(between, /Supervisor alive[\s\S]*Next      /);
   const pulse = render({ ...FACTS, pulse: { windowDays: 7, counts: { up: 2, down: 1, bigPlayers: 1, unexplainedDeskMoves: 1 },
     movers: [{ company: 'KEI Industries Ltd.', direction: 'down', pct: 8 }, { company: 'Welspun Corp Ltd.', direction: 'up', pct: 230, period: 'YTD' },
       { company: 'Mankind Pharma Ltd.', direction: 'up', pct: 8 }],

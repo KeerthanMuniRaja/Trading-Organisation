@@ -196,6 +196,8 @@ export async function planSteps({ withModel = false, root = ROOT, decisionCheck 
       : { id: 'model-exams', skip: 'model steps not enabled (--with-model)' },
     { id: 'alerts', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'deliver-alerts.mjs')], timeoutMs: 120_000 },
     { id: 'owner-digest', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'daily-digest.mjs')], timeoutMs: 120_000 },
+    // OVERSIGHT-02: the status screen as a local, view-only page of tiles (.local/owner-page.html)
+    { id: 'owner-page', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'owner-page.mjs')], timeoutMs: 120_000 },
   ];
   return steps;
 }

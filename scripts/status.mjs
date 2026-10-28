@@ -53,16 +53,29 @@ function localLines(f) {
   return out;
 }
 
+/** The last cycle, the supervisor and the schedule: from local files, so they show with the backend off too. */
+function operationLines(f) {
+  return [`Cycle     ${f.lastCycle ? `${f.lastCycle.day}: ${f.lastCycle.failed.length ? 'failed ' + f.lastCycle.failed.join(', ') : 'no failed steps'}` : 'none yet'}`,
+    ...(f.supervisor && f.supervisor.state !== 'never' ? [`Supervisor ${f.supervisor.state === 'alive' ? `alive${f.supervisor.running ? `, running ${f.supervisor.running}` : ''}`
+      : f.supervisor.state === 'stuck' ? `STUCK: ${f.supervisor.next} was due at ${String(f.supervisor.nextAt).slice(11, 16)} UTC and did not start; restart it (close its window, then npm run supervisor)`
+        : `NOT RUNNING (last heartbeat ${Math.round(f.supervisor.ageSeconds / 60)} min ago): npm run supervisor`}`] : []),
+    `Next      ${f.next.map(r => `${r.id} ${new Date(r.at + 330 * 60_000).toISOString().slice(5, 16).replace('T', ' ')} IST`).join('; ')}`];
+}
+
 /** Pure: facts in, the overview lines out. */
 export function render(f) {
   const out = [`Trading organisation, ${f.at.slice(0, 16).replace('T', ' ')} UTC (paper only)`, ''];
-  out.push(`Backend   ${f.backend ? 'up' : 'DOWN (npm start)'}${f.digest?.halted ? '; NEW RISK HALTED' : ''}    Model ${f.model === null ? 'not configured' : f.model ? 'up' : 'down'}`);
+  // with a live supervisor the backend is off between jobs on purpose (it starts it for each job); "npm start" would add
+  // a second, unmanaged backend
+  const between = !f.backend && f.supervisor?.state === 'alive';
+  out.push(`Backend   ${f.backend ? 'up' : between ? 'off between jobs (the supervisor starts it for each job)' : 'DOWN (npm start)'}`
+    + `${f.digest?.halted ? '; NEW RISK HALTED' : ''}    Model ${f.model === null ? 'not configured' : f.model ? 'up' : between ? 'off between jobs' : 'down'}`);
   // MODEL-SPEED-01 / MODEL-UPGRADE-01: what this machine measured and which model makes decisions
   const t = f.tuning, d = f.routing?.decision;
   if (t || d) out.push(`Models    ${t ? `tuned ${String(t.measuredAt).slice(0, 10)}: ${t.runtime === 'vulkan' ? 'graphics (Vulkan)' : 'CPU'}, ${t.threads} threads `
     + `(${t.threadsBatch} for prompts), about ${t.secondsPerCall}s a typical call` : 'not tuned (npm run model:tune)'}; decisions: `
     + `${d ? `${d.alias} (exams ${d.examOverall} ${String(d.decidedAt).slice(0, 10)})` : 'the same model'}`);
-  if (!f.backend) return [...out, '', 'Nothing more can be read from the backend while it is down.', ...localLines(f)];
+  if (!f.backend) return [...out, ...operationLines(f), '', `Nothing more can be read from the backend while it is ${between ? 'off' : 'down'}.`, ...localLines(f)];
   const p = f.autonomy?.policy;
   const on = p ? RULES.filter(r => p.rules[r] && p.rules[r] !== null) : [];
   out.push(`Autonomy  ${p ? `policy ${p.sequence} (set ${p.setAt.slice(0, 10)} by ${p.setBy}): ${on.join(', ') || 'nothing automatic'}` : 'no standing approvals: every decision waits for you (npm run autonomy)'}`);
@@ -80,11 +93,7 @@ export function render(f) {
   }
   const m = f.digest?.money;
   if (m) out.push('', `Money     realised ${rupees(m.realisedPaise)}, open ${rupees(m.unrealisedPaise)}, total ${rupees(m.totalPaise)}${m.stalePositions ? `; ${m.stalePositions} stale price(s)` : ''}`);
-  out.push(`Cycle     ${f.lastCycle ? `${f.lastCycle.day}: ${f.lastCycle.failed.length ? 'failed ' + f.lastCycle.failed.join(', ') : 'no failed steps'}` : 'none yet'}`);
-  if (f.supervisor && f.supervisor.state !== 'never') out.push(`Supervisor ${f.supervisor.state === 'alive' ? `alive${f.supervisor.running ? `, running ${f.supervisor.running}` : ''}`
-    : f.supervisor.state === 'stuck' ? `STUCK: ${f.supervisor.next} was due at ${String(f.supervisor.nextAt).slice(11, 16)} UTC and did not start; restart it (close its window, then npm run supervisor)`
-      : `NOT RUNNING (last heartbeat ${Math.round(f.supervisor.ageSeconds / 60)} min ago): npm run supervisor`}`);
-  out.push(`Next      ${f.next.map(r => `${r.id} ${new Date(r.at + 330 * 60_000).toISOString().slice(5, 16).replace('T', ' ')} IST`).join('; ')}`);
+  out.push(...operationLines(f));
   out.push(`R&D       ${f.ideas} invented idea(s) in the ledger${f.scout ? `; last screen ${f.scout.through}: ${f.scout.passing} passing of ${f.scout.ideasTried}` : ''}`);
   out.push(...localLines(f));
   if (f.tradingagents) out.push(`TradingAgents  last decided ${f.tradingagents.day}: ${Object.entries(f.tradingagents.ratings).map(([s, r]) => `${s} ${r ?? '?'}`).join(', ')}`);
