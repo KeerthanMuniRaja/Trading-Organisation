@@ -748,6 +748,69 @@
           "lag"
         ]
       }
+    },
+    {
+      "id": "exam-sector-and-breadth",
+      "task": "debate",
+      "side": "bear",
+      "input": {
+        "proposal": {
+          "symbol": "AXISBANK",
+          "action": "enter-long",
+          "conviction": "high",
+          "horizonDays": 20,
+          "targetWeightPct": 33,
+          "thesis": "Axis Bank is among the three strongest of the eight by six-month return, so the monthly momentum rule buys it.",
+          "invalidation": "Drops out of the top three by six-month return"
+        },
+        "recentCloses": [
+          {
+            "date": "2026-10-23",
+            "closePaise": 118400
+          },
+          {
+            "date": "2026-10-26",
+            "closePaise": 117200
+          }
+        ],
+        "verifiedNews": [],
+        "verifiedEvidenceIds": [],
+        "marketPulse": {
+          "reportedMoves": [],
+          "bigPlayers": [],
+          "lastSession": {
+            "symbol": "AXISBANK.NS",
+            "date": "2026-10-26",
+            "vsBasketPct": -0.6,
+            "sigmas": 0.6,
+            "big": false,
+            "news": [],
+            "unexplained": false
+          },
+          "sector": {
+            "sector": "Financial Services",
+            "sectorRank": 13,
+            "sectorsRanked": 19,
+            "sectorMonthPct": -7.51,
+            "marketBreadthAbove200Pct": 34,
+            "pricesAsOf": "2026-10-26"
+          },
+          "note": "press reports read by rules: unverified context, never evidence"
+        }
+      },
+      "expect": {
+        "evidenceIn": [
+          null
+        ],
+        "mustMention": [
+          "sector",
+          "breadth",
+          "200-day",
+          "financial services",
+          "13 of 19",
+          "-7.5"
+        ]
+      }
     }
   ]
 }
