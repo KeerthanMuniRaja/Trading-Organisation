@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { createReadStream, createWriteStream, existsSync, openSync, readFileSync } from 'node:fs';
 import { mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Readable, Transform } from 'node:stream';
 import { fileURLToPath } from 'node:url';
@@ -68,6 +68,14 @@ async function install(name) {
   return download(name);
 }
 
+/** The server's command line from the lock's server settings. `threads` / `threadsBatch` (generation / prompt
+ *  reading) are set only when measured on this machine with llama-bench; otherwise llama.cpp picks its default. */
+export function serverArgs(s, weights, alias) {
+  return ['-m', weights, '--alias', alias, '--host', s.host, '--port', String(s.port), '-c', String(s.contextTokens), '--parallel', String(s.parallel),
+    ...(s.threads ? ['-t', String(s.threads)] : []), ...(s.threadsBatch ? ['-tb', String(s.threadsBatch)] : []),
+    '--jinja', '--reasoning', s.reasoning, '--reasoning-format', 'deepseek', '--no-webui'];
+}
+
 function serve(name) {
   const model = lock.models[name];
   if (!model) throw new Error('Unknown model key: ' + name);
@@ -75,9 +83,7 @@ function serve(name) {
   if (!existsSync(server) || !existsSync(weights)) throw new Error('Install the runtime and model first');
   const key = process.env.HERMES_MODEL_API_KEY;
   if (!key) throw new Error('HERMES_MODEL_API_KEY is required; run configure first');
-  const s = lock.server;
-  const args = ['-m', weights, '--alias', model.alias, '--host', s.host, '--port', String(s.port), '-c', String(s.contextTokens), '--parallel', String(s.parallel),
-    '--jinja', '--reasoning', s.reasoning, '--reasoning-format', 'deepseek', '--no-webui'];
+  const args = serverArgs(lock.server, weights, model.alias);
   const log = openSync(join(home, `server-${name}.log`), 'a');
   // The key travels through the environment (LLAMA_API_KEY), never the visible command line.
   const env = Object.fromEntries(['PATH', 'Path', 'SystemRoot', 'SYSTEMROOT', 'WINDIR', 'TEMP', 'TMP'].filter(k => process.env[k]).map(k => [k, process.env[k]]));
@@ -112,11 +118,13 @@ async function status() {
     partialDownloads: files.filter(f => f.endsWith('.part')) };
 }
 
-const [command, name] = process.argv.slice(2);
-try {
-  if (command === 'install' && name) console.log(JSON.stringify(await install(name)));
-  else if (command === 'serve' && name) serve(name);
-  else if (command === 'configure' && name) console.log(JSON.stringify(await configure(name)));
-  else if (command === 'status') console.log(JSON.stringify(await status(), null, 2));
-  else throw new Error('Usage: local-model.mjs install runtime|<model> | configure <model> | serve <model> | status');
-} catch (error) { console.error(error.message); process.exitCode = 1; }
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const [command, name] = process.argv.slice(2);
+  try {
+    if (command === 'install' && name) console.log(JSON.stringify(await install(name)));
+    else if (command === 'serve' && name) serve(name);
+    else if (command === 'configure' && name) console.log(JSON.stringify(await configure(name)));
+    else if (command === 'status') console.log(JSON.stringify(await status(), null, 2));
+    else throw new Error('Usage: local-model.mjs install runtime|<model> | configure <model> | serve <model> | status');
+  } catch (error) { console.error(error.message); process.exitCode = 1; }
+}

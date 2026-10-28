@@ -43,4 +43,6 @@ test('every trading-desk test file runs in the gate (three once sat outside it u
   const listed = new Set(suites().flatMap(s => s.args ?? []));
   const missing = files.filter(f => !listed.has(f) && !suites().some(s => (s.args ?? []).includes(f + '.py')));
   assert.deepEqual(missing, []);
+  const scripts = (await readdir(fileURLToPath(new URL('./', import.meta.url)))).filter(n => n.endsWith('.test.mjs')).map(n => 'scripts/' + n);
+  assert.deepEqual(scripts.filter(f => !listed.has(f)), []);   // and every script test file
 });
