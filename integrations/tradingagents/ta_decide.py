@@ -121,8 +121,22 @@ def decide(day, symbols=SYMBOLS, graph=None, meta=None, env=os.environ, out=OUT,
         record['readability'] = readability([record])
         tmp = path.with_suffix('.tmp')
         tmp.write_text(json.dumps(record, indent=2), encoding='utf-8')
-        os.replace(tmp, path)
+        _replace(tmp, path)
     return record
+
+
+def _replace(source, target, attempts=20):
+    """os.replace, retried while Windows briefly locks the file (this runs in TradingAgents' own environment, apart
+    from the trading desk's batch.replace)."""
+    import time
+    for attempt in range(attempts):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(0.05 * (attempt + 1))
 
 
 def readability(records):

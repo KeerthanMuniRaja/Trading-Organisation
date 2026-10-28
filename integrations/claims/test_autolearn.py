@@ -326,6 +326,15 @@ class OrchestrationTests(unittest.TestCase):
               'HERMES_MODEL_API_KEY': 'model-key', 'PRINCIPALS_JSON': json.dumps([
                   {'role': 'researcher', 'token': 'r-token'}, {'role': 'evaluator', 'token': 'e-token'}, {'role': 'owner', 'token': 'o-token'}])}
 
+    def test_the_env_file_is_read_as_node_reads_it_quotes_included(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / '.env'
+            path.write_text("# a comment\nPRINCIPALS_JSON='[{\"role\": \"evaluator\"}]'\nAPI_URL=\"http://127.0.0.1:3000\"\nPLAIN=a=b\nONE='\n",
+                            encoding='utf-8')
+            values = autolearn.env_file(path)
+        self.assertEqual(json.loads(values['PRINCIPALS_JSON']), [{'role': 'evaluator'}])   # single quotes no longer break JSON
+        self.assertEqual((values['API_URL'], values['PLAIN'], values['ONE']), ('http://127.0.0.1:3000', 'a=b', "'"))
+
     def test_each_step_gets_only_its_own_credential_and_only_extraction_gets_the_model(self):
         checker = autolearn.child_env('factcheck-lessons', {**self.PARENT,
             'OPENAI_API_KEY': 'unrelated', 'AWS_SECRET_ACCESS_KEY': 'unrelated',

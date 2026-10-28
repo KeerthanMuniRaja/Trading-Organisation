@@ -22,7 +22,6 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
-import os
 from pathlib import Path
 import re
 import sqlite3
@@ -30,6 +29,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'claims'))
+import batch  # noqa: E402
 import chains  # noqa: E402
 import claims  # noqa: E402
 import daily  # noqa: E402
@@ -192,7 +192,7 @@ def build(root=ROOT, out=DB):
     con.execute("INSERT INTO meta VALUES ('build', ?)", (json.dumps(meta),))
     con.commit()
     con.close()
-    os.replace(tmp, out)
+    batch.replace(tmp, out)  # a reader (status, the debate) may hold the old index open for a moment
     (out.parent / 'index-meta.json').write_text(json.dumps(meta, indent=2), encoding='utf-8')  # for readers without SQLite (status)
     return meta
 

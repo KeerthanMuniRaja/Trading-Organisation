@@ -25,6 +25,7 @@ import sys
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parents[0] / 'trading-desk'))
+import batch  # noqa: E402
 import daily  # noqa: E402
 import eod_trader  # noqa: E402
 import signal_scorer as sc  # noqa: E402
@@ -104,7 +105,7 @@ def write_holdings(trader, bot_id, opener, now, path=HOLDINGS):
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix('.tmp')
     tmp.write_text(json.dumps(book, indent=2), encoding='utf-8')
-    os.replace(tmp, path)
+    batch.replace(tmp, path)
     return book
 
 
