@@ -30,6 +30,19 @@
   - triage `scope-v3` stops counting SBI Life, SBI Mutual Fund, ITC Hotels and NTPC Green as ours;
   - three trading-desk test files were outside the gate, and a test now catches that.
 - **The old name "Nexus" is gone** from the repository; never use it.
+- **Evening: moving machines and the model gap.**
+  - **Moving:** `npm run handover` on the old machine, then `scripts\setup-machine.ps1` (with `-Check` to preview) on
+    the new one ([STARTUP section 0](STARTUP.md)). A handed-over machine's supervisor refuses to start
+    (`--take-back`).
+  - **Model speed:** `npm run model:tune` (llama-bench measures threads, and the Vulkan graphics build if installed)
+    writes `.local/models/tuning.json`, which `serve` uses.
+  - **The decision model:** `npm run model:upgrade` pins it to the publisher's sha256, serves it on 8081, and routes the
+    debate and TradingAgents to it only after our exams say SHIP (`routing.json`). The supervisor starts it
+    optionally, and the cycle falls back to the 4B.
+  - **Debate second pass:** `debate.self_check`, judged by the exams; `DEBATE_SELF_CHECK=0` turns it off.
+  - **TradingAgents:** it rates its holdings plus 2 rotating shares a week with 3 tool rounds. At 8 rounds the laptop
+    needed about 2.5–3 hours for one share.
+  - `npm run status` shows the tuning and the decision model.
 
 ## Live paper testing — from 15 October 2026
 
