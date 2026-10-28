@@ -36,7 +36,7 @@ export function toTiles(lines) {
 }
 
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const ALARM = /DOWN|STUCK|NOT RUNNING|HALTED|failed|UNEXPLAINED|warning/;
+const ALARM = /DOWN|STUCK|NOT RUNNING|HALTED|(?<!no )failed\b|UNEXPLAINED|warning/;   // "no failed steps" is good news
 
 export function html(tiles, title, generatedAt) {
   const cards = tiles.map(([name, items]) => `<section class="card${name === 'Needs you' ? ' needs' : ''}"><h2>${esc(name)}</h2><ul>`

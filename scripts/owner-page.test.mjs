@@ -23,6 +23,8 @@ test('the page is self-contained, view-only, escaped, and marks alarms', () => {
   assert.ok(!/<script[\s>]/i.test(page.replace(/&lt;script&gt;/g, '')));        // nothing from the data ever runs
   assert.match(page, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.match(page, /<li class="alarm"><span class="label">Supervisor<\/span> STUCK/);
+  assert.match(page, /<li><span class="label">Cycle<\/span> 2026-10-28: no failed steps/);              // good news is not an alarm
+  assert.match(html([['Organisation', [{ label: 'Cycle', text: '2026-10-29: failed rnd-scout' }]]], 't', 'x'), /<li class="alarm">/);
   assert.match(page, /prefers-color-scheme: dark/);
   assert.ok(!/<(form|button|input)\b/i.test(page) && !/https?:\/\/(?!www\.w3)/.test(page));   // no actions, no external loads
 });
