@@ -187,6 +187,13 @@ export async function planSteps({ withModel = false, root = ROOT, decisionCheck 
     withModel
       ? { id: 'playbook-drafts', cmd: PY, args: [desk('playbook_drafts.py'), 'draft'], timeoutMs: 600_000, requires: join(root, '.local', 'cycles', 'unknown-problems.jsonl') }
       : { id: 'playbook-drafts', skip: 'model steps not enabled (--with-model)' },
+    // MODEL-EXAMS-01: the debate and panel exams re-run whenever the exams, judges, prompts, debate or panel code, or the
+    // model changed since their last run (nothing to do otherwise); a failing verdict fails the step, once, visibly.
+    // After the trading work, so it never delays a decision.
+    withModel
+      ? { id: 'model-exams', cmd: PY, args: [join(root, 'integrations', 'model-eval', 'model_eval.py'), '--tasks', 'debate,scenario', '--repeats', '1', '--if-changed'],
+          timeoutMs: 75 * 60_000 }
+      : { id: 'model-exams', skip: 'model steps not enabled (--with-model)' },
     { id: 'alerts', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'deliver-alerts.mjs')], timeoutMs: 120_000 },
     { id: 'owner-digest', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'daily-digest.mjs')], timeoutMs: 120_000 },
   ];
@@ -388,7 +395,7 @@ export const ESCALATE_AFTER = 3;          // consecutive failed cycles before a 
 // one success closes the circuit. The escalation above still tells the owner.
 export const CIRCUIT_AFTER = 3, CIRCUIT_REST_MS = 2 * 86_400_000;
 export const MODEL_STEPS = new Set(['scenario-panel', 'claims-and-fact-check', 'learning-workflows', 'model-allocator-decide', 'tradingagents-decide',
-  'debate', 'playbook-drafts', 'headline-reader', 'scenario-reflect']);
+  'debate', 'playbook-drafts', 'headline-reader', 'scenario-reflect', 'model-exams']);
 
 /** Why a model step's circuit is open now (it rests), or null. */
 export function circuitOpen(id, streak, now) {

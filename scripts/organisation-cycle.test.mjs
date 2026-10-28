@@ -114,6 +114,9 @@ test('the bigger decision model is used for the debate and TradingAgents only on
     assert.deepEqual(plan.find(s => s.id === 'debate').env, big);
     assert.equal(plan.find(s => s.id === 'claims-and-fact-check').env, undefined);                // the bulk work stays on the small model
     assert.equal((await planSteps({ root: dir, withModel: true, decisionCheck: async () => null })).find(s => s.id === 'debate').env, undefined);
+    // MODEL-EXAMS-01: the exams re-run after the trading work, only when something that shapes an answer changed
+    const ids = plan.map(s => s.id), exams = plan.find(s => s.id === 'model-exams');
+    assert.ok(exams.args.includes('--if-changed') && ids.indexOf('paper-snapshot') < ids.indexOf('model-exams') && ids.indexOf('model-exams') < ids.indexOf('owner-digest'));
   } finally {
     for (const [k, v] of [['DEBATE_BULL_BOT', before.bull], ['DEBATE_BEAR_BOT', before.bear]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
     await rm(dir, { recursive: true, force: true });

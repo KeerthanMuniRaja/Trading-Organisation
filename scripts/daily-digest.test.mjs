@@ -24,6 +24,9 @@ test('the models section: measured settings and the decision model, or nothing',
     { decision: { alias: 'Qwen3.5-9B-Q4_K_M', examOverall: 'SHIP', decidedAt: '2026-10-28T21:00:00Z' } }).join('\n');
   assert.match(text, /## Models\n- Measured 2026-10-28: graphics \(Vulkan\), 4 threads \(8 for prompts\), about 22.5s a typical call\n- Decisions \(debate, TradingAgents\): Qwen3.5-9B-Q4_K_M, exams SHIP on 2026-10-28/);
   assert.match(modelLines(null, null).join('') + modelLines({ measuredAt: 'x', runtime: 'cpu', threads: 6, threadsBatch: 6, secondsPerCall: 30 }, null).join('\n'), /the same model as the bulk work/);
+  const failed = modelLines(null, null, { tasks: ['debate', 'scenario'], overall: "DON'T SHIP", at: '2026-10-29T12:30:00Z', model: 'Qwen3.5-4B-Q4_K_M',
+    runId: '20261029T123000Z', verdicts: { debate: 'SHIP', scenario: "DON'T SHIP" } }).join('\n');
+  assert.match(failed, /- Exams \(debate, scenario\): DON'T SHIP on 2026-10-29, Qwen3.5-4B-Q4_K_M — scenario failed: see \.local\/model-eval\/20261029T123000Z\/report\.json/);
 });
 
 test('the market pulse section: movers with reasons, flows, sectors, the week and unexplained desk moves', () => {

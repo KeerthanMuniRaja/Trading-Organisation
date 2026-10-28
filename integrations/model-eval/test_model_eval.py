@@ -95,6 +95,14 @@ class EvalTests(unittest.TestCase):
         calm = {'calls': [{'symbol': 'INFY.NS', 'direction': 'flat', 'why': 'A US IPO does not change Infosys against the market.'}]}
         self.assertEqual(me.judge(case, case['input'], calm)[:2], (True, True))
 
+    def test_the_cycle_re_examines_only_when_something_that_shapes_an_answer_changed(self):
+        text = me.CASES.read_text(encoding='utf-8')
+        base = me.exam_fingerprint('Qwen3.5-4B-Q4_K_M', text, ('debate', 'scenario'))
+        self.assertEqual(base, me.exam_fingerprint('Qwen3.5-4B-Q4_K_M', text, ('scenario', 'debate')))      # stable: nothing changed
+        self.assertNotEqual(base, me.exam_fingerprint('Qwen3.5-4B-Q4_K_M', text + ' ', ('debate', 'scenario')))   # an exam changed
+        self.assertNotEqual(base, me.exam_fingerprint('Qwen3.5-9B-Q4_K_M', text, ('debate', 'scenario')))    # another model
+        self.assertNotEqual(base, me.exam_fingerprint('Qwen3.5-4B-Q4_K_M', text, ('debate',)))                # other tasks
+
     def test_a_good_model_ships(self):
         clock = iter(range(10_000)).__next__
         report = me.summarise(me.run(good, CASES, clock=lambda: clock() * 3.0, log=lambda *a: None))

@@ -55,13 +55,16 @@ export function pulseLines(p) {
 }
 
 /** MODEL-SPEED-01 / MODEL-UPGRADE-01: this machine's model settings and which model makes decisions. */
-export function modelLines(tuning, routing) {
-  if (!tuning && !routing) return [];
+export function modelLines(tuning, routing, exams = null) {
+  if (!tuning && !routing && !exams) return [];
   const d = routing?.decision;
   return ['## Models',
     `- ${tuning ? `Measured ${String(tuning.measuredAt).slice(0, 10)}: ${tuning.runtime === 'vulkan' ? 'graphics (Vulkan)' : 'CPU'}, ${tuning.threads} threads `
       + `(${tuning.threadsBatch} for prompts), about ${tuning.secondsPerCall}s a typical call` : 'Not tuned: npm run model:tune'}`,
-    `- Decisions (debate, TradingAgents): ${d ? `${d.alias}, exams ${d.examOverall} on ${String(d.decidedAt).slice(0, 10)}` : 'the same model as the bulk work'}`, ''];
+    `- Decisions (debate, TradingAgents): ${d ? `${d.alias}, exams ${d.examOverall} on ${String(d.decidedAt).slice(0, 10)}` : 'the same model as the bulk work'}`,
+    // MODEL-EXAMS-01: the cycle's latest re-examination after something changed
+    ...(exams ? [`- Exams (${(exams.tasks ?? []).join(', ')}): ${exams.overall} on ${String(exams.at).slice(0, 10)}, ${exams.model}`
+      + `${exams.overall !== 'SHIP' ? ` — ${Object.entries(exams.verdicts ?? {}).filter(([, v]) => v !== 'SHIP').map(([t]) => t).join(', ')} failed: see .local/model-eval/${exams.runId}/report.json` : ''}`] : []), ''];
 }
 
 /** REGIME-01: the latest market regime and its study, from the desk's files; null when the cycle has not made them. */
@@ -93,9 +96,11 @@ export async function knowledgeSummary(root = join(dirname(fileURLToPath(import.
   try { pulse = JSON.parse(await readFile(join(root, '.local', 'world', 'market-pulse.json'), 'utf8')); } catch { /* not made yet */ }
   try { tuning = JSON.parse(await readFile(join(root, '.local', 'models', 'tuning.json'), 'utf8')); } catch { /* not measured */ }
   try { routing = JSON.parse(await readFile(join(root, '.local', 'models', 'routing.json'), 'utf8')); } catch { /* no decision model */ }
+  let exams = null;
+  try { exams = JSON.parse(await readFile(join(root, '.local', 'model-eval', 'auto-last.json'), 'utf8')); } catch { /* not examined yet */ }
   const events = await upcomingEvents(root, now);
-  return live || unknown.length || drafts || review || events || pulse || tuning || routing
-    ? { live, unknown, drafts, review, events, pulse, tuning, routing } : null;
+  return live || unknown.length || drafts || review || events || pulse || tuning || routing || exams
+    ? { live, unknown, drafts, review, events, pulse, tuning, routing, exams } : null;
 }
 
 /** NEWS-05: the owner's events calendar (.local/events.json), the next `days` days; null when there is no calendar. */
@@ -290,7 +295,7 @@ export function render(d, world = null, regime = null, known = null, trust = nul
       + (k.setAside ? ` (${k.setAside} more set aside as out of scope)` : ''), '',
     ...worldLines(world),
     ...pulseLines(known?.pulse),
-    ...modelLines(known?.tuning, known?.routing),
+    ...modelLines(known?.tuning, known?.routing, known?.exams),
     ...researchLines(known),
     '## Bots (90-day scored accuracy, 5+ calls)',
     ...(d.bots.best.length ? d.bots.best.map(b => `- best: ${b.botId} ${Math.round(b.accuracy * 100)}% of ${b.scored}`) : ['- No bot has 5 scored calls yet.']),

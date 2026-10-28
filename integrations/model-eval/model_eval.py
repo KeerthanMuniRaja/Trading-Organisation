@@ -343,8 +343,21 @@ def lock(model_name, cases_text):
             'casesFingerprint': hashlib.sha256(cases_text.encode()).hexdigest()[:16]}
 
 
+AUTO_STATE = OUT / 'auto-last.json'
+
+
+def exam_fingerprint(model_name, cases_text, tasks):
+    """Everything that shapes an exam answer: the cases, the judges, the prompt versions, the debate and panel code
+    (their context notes and the debate's second pass live there) and the model. The cycle re-examines when it moves."""
+    import inspect
+    return fingerprint(cases_text, lock(model_name, cases_text)['judgesFingerprint'], json.dumps(PROMPT_VERSIONS, sort_keys=True),
+                       inspect.getsource(debate), inspect.getsource(scenario_panel), str(model_name), ','.join(sorted(tasks)))
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--if-changed', action='store_true',
+                        help='for the daily cycle: run only when the exams, judges, prompts, debate or panel code, or the model changed')
     parser.add_argument('--tasks', default=','.join(TASKS))
     parser.add_argument('--repeats', type=int, default=2, choices=range(1, 6))
     parser.add_argument('--timeout', type=int, default=300)
@@ -356,6 +369,12 @@ def main(argv=None):
     cases = json.loads(cases_text)['cases']
     os.environ['MODEL_CALL_JOURNAL'] = 'off'  # evaluation calls are kept in the run's own results, not the production journal
     llm, endpoint = claims.model_client(claims.local_settings(os.environ), args.timeout)
+    current = exam_fingerprint(endpoint.model, cases_text, tasks)
+    if args.if_changed:
+        last = json.loads(AUTO_STATE.read_text(encoding='utf-8')) if AUTO_STATE.exists() else {}
+        if last.get('fingerprint') == current:
+            print(json.dumps({'state': 'unchanged', 'lastRun': last.get('runId'), 'overall': last.get('overall')}))
+            return
     run_id = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     print(f'Model evaluation {run_id}: {endpoint.model}, tasks {",".join(tasks)}, {args.repeats} repeats + reworded variants')
     results = run(llm, cases, tasks, args.repeats)
@@ -375,6 +394,10 @@ def main(argv=None):
     if args.set_baseline:
         args.baseline.write_text(json.dumps(report, indent=2), encoding='utf-8')
         print(f'Saved as the baseline every candidate must not fall below: {args.baseline}')
+    # recorded whatever the verdict: a failure is reported once, and re-examined when something changes
+    AUTO_STATE.write_text(json.dumps({'fingerprint': current, 'runId': run_id, 'overall': report['overall'], 'tasks': list(tasks),
+                                      'model': endpoint.model, 'at': datetime.now(timezone.utc).isoformat(),
+                                      'verdicts': {t: m['verdict'] for t, m in report['tasks'].items()}}, indent=2), encoding='utf-8')
     if report['overall'] != 'SHIP':
         sys.exit(1)  # a script or a release gate can act on the verdict
 
