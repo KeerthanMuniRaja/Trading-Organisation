@@ -93,13 +93,16 @@ export async function history(day, root = ROOT) {
   return { done, attempts };
 }
 
-export const HEARTBEAT_STALE_MS = 5 * 60_000;
+export const HEARTBEAT_STALE_MS = 5 * 60_000, STUCK_AFTER_MS = 10 * 60_000;
 /** The supervisor's heartbeat, written every minute while it runs (also during a long cycle). */
 export async function heartbeat(root = ROOT, now = Date.now()) {
   try {
     const beat = JSON.parse(await readFile(join(root, '.local', 'supervisor', 'heartbeat.json'), 'utf8'));
     const age = now - Date.parse(beat.at);
-    return { state: age <= HEARTBEAT_STALE_MS ? 'alive' : 'stale', ageSeconds: Math.round(age / 1000), running: beat.running ?? null, next: beat.next ?? null, nextAt: beat.nextAt ?? null };
+    // alive but not scheduling: a job was due over 10 minutes ago and nothing is running (28 Oct: news stopped for hours)
+    const overdue = !beat.running && beat.nextAt && now - Date.parse(beat.nextAt) > STUCK_AFTER_MS;
+    return { state: age > HEARTBEAT_STALE_MS ? 'stale' : overdue ? 'stuck' : 'alive', ageSeconds: Math.round(age / 1000), running: beat.running ?? null,
+      next: beat.next ?? null, nextAt: beat.nextAt ?? null };
   } catch { return { state: 'never' }; }
 }
 
@@ -317,5 +320,6 @@ async function main() {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main().catch(error => { console.error(error.message); process.exitCode = 1; });
+  // exit hard: the heartbeat timer would otherwise keep a supervisor that no longer schedules looking alive
+  main().catch(error => { console.error(error.message); process.exit(1); });
 }

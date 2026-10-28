@@ -43,6 +43,8 @@ test('one screen: health, autonomy, agenda, every member, money, the day and wha
     routing: { decision: { alias: 'Qwen3.5-9B-Q4_K_M', examOverall: 'SHIP', decidedAt: '2026-10-28T21:00:00Z' } } }).join('\n');
   assert.match(models, /Models    tuned 2026-10-28: CPU, 4 threads \(8 for prompts\), about 31.2s a typical call; decisions: Qwen3.5-9B-Q4_K_M \(exams SHIP 2026-10-28\)/);
   assert.doesNotMatch(render(FACTS).join('\n'), /Models /);                     // nothing measured yet: no line
+  assert.match(render({ ...FACTS, supervisor: { state: 'stuck', next: 'news', nextAt: '2026-10-28T07:00:00.000Z' } }).join('\n'),
+    /Supervisor STUCK: news was due at 07:00 UTC and did not start; restart it/);
   const pulse = render({ ...FACTS, pulse: { windowDays: 7, counts: { up: 2, down: 1, bigPlayers: 1, unexplainedDeskMoves: 1 },
     movers: [{ company: 'KEI Industries Ltd.', direction: 'down', pct: 8 }, { company: 'Welspun Corp Ltd.', direction: 'up', pct: 230, period: 'YTD' },
       { company: 'Mankind Pharma Ltd.', direction: 'up', pct: 8 }],

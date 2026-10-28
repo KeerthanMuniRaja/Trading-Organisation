@@ -82,7 +82,8 @@ export function render(f) {
   if (m) out.push('', `Money     realised ${rupees(m.realisedPaise)}, open ${rupees(m.unrealisedPaise)}, total ${rupees(m.totalPaise)}${m.stalePositions ? `; ${m.stalePositions} stale price(s)` : ''}`);
   out.push(`Cycle     ${f.lastCycle ? `${f.lastCycle.day}: ${f.lastCycle.failed.length ? 'failed ' + f.lastCycle.failed.join(', ') : 'no failed steps'}` : 'none yet'}`);
   if (f.supervisor && f.supervisor.state !== 'never') out.push(`Supervisor ${f.supervisor.state === 'alive' ? `alive${f.supervisor.running ? `, running ${f.supervisor.running}` : ''}`
-    : `NOT RUNNING (last heartbeat ${Math.round(f.supervisor.ageSeconds / 60)} min ago): npm run supervisor`}`);
+    : f.supervisor.state === 'stuck' ? `STUCK: ${f.supervisor.next} was due at ${String(f.supervisor.nextAt).slice(11, 16)} UTC and did not start; restart it (close its window, then npm run supervisor)`
+      : `NOT RUNNING (last heartbeat ${Math.round(f.supervisor.ageSeconds / 60)} min ago): npm run supervisor`}`);
   out.push(`Next      ${f.next.map(r => `${r.id} ${new Date(r.at + 330 * 60_000).toISOString().slice(5, 16).replace('T', ' ')} IST`).join('; ')}`);
   out.push(`R&D       ${f.ideas} invented idea(s) in the ledger${f.scout ? `; last screen ${f.scout.through}: ${f.scout.passing} passing of ${f.scout.ideasTried}` : ''}`);
   out.push(...localLines(f));

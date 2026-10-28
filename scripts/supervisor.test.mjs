@@ -62,6 +62,12 @@ test('history reads the supervisor log and the cycle journal; the heartbeat says
     const alive = await heartbeat(root, at + 60_000);
     assert.deepEqual([alive.state, alive.running], ['alive', 'cycle']);
     assert.equal((await heartbeat(root, at + 10 * 60_000)).state, 'stale');
+    // beating but not scheduling: a job long overdue with nothing running is 'stuck', not 'alive'
+    const due = new Date(at - 30 * 60_000).toISOString();
+    await writeFile(join(root, '.local', 'supervisor', 'heartbeat.json'), JSON.stringify({ at: new Date(at).toISOString(), running: null, next: 'news', nextAt: due }));
+    assert.equal((await heartbeat(root, at + 60_000)).state, 'stuck');
+    await writeFile(join(root, '.local', 'supervisor', 'heartbeat.json'), JSON.stringify({ at: new Date(at).toISOString(), running: null, next: 'news', nextAt: new Date(at + 60_000).toISOString() }));
+    assert.equal((await heartbeat(root, at + 30_000)).state, 'alive');                // due soon: fine
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
