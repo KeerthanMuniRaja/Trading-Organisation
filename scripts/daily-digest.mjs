@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { settings } from './deliver-alerts.mjs';
 import { dataManifest } from './organisation-cycle.mjs';
+import { diagnose } from './playbook.mjs';
 import { describeStory, worldSummary } from './world-news.mjs';
 
 const rupees = paise => {
@@ -80,7 +81,10 @@ export async function knowledgeSummary(root = join(dirname(fileURLToPath(import.
   try { live = JSON.parse(await readFile(join(root, '.local', 'trading-desk', 'knowledge', 'live.json'), 'utf8')); } catch { /* not made yet */ }
   try {
     unknown = (await readFile(join(root, '.local', 'cycles', 'unknown-problems.jsonl'), 'utf8')).split('\n').filter(l => l.trim()).map(l => JSON.parse(l))
-      .filter(u => now - Date.parse(u.at) < 7 * 86_400_000);
+      .filter(u => now - Date.parse(u.at) < 7 * 86_400_000)
+      // re-read with today's playbook: a failure it has since learned is no longer "unknown" (27 Oct's model timeouts
+      // were learned the same evening, yet kept showing as unknown for a week)
+      .filter(u => diagnose(u.step, String(u.text ?? '')).id === 'unknown');
   } catch { /* none */ }
   let drafts = 0, review = null;
   try { drafts = JSON.parse(await readFile(join(root, '.local', 'trading-desk', 'knowledge', 'playbook-drafts.json'), 'utf8')).drafts.length; } catch { /* none */ }

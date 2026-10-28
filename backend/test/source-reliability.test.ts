@@ -8,7 +8,7 @@ import { createApp } from '../src/app.js';
 
 test('each source earns a record from independent reviews of its output; poor sources are flagged and alerted', async () => {
   const f = await fixture(); try {
-    for (const id of ['steady-wire', 'rumour-mill', 'newcomer'])
+    for (const id of ['steady-wire', 'rumour-mill', 'newcomer', 'opinion-blog'])
       await f.org.sources(owner, key(), { id, name: id, url: `https://${id}.example.org`, approved: true });
     const item = async (sourceId: string, status: 'verified' | 'rejected' | null) => {
       const e = await f.org.evidence(researcher, key(), { sourceId, kind: 'news', content: `${sourceId} report ${key()}`, publishedAt: new Date(Date.now() - 3_600_000).toISOString() });
@@ -16,19 +16,24 @@ test('each source earns a record from independent reviews of its output; poor so
       return e.id as string;
     };
     for (let i = 0; i < 12; i++) await item('steady-wire', 'verified');
-    const later = [await item('rumour-mill', 'verified'), await item('rumour-mill', 'verified')];
+    const later = [];
+    for (let i = 0; i < 4; i++) later.push(await item('rumour-mill', 'verified'));
     await item('rumour-mill', 'verified'); await item('rumour-mill', 'verified');
     for (let i = 0; i < 8; i++) await item('rumour-mill', 'rejected');
     for (const id of later) await f.org.revoke(evaluator, key(), { kind: 'evidence', targetId: id, reason: 'Retracted by the publisher' });
     await item('newcomer', null); // pending only: nothing decided yet
+    // KG-02: rejections (no checkable claim, no second source) are reported, not scored: they say nothing about errors
+    await item('opinion-blog', 'verified'); await item('opinion-blog', 'verified');
+    for (let i = 0; i < 20; i++) await item('opinion-blog', 'rejected');
 
     const { sources } = await new SourceReliability(f.db).report(evaluator, {});
     const by = Object.fromEntries(sources.map(s => [s.sourceId, s]));
     assert.deepEqual(by['steady-wire']!.evidence, { verified: 12, rejected: 0, revoked: 0, pending: 0 });
     assert.equal(by['steady-wire']!.score, 0.929);            // (12 + 1) / (12 + 2)
-    assert.equal(by['rumour-mill']!.decided, 14);              // 2 verified + 8 rejected + 2 revoked counted twice
-    assert.equal(by['rumour-mill']!.score, 0.188);             // (2 + 1) / (14 + 2)
+    assert.equal(by['rumour-mill']!.decided, 10);              // 2 verified + 4 revoked counted twice; its 8 rejections not scored
+    assert.equal(by['rumour-mill']!.score, 0.25);              // (2 + 1) / (10 + 2): contradicted reports are what make a source unreliable
     assert.match(by['rumour-mill']!.flag!, /low reliability/);
+    assert.deepEqual([by['opinion-blog']!.evidence.rejected, by['opinion-blog']!.score, by['opinion-blog']!.flag], [20, 0.75, null]);
     assert.equal(by['newcomer']!.score, 0.5);                  // no evidence either way yet
     assert.equal(by['newcomer']!.flag, null);
     assert.equal(sources[0]!.sourceId, 'rumour-mill');         // worst first

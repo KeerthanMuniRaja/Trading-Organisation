@@ -3,7 +3,20 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { arithmeticProblems, modelLines, pulseLines, render, run, trustCheck, upcomingEvents } from './daily-digest.mjs';
+import { arithmeticProblems, knowledgeSummary, modelLines, pulseLines, render, run, trustCheck, upcomingEvents } from './daily-digest.mjs';
+
+test('a logged failure the playbook has since learned is no longer reported as unknown', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'digest-unknown-'));
+  try {
+    await mkdir(join(root, '.local', 'cycles'), { recursive: true });
+    const at = '2026-10-27T13:32:36Z';
+    await writeFile(join(root, '.local', 'cycles', 'unknown-problems.jsonl'), [
+      { at, step: 'rnd-scout', status: 'failed', text: "raise EndpointError('ENDPOINT_TIMEOUT') from None" },
+      { at, step: 'rnd-scout', status: 'failed', text: 'something nobody has seen: frobnication overflow' }].map(x => JSON.stringify(x)).join('\n') + '\n');
+    const known = await knowledgeSummary(root, Date.parse('2026-10-28T12:00:00Z'));
+    assert.deepEqual(known.unknown.map(u => u.text), ['something nobody has seen: frobnication overflow']);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 test('the models section: measured settings and the decision model, or nothing', () => {
   assert.deepEqual(modelLines(null, null), []);

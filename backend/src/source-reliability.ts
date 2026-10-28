@@ -8,9 +8,12 @@ import { Allow } from './security.js';
 // output, never from what it says about itself: evidence verified / rejected / revoked by independent reviewers, claims
 // accepted / rejected, and how long its items take to arrive after publication. The score is a smoothed share of good
 // outcomes, with a revocation counting twice (it means a verified item later proved wrong or untrustworthy):
-//   score = (verified + acceptedClaims + 1) / (decided + 2), decided = verified + rejected + 2*revoked + claims decided
-// so a new source starts near 0.5 and only evidence moves it. The record informs reviewers and the owner's approval
-// decisions; it never approves, revokes or weights anything automatically.
+//   score = (verified + acceptedClaims + 1) / (decided + 2), decided = verified + 2*revoked + claims decided
+// so a new source starts near 0.5 and only evidence moves it. Plain rejections are reported but NOT scored (KG-02, 28
+// Oct 2026): the automatic fact-checker rejects an item for having no checkable claim (opinion, previews, "should you
+// buy?") or no second source within its hold, which says nothing about whether the source got a fact wrong. Counting
+// them gave all three approved feeds a score near 0.03 and a false "review its approval" alarm every day.
+// The record informs reviewers and the owner's approval decisions; it never approves, revokes or weights anything.
 
 const schema = z.object({ minDecided: z.number().int().min(0).max(1000).default(0) }).strict();
 export const LOW_SCORE = 0.4, MIN_FOR_ALERT = 10;
@@ -30,7 +33,7 @@ export async function reliability(tx: Sql) {
   return rows.map(r => {
     const c = claims.get(r.id) ?? { accepted: 0, rejected: 0 };
     const good = r.verified + c.accepted;
-    const decided = r.verified + r.rejected + 2 * r.revoked + c.accepted + c.rejected;
+    const decided = r.verified + 2 * r.revoked + c.accepted + c.rejected;
     return { sourceId: r.id as string, name: r.name as string, approved: r.approved as boolean,
       evidence: { verified: r.verified, rejected: r.rejected, revoked: r.revoked, pending: r.pending },
       claims: c, decided, score: Number(((good + 1) / (decided + 2)).toFixed(3)),

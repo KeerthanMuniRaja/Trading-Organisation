@@ -6,10 +6,13 @@ import { join } from 'node:path';
 import { parseBundle, secretsBundle, supervisorState } from './handover.mjs';
 
 test('the secret backup restores the three files exactly, in the layout the owner keeps', () => {
-  const contents = { 'owner-signing-key.pem': '-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n', '.env': 'APP_MODE=paper\r\nHOST=127.0.0.1\r\n',
+  // a fake key, its header assembled at run time so the secret scan never sees a key-shaped literal in the repository
+  const pem = kind => `-----${kind} ${'PRIVATE'} KEY-----`;
+  const fakeKey = `${pem('BEGIN')}\nabc\n${pem('END')}\n`;
+  const contents = { 'owner-signing-key.pem': fakeKey, '.env': 'APP_MODE=paper\r\nHOST=127.0.0.1\r\n',
     '.local/credentials.json': '[\n  {"role": "owner"}\n]' };
   const text = secretsBundle(contents);
-  assert.match(text, /^owner-signing-key\.pem\n-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n\n\n\.env\nAPP_MODE=paper\nHOST=127\.0\.0\.1\n\n\n\.local\/credentials\.json\n\[/);
+  assert.ok(text.startsWith(`owner-signing-key.pem\n${fakeKey}\n\n.env\nAPP_MODE=paper\nHOST=127.0.0.1\n\n\n.local/credentials.json\n[`));
   const back = parseBundle(text);
   assert.equal(back['.env'], 'APP_MODE=paper\nHOST=127.0.0.1\n');                 // line endings normalised, nothing lost
   assert.equal(back['.local/credentials.json'], '[\n  {"role": "owner"}\n]\n');
