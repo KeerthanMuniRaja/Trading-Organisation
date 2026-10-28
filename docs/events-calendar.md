@@ -22,6 +22,26 @@ Copy [`docs/policies/events-example.json`](policies/events-example.json) to `.lo
   - RBI and Budget dates from their announcements;
   - FOMC from the Federal Reserve's calendar.
 
+## Results days from the press (NEWS-07, 28 Oct 2026)
+
+You don't have to keep the results dates yourself. Every cycle, `results_calendar.py` (step `results-calendar`) reads
+the headlines the approved feeds bring in, by fixed rules (no model, no network):
+- **What counts:** a headline counts only when a results word comes just before the date it gives, for the companies
+  it names. Examples: "4 banking stocks to declare results on Oct 17", "Q2 Results Today Live: …", and "board meeting
+  on November 7 to consider Q2 results".
+- **What never counts:** dividend record dates, splits, bonuses, IPOs, election results, and dates too far from the
+  headline (more than a week before it, or two months after).
+- **Rescheduling:** when a later headline gives a new date within 20 days for the same share, the later one wins.
+- **Keeping:** the list builds up in `.local/world/results-calendar.json` and keeps each date for 400 days. The headline
+  history holds only the newest 500 items, so this file is what keeps older dates.
+
+The desk shares' dates join the calendar marked `source: press`, with the publisher and "not the exchange filing" in
+the title:
+- **Your entries win:** a results entry of yours for the same share within 20 days replaces the press one.
+- **Without your file:** the status reads `press-reported results days only (no owner calendar): other dates unknown`.
+  An empty list then means "none reported", never "nothing scheduled", and policy dates stay unknown until you add them.
+- **The mentor's results-day lesson** now reaches the debate whenever a press results date is upcoming.
+
 ## Who uses it
 
 | Reader | What it sees |

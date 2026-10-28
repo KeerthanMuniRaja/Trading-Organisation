@@ -103,18 +103,28 @@ export async function knowledgeSummary(root = join(dirname(fileURLToPath(import.
     ? { live, unknown, drafts, review, events, pulse, tuning, routing, exams } : null;
 }
 
-/** NEWS-05: the owner's events calendar (.local/events.json), the next `days` days; null when there is no calendar. */
+/** NEWS-05: the owner's events calendar (.local/events.json), the next `days` days; null when there is no calendar.
+ *  NEWS-07: plus the desk shares' results days the press reported (.local/world/results-calendar.json), unless the
+ *  owner lists results for that share within 20 days. */
 export async function upcomingEvents(root = join(dirname(fileURLToPath(import.meta.url)), '..'), now = Date.now(), days = 7) {
-  let raw;
-  try { raw = JSON.parse(await readFile(join(root, '.local', 'events.json'), 'utf8')).events; } catch { return null; }
+  let raw = null, press = null;
+  try { raw = JSON.parse(await readFile(join(root, '.local', 'events.json'), 'utf8')).events; } catch { /* no owner calendar */ }
+  try { press = JSON.parse(await readFile(join(root, '.local', 'world', 'results-calendar.json'), 'utf8')).events; } catch { /* none yet */ }
+  if (raw === null && press === null) return null;
+  const owner = Array.isArray(raw) ? raw : [];
+  const owned = owner.filter(e => e?.kind === 'results' && e.symbols?.length === 1);
+  const near = (a, b) => Math.abs(Date.parse(a) - Date.parse(b)) <= 20 * 86_400_000;
+  const reported = (Array.isArray(press) ? press : []).filter(e => e?.desk)
+    .map(e => ({ date: e.date, kind: 'results', symbols: [String(e.symbol).replace(/\.NS$/, '')], title: `${e.company} results (press report, not the exchange filing)` }))
+    .filter(e => !owned.some(o => String(o.symbols[0]).replace(/\.NS$/, '') === e.symbols[0] && near(o.date, e.date)));
   const today = new Date(now + 330 * 60_000).toISOString().slice(0, 10), end = new Date(now + 330 * 60_000 + days * 86_400_000).toISOString().slice(0, 10);
-  return (Array.isArray(raw) ? raw : []).filter(e => e && /^\d{4}-\d{2}-\d{2}$/.test(String(e.date)) && e.date >= today && e.date <= end && e.title)
+  return [...owner, ...reported].filter(e => e && /^\d{4}-\d{2}-\d{2}$/.test(String(e.date)) && e.date >= today && e.date <= end && e.title)
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }
 
 export function eventLines(events) {
   if (events === null || events === undefined) return [];
-  return ['## Coming up (next 7 days, from your events calendar)',
+  return ['## Coming up (next 7 days, from your events calendar and press-reported results days)',
     ...(events.length ? events.map(e => `- ${e.date} ${String(e.kind ?? 'other')}: ${String(e.title).slice(0, 120)}${e.symbols?.length ? ` (${e.symbols.join(', ')})` : ''}`)
       : ['- Nothing scheduled in the calendar.']), ''];
 }

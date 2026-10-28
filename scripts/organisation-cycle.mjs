@@ -62,6 +62,9 @@ export async function planSteps({ withModel = false, root = ROOT, decisionCheck 
     { id: 'market-pulse', cmd: PY, args: [desk('market_pulse.py')], timeoutMs: 120_000, requires: join(root, '.local', 'world', 'headline-history.json') },
     // AWARE-02: every reported move is kept, and measured against the market over the next week once prices exist
     { id: 'reaction-study', cmd: PY, args: [desk('news_reactions.py')], timeoutMs: 120_000, requires: join(root, '.local', 'world', 'market-pulse.json') },
+    // NEWS-07: results days the press reports ("to declare results on Oct 17"), kept beyond the headline history, so the
+    // debate and the mentor's results-day lesson see them with no owner calendar (no model, no network)
+    { id: 'results-calendar', cmd: PY, args: [desk('results_calendar.py')], timeoutMs: 120_000, requires: join(root, '.local', 'world', 'headline-history.json') },
     // KNOW-06: everything collected, connected and searchable, point-in-time (items, stories, drivers, regimes, ideas, calls)
     { id: 'knowledge-index', cmd: PY, args: [desk('knowledge_index.py'), 'build'], timeoutMs: 300_000 },
     // SCENARIO-01: five personas rehearse the day's two biggest linked world stories (model needed; shadow only), and

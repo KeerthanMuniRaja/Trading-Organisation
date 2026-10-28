@@ -119,7 +119,8 @@ The organisation now manages itself like a firm, with the owner as CEO:
   - a headline reader;
   - a weighted, two-round scenario panel with persona lessons;
   - TradingAgents readability counts;
-  - an events calendar (`.local/events.json`);
+  - an events calendar (`.local/events.json`), plus results days read from the press (`results_calendar.py`, NEWS-07,
+    28 Oct);
   - point-in-time NIFTY 50 research (`.local/trading-desk/datasets/nifty50-membership.json`).
 - **Owner's direction:** useful code may be taken from the reference repositories (personal use) with a one-line source
   note.

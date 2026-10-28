@@ -174,9 +174,19 @@ test('the digest shows what is coming up from the owner\'s calendar, and nothing
     const events = await upcomingEvents(root, Date.parse('2026-10-23T06:00:00Z'));
     assert.deepEqual(events.map(e => e.title), ['Fed decision', 'SBI Q2 results']);
     const text = render(digest, null, null, { events });
-    assert.match(text, /## Coming up \(next 7 days, from your events calendar\)\n- 2026-10-27 fomc: Fed decision\n- 2026-10-28 results: SBI Q2 results \(SBIN\)/);
+    assert.match(text, /## Coming up \(next 7 days, from your events calendar and press-reported results days\)\n- 2026-10-27 fomc: Fed decision\n- 2026-10-28 results: SBI Q2 results \(SBIN\)/);
     assert.match(render(digest, null, null, { events: [] }), /Nothing scheduled in the calendar/);
     assert.doesNotMatch(render(digest), /Coming up/);
+    // NEWS-07: press-reported results days for desk shares join in; the owner's SBI entry wins over the press one
+    await mkdir(join(root, '.local', 'world'), { recursive: true });
+    await writeFile(join(root, '.local', 'world', 'results-calendar.json'), JSON.stringify({ events: [
+      { date: '2026-10-29', symbol: 'SBIN.NS', company: 'State Bank of India', desk: true },
+      { date: '2026-10-26', symbol: 'NTPC.NS', company: 'NTPC', desk: true },
+      { date: '2026-10-26', symbol: 'TVSMOTOR.NS', company: 'TVS Motor', desk: false }] }));
+    const both = await upcomingEvents(root, Date.parse('2026-10-23T06:00:00Z'));
+    assert.deepEqual(both.map(e => e.title), ['NTPC results (press report, not the exchange filing)', 'Fed decision', 'SBI Q2 results']);
+    await rm(join(root, '.local', 'events.json'));
+    assert.equal((await upcomingEvents(root, Date.parse('2026-10-23T06:00:00Z'))).length, 2); // no owner file: the press days still show
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 

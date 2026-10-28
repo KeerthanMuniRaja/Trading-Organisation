@@ -227,8 +227,8 @@ def context(signal, cache, headlines, knowledge=None, record=None, news_status='
             **({'pressDossier': press} if press not in ('unset', None) else {}),
             # NEWS-05: what is scheduled for this share or the whole market within the proposal's horizon; explained in the
             # data itself, not in the instructions (an extra instruction sentence made the 4B model's citations flip, 23 Oct)
-            **({'upcomingEvents': {'note': 'scheduled dates the owner keeps; background, never evidence', 'events': calendar['events']}}
-               if calendar and calendar['status'] == 'available' else {}),
+            **({'upcomingEvents': {'note': 'scheduled dates (source owner, or press: a results day as the press reported it); background, never evidence', 'events': calendar['events']}}
+               if calendar and calendar['status'] != 'no calendar' else {}),
             **({'organisationKnowledge': knowledge} if knowledge else {}),
             # MENTOR-01: the few mentor lessons that fit this decision, each with its check on our data; in the data, not
             # the instructions (an instruction change flipped this model's citations once)

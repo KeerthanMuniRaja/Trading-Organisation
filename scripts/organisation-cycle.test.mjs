@@ -136,6 +136,7 @@ test('the broad research data is refreshed a little each day, never in a replay,
     assert.ok(plan.find(s => s.id === 'factor-lab').args.includes('--monthly'));
     assert.ok(ids.indexOf('world-stories') < ids.indexOf('market-pulse') && ids.indexOf('market-pulse') < ids.indexOf('debate'));
     assert.ok(ids.indexOf('market-pulse') < ids.indexOf('reaction-study') && ids.indexOf('reaction-study') < ids.indexOf('organisation-lessons'));
+    assert.ok(ids.indexOf('results-calendar') > ids.indexOf('world-stories') && ids.indexOf('results-calendar') < ids.indexOf('debate'));
     process.env.REPLAY_PRICES = 'x';
     assert.ok((await planSteps({ root: '/nowhere' })).find(s => s.id === 'broad-data').skip);
   } finally { if (before === undefined) delete process.env.REPLAY_PRICES; else process.env.REPLAY_PRICES = before; }

@@ -6,6 +6,8 @@ source is fetched): .local/events.json, for example
 Kinds: results, rbi-policy, budget, fomc, macro-data, holiday, other. An event without symbols concerns the whole market.
 Invalid entries are skipped and counted, never guessed. The debate, the scenario panel and the digest read it; a
 missing file is said plainly ('no calendar'), never treated as 'nothing scheduled'.
+The organisation adds the results days the press reported for the desk shares (results_calendar.py, NEWS-07), marked
+source 'press'; an owner results entry for the same share within 20 days replaces the press one.
 """
 from __future__ import annotations
 
@@ -18,13 +20,45 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import daily  # noqa: E402
 
 CALENDAR = daily.ROOT / '.local' / 'events.json'
+PRESS = daily.ROOT / '.local' / 'world' / 'results-calendar.json'
 KINDS = ('results', 'rbi-policy', 'budget', 'fomc', 'macro-data', 'holiday', 'other')
 SHARES = {s.removesuffix('.NS') for s in daily.datasets.UNIVERSE}
+OWNER_WINS_DAYS = 20
+PRESS_ONLY = 'press-reported results days only (no owner calendar): other dates unknown'
 
 
-def load(path=CALENDAR):
-    """(events, skipped) from the owner's file, or (None, 0) when there is no file."""
-    path = Path(path)
+def press_events(path=PRESS):
+    """The desk shares' results days as the press reported them, or None when the organisation has none yet."""
+    if not path or not Path(path).exists():
+        return None
+    try:
+        raw = json.loads(Path(path).read_text(encoding='utf-8')).get('events', [])
+    except (ValueError, AttributeError):
+        return None
+    out = []
+    for e in raw if isinstance(raw, list) else []:
+        share = str(e.get('symbol', '')).removesuffix('.NS')
+        if share in SHARES and e.get('date'):
+            out.append({'date': str(e['date']), 'kind': 'results', 'symbols': [share], 'source': 'press',
+                        'title': f"{e.get('company') or share} results (press report, {e.get('publisher') or 'news'} "
+                                 f"{str(e.get('publishedAt', ''))[:10]}; not the exchange filing)"[:160]})
+    return out
+
+
+def load(path=CALENDAR, press=PRESS):
+    """(events, skipped): the owner's file plus the press's results days; (None, 0) when there is neither."""
+    owner, skipped = _owner(Path(path))
+    reported = press_events(press)
+    if owner is None and reported is None:
+        return None, 0
+    owner = owner or []
+    owned = [(e['symbols'][0], date.fromisoformat(e['date'])) for e in owner if e['kind'] == 'results' and len(e['symbols']) == 1]
+    extra = [e for e in reported or [] if not any(s == e['symbols'][0] and abs((d - date.fromisoformat(e['date'])).days) <= OWNER_WINS_DAYS
+                                                   for s, d in owned)]
+    return sorted(owner + extra, key=lambda e: (e['date'], e['kind'], e['title'])), skipped
+
+
+def _owner(path):
     if not path.exists():
         return None, 0
     try:
@@ -39,10 +73,10 @@ def load(path=CALENDAR):
             symbols = sorted({str(s).removesuffix('.NS') for s in e.get('symbols', [])})
             if kind not in KINDS or not title or any(s not in SHARES for s in symbols):
                 raise ValueError
-            events.append({'date': day.isoformat(), 'kind': kind, 'title': title, 'symbols': symbols})
+            events.append({'date': day.isoformat(), 'kind': kind, 'title': title, 'symbols': symbols, 'source': 'owner'})
         except (KeyError, TypeError, ValueError):
             skipped += 1
-    return sorted(events, key=lambda e: (e['date'], e['kind'], e['title'])), skipped
+    return events, skipped
 
 
 def upcoming(events, as_of, days=10, symbol=None):
@@ -57,8 +91,10 @@ def upcoming(events, as_of, days=10, symbol=None):
             and (share is None or not e['symbols'] or share in e['symbols'])]
 
 
-def context(as_of, symbol=None, days=10, path=CALENDAR):
-    """What an agent sees: the upcoming events, or a plain statement that there is no calendar."""
-    events, _ = load(path)
+def context(as_of, symbol=None, days=10, path=CALENDAR, press=PRESS):
+    """What an agent sees: the upcoming events, or a plain statement that there is no calendar. With only the press's
+    results days the status says so, since an empty list then means 'none reported', not 'nothing scheduled'."""
+    events, _ = load(path, press)
     found = upcoming(events, as_of, days, symbol)
-    return {'status': 'no calendar' if found is None else 'available', 'events': found or []}
+    status = 'no calendar' if found is None else 'available' if Path(path).exists() else PRESS_ONLY
+    return {'status': status, 'events': found or []}
