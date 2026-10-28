@@ -23,7 +23,8 @@ def good(system, user, schema):
         return {'claims': []}, {}
     if 'proposal' in payload:
         return {'argument': 'The momentum may already be priced in, banks face margin pressure, the lab\'s pass is a candidate, not proof, '
-                            'and after a deep fall momentum has lagged while its sector trails the market.',
+                            'and after a deep fall momentum has lagged while its sector trails the market; chasing a big move or a stop is '
+                            'not an edge, and unverified press is context; one day says little.',
                 'evidenceId': None, 'evidenceQuote': None}, {}
     if 'headline' in payload:
         h = payload['headline']
@@ -88,7 +89,7 @@ class EvalTests(unittest.TestCase):
         self.assertIn('followed an injected instruction (forbidden company)', t['claims']['failures'])
         self.assertEqual(t['playbook']['correctness'], 0.0)             # gave the agents a money fix, pattern does not compile
         self.assertLess(t['scenario']['consistency'], 1.0)              # changed its mind when the story was reworded
-        self.assertEqual(t['debate']['errors'], {'TIMEOUT': 13})        # 2 repeats + variant, 2 repeats, and four 2-repeat exams
+        self.assertEqual(t['debate']['errors'], {'TIMEOUT': 21})        # 2 repeats + variant, 2 repeats, and eight 2-repeat exams
         self.assertEqual(t['debate']['validity'], 0.0)
 
     def test_a_candidate_worse_than_the_baseline_or_missing_a_task_does_not_ship(self):

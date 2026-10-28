@@ -811,6 +811,150 @@
           "-7.5"
         ]
       }
+    },
+    {
+      "id": "exam-dont-chase-a-big-day",
+      "task": "debate",
+      "side": "bear",
+      "input": {
+        "proposal": {
+          "symbol": "NTPC",
+          "action": "enter-long",
+          "conviction": "high",
+          "horizonDays": 5,
+          "targetWeightPct": 33,
+          "thesis": "NTPC jumped 7% today on heavy volume; strong moves tend to continue, so buy now before it runs further.",
+          "invalidation": "Closes below today's open"
+        },
+        "recentCloses": [
+          {"date": "2026-10-26", "closePaise": 33600},
+          {"date": "2026-10-27", "closePaise": 35950}
+        ],
+        "verifiedNews": [],
+        "verifiedEvidenceIds": [],
+        "mentorNotes": {
+          "note": "an experienced mentor's lessons, checked on our data where a check exists: background, never evidence",
+          "lessons": [
+            {
+              "title": "A big one-day move says little about the next week",
+              "status": "checked",
+              "lesson": "Chasing a share that just jumped 5% is not an edge: on average the next week roughly matched the market. A big drop is not a bargain by itself either: it tended to lag a little more. Ask what changed, not how far it moved.",
+              "evidence": "Across our research universe, after 22,937 one-day jumps of 5%+ against the market the next 5 sessions averaged +0.01% against it; after 9,961 drops of 5%+, -0.23%."
+            }
+          ]
+        }
+      },
+      "expect": {
+        "evidenceIn": [null],
+        "mustMention": ["chas", "one-day", "big move", "next week", "22,937", "what changed"]
+      }
+    },
+    {
+      "id": "exam-a-stop-is-not-an-edge",
+      "task": "debate",
+      "side": "bear",
+      "input": {
+        "proposal": {
+          "symbol": "ITC",
+          "action": "enter-long",
+          "conviction": "high",
+          "horizonDays": 60,
+          "targetWeightPct": 33,
+          "thesis": "Buy ITC with a tight 10% stop-loss: the downside is capped, so the trade is safe and worth a full position.",
+          "invalidation": "Falls 10% below entry (the stop)"
+        },
+        "recentCloses": [
+          {"date": "2026-10-26", "closePaise": 41250},
+          {"date": "2026-10-27", "closePaise": 41100}
+        ],
+        "verifiedNews": [],
+        "verifiedEvidenceIds": [],
+        "mentorNotes": {
+          "note": "an experienced mentor's lessons, checked on our data where a check exists: background, never evidence",
+          "lessons": [
+            {
+              "title": "A fixed 10% stop cuts the worst losses but costs return",
+              "status": "checked",
+              "lesson": "A stop caps the damage of the worst holdings, but it also sells many shares that recover, and lowers the average return; with overnight gaps a real stop fills worse than tested. Use a stop to limit risk, not as a source of profit.",
+              "evidence": "A 10% stop on 45,524 three-month holdings: average +5.64% with the stop against +7.16% held, worst 5% -13.3% against -22.9%; 41% were stopped out, and 58% of those were higher three months later."
+            }
+          ]
+        }
+      },
+      "expect": {
+        "evidenceIn": [null],
+        "mustMention": ["gap", "recover", "whipsaw", "average return", "not an edge", "58%", "lowers"]
+      }
+    },
+    {
+      "id": "exam-press-is-not-proof",
+      "task": "debate",
+      "side": "bear",
+      "input": {
+        "proposal": {
+          "symbol": "RELIANCE",
+          "action": "enter-long",
+          "conviction": "medium",
+          "horizonDays": 20,
+          "targetWeightPct": 33,
+          "thesis": "Reliance has the strongest six-month return of the eight; the monthly momentum rule buys it.",
+          "invalidation": "Drops out of the top three by six-month return"
+        },
+        "recentCloses": [
+          {"date": "2026-10-26", "closePaise": 119100},
+          {"date": "2026-10-27", "closePaise": 119620}
+        ],
+        "verifiedNews": [],
+        "verifiedEvidenceIds": [],
+        "marketPulse": {
+          "reportedMoves": [],
+          "bigPlayers": [
+            {"publishedAt": "2026-10-27T18:10:00+05:30", "actors": ["promoter"], "action": "sell", "amountCrore": 2500.0,
+             "title": "Promoter entity sells Rs 2,500 crore of Reliance shares in a block deal, sources say"}
+          ],
+          "lastSession": null,
+          "note": "press reports read by rules: unverified context, never evidence"
+        }
+      },
+      "expect": {
+        "evidenceIn": [null],
+        "mustMention": ["unverified", "not confirmed", "sources say", "reported", "press"]
+      }
+    },
+    {
+      "id": "exam-bull-answers-with-the-sector",
+      "task": "debate",
+      "side": "bull",
+      "input": {
+        "proposal": {
+          "symbol": "INFY",
+          "action": "enter-long",
+          "conviction": "medium",
+          "horizonDays": 20,
+          "targetWeightPct": 33,
+          "thesis": "Infosys is among the three strongest of the eight by six-month return; the monthly momentum rule buys it.",
+          "invalidation": "Drops out of the top three by six-month return"
+        },
+        "opposingArgument": "IT is a falling knife: Infosys dragged the market on Tuesday, and a single bad day shows the trend is over.",
+        "recentCloses": [
+          {"date": "2026-10-26", "closePaise": 152000},
+          {"date": "2026-10-27", "closePaise": 150100}
+        ],
+        "verifiedNews": [],
+        "verifiedEvidenceIds": [],
+        "marketPulse": {
+          "reportedMoves": [],
+          "bigPlayers": [],
+          "lastSession": {"symbol": "INFY.NS", "date": "2026-10-27", "vsBasketPct": -1.1, "sigmas": 0.8, "big": false, "news": [], "unexplained": false},
+          "sector": {"sector": "Information Technology", "sectorRank": 2, "sectorsRanked": 19, "sectorMonthPct": 11.8,
+                     "marketBreadthAbove200Pct": 34, "pricesAsOf": "2026-10-27"},
+          "note": "press reports read by rules: unverified context, never evidence"
+        }
+      },
+      "expect": {
+        "evidenceIn": [null],
+        "mustMention": ["11.8", "rank", "2 of 19", "second", "one day", "single day", "0.8"]
+      }
     }
   ]
 }
