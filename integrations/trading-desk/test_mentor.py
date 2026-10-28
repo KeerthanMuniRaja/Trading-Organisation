@@ -24,7 +24,7 @@ class MentorTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_every_lesson_is_checked_on_our_data_or_labelled_unverified(self):
-        r = mentor.refresh(out=self.out, cache=self.cache)
+        r = mentor.refresh(out=self.out, cache=self.cache, broad=({}, {}))   # no research universe here: broad lessons stay unverified
         by = {l['id']: l for l in r['lessons']}
         self.assertEqual(set(by), {l['id'] for l in json.loads(mentor.CURRICULUM.read_text(encoding='utf-8'))['lessons']})
         self.assertIn(by['bank-concentration']['status'], ('checked', 'contradicted'))   # a check ran and judged it
@@ -40,6 +40,7 @@ class MentorTests(unittest.TestCase):
         self.assertIn('evidence', by['below-trend-falls-deeper'])
         self.assertEqual(by['small-sales-pay-the-dp-charge']['measured']['dpPctOfSale'], 0.96)  # Rs 15.93 on Rs 1,666
         self.assertEqual(by['losses-need-bigger-gains']['status'], 'checked')                     # arithmetic always holds
+        self.assertEqual(by['stops-cost-return']['status'], 'unverified')                         # MENTOR-03 without the broad files
 
     def test_recovery_needs_more_than_the_fall(self):
         dates = [f'2026-01-{d:02d}' for d in range(1, 6)]

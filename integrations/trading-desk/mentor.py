@@ -186,19 +186,26 @@ CHECKS = {'bank_correlation': bank_correlation, 'betas': betas, 'momentum_in_reb
           'diversification': diversification, 'recovery_maths': recovery_maths, 'base_rate': base_rate}
 
 
-def refresh(curriculum=CURRICULUM, out=OUT, cache=daily.DAILY, now=None):
+def refresh(curriculum=CURRICULUM, out=OUT, cache=daily.DAILY, now=None, broad=None):
     """Every lesson with the result of its check on our data: 'checked' (the data agrees), 'contradicted' (it does not;
-    the lesson is kept but marked, so nobody leans on it), or 'unverified' (no check yet, or it could not run)."""
+    the lesson is kept but marked, so nobody leans on it), or 'unverified' (no check yet, or it could not run).
+    MENTOR-03: a lesson whose check is a broad one runs on the ~480-share research universe (`broad`: prepared data,
+    loaded once and only when such a lesson exists; without the files those lessons stay unverified)."""
+    import mentor_broad
     plan = json.loads(Path(curriculum).read_text(encoding='utf-8'))
     dates, table = pd.aligned(daily.load(sorted(daily.datasets.UNIVERSE), cache))
+    if broad is None and any(l.get('test') in mentor_broad.CHECKS for l in plan['lessons']) and daily.BROAD.exists():
+        broad = mentor_broad.load()
     lessons = []
     for lesson in plan['lessons']:
         check, result = lesson.get('test'), None
-        if check in CHECKS and len(dates) > WINDOW:
-            try:
+        try:
+            if check in CHECKS and len(dates) > WINDOW:
                 result = CHECKS[check](table, dates)
-            except (KeyError, ValueError, ZeroDivisionError, statistics.StatisticsError) as error:
-                result = {'text': f'The check could not run: {type(error).__name__}', 'holds': None}
+            elif check in mentor_broad.CHECKS and broad and broad[0]:
+                result = mentor_broad.CHECKS[check](broad)
+        except (KeyError, ValueError, ZeroDivisionError, statistics.StatisticsError) as error:
+            result = {'text': f'The check could not run: {type(error).__name__}', 'holds': None}
         status = 'unverified' if not result or result.get('holds') is None else 'checked' if result['holds'] else 'contradicted'
         lessons.append({**lesson, 'status': status, **({'evidence': result['text'], 'measured': {k: v for k, v in result.items() if k not in ('text', 'holds')}}
                                                          if result else {})})

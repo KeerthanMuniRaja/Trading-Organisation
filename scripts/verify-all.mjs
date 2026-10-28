@@ -16,7 +16,7 @@ const DESK_TESTS = ['test_desk', 'test_desk_v2', 'test_live', 'test_datasets', '
   'test_tournament', 'test_daily', 'test_portfolio_daily', 'test_ai_allocator', 'test_model_compare', 'test_risk_monitor', 'test_allocator_review',
   'test_curriculum', 'test_participants', 'test_chains', 'test_signals_bridge', 'test_regime_study', 'test_release_gate', 'test_data_steward',
   'test_signal_scorer', 'test_rule_bot', 'test_model_allocator', 'test_rnd_scout', 'test_rnd_bot', 'test_rnd_ideas', 'test_reflections', 'test_debate', 'test_market_regime', 'test_scenario_panel', 'test_research_checks', 'test_live_knowledge', 'test_playbook_drafts', 'test_knowledge_index', 'test_review_scorecard', 'test_headline_reader', 'test_events_calendar', 'test_mentor', 'test_outcome_labels',
-  'test_factor_lab', 'test_organisation_lessons', 'test_market_pulse'];
+  'test_factor_lab', 'test_organisation_lessons', 'test_market_pulse', 'test_mentor_broad'];
 
 const INTEGRATION_NODE_TESTS = ['integrations/kite/quotes.test.mjs', 'integrations/publisher-feeds/feed-client.test.mjs',
   'integrations/publisher-feeds/feed-parser.test.mjs', 'integrations/ruflo/coordinator.test.mjs', 'integrations/ruflo/dependency.test.mjs',
