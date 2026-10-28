@@ -59,6 +59,15 @@ must stand out from noise (a t-statistic of at least 2), not just be larger.
 | Much of the gain came around the turn of the month | **checked** | The last session of a month and the first three of the next: +0.253% a day against +0.055% (t 3.4). 19% of the days, 53% of the gain |
 | A fixed 10% stop cuts the worst losses but costs return | **checked** | 45,524 three-month holdings: the worst 5% lost 13.3% with the stop against 22.9% held, but the average fell from +7.16% to +5.64%. 41% were stopped out, and 58% of those were higher three months later |
 
+**Curriculum v4 (the same day): four more lessons get checks.** 17 of 25 are now checked, and none contradicted:
+
+| Lesson | Status | Our data says |
+| --- | --- | --- |
+| Momentum fails when a fall turns into a rebound | **unverified** (was *contradicted* on 8 shares) | On ~480 shares, in the 6 months after a 10%+ three-month market fall, momentum's top fifth did −0.63% a month against +1.0% otherwise. That is the lesson's direction, but t is 1.7: not proven. 8 shares were too few to contradict it |
+| Results season | **checked**, reworded | Results weeks are only slightly more stock-specific (2.2% against 2.15% daily spread, t 2.9). The lesson now says the real risk is each company's own results day |
+| Patience is taxed less | **checked** | Our basket grew 15.25% a year: 12.2% after tax sold every year, 14.09% held and taxed once at the long-term rate |
+| Past winners mislead | **checked** | Picking each year's best idea so far: 31 months ahead of the basket, 39 behind, −0.118% a month, out of sample |
+
 The first wording of the 52-week-low lesson ("shares kept lagging") was not supported once noise was tested, so it
 now claims only what the data shows: no edge in buying there.
 

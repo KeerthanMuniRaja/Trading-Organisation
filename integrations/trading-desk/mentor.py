@@ -180,7 +180,44 @@ def base_rate(table, dates, horizon=21, cost_pct=0.3):
             'holds': rate is not None and 35 <= rate <= 65}
 
 
+STCG, LTCG = 0.20, 0.125   # Indian listed equity: held under 12 months / over 12 months (the Rs 1.25 lakh exemption ignored)
+
+
+def tax_drag(table, dates):
+    """What the tax rate does to our basket's own growth: sold and rebought every year (taxed short-term each year)
+    against held for the whole history (taxed once, long-term). The arithmetic always holds; the numbers are ours."""
+    years = len(dates) / 252
+    level = 1.0
+    for x in _basket(table, dates):
+        level *= 1 + x
+    if years < 3 or level <= 0:
+        return {'text': 'Too little history.', 'holds': None}
+    gross = level ** (1 / years) - 1
+    yearly = gross * (1 - STCG)                                               # every year's gain taxed at 20%
+    held = (1 + (level - 1) * (1 - LTCG)) ** (1 / years) - 1                  # one sale at the end, at 12.5%
+    g, y, h = (round(100 * v, 2) for v in (gross, yearly, held))
+    return {'grossCagrPct': g, 'soldYearlyAfterTaxPct': y, 'heldAfterTaxPct': h, 'years': round(years, 1),
+            'text': f'Our basket grew {g}% a year over {round(years, 1)} years. Sold and rebought every year, short-term tax leaves {y}% a year; '
+                    f'held throughout and taxed once at the long-term rate, {h}% a year.',
+            'holds': h > y}
+
+
+def past_winners(table, dates, rnd=None):
+    """The R&D scout's walk-forward: each year it picks the idea with the best record so far and holds it the next year."""
+    files = sorted(Path(rnd or OUT.parent.parent / 'rnd').glob('scout-2*.json'))
+    if not files:
+        return {'text': 'The R&D scout has not run yet.', 'holds': None}
+    w = json.loads(files[-1].read_text(encoding='utf-8')).get('walkForward') or {}
+    if w.get('averageExcessPct') is None:
+        return {'text': 'The scout report has no walk-forward.', 'holds': None}
+    return {'outOfSampleMonths': w.get('outOfSampleMonths'), 'averageExcessPct': w['averageExcessPct'],
+            'text': f"Picking, each year, the idea with the best record so far and holding it the next year: {w.get('ahead')} months ahead of the "
+                    f"basket and {w.get('behind')} behind out of sample, {w['averageExcessPct']:+}% a month on average.",
+            'holds': w['averageExcessPct'] < 0}
+
+
 CHECKS = {'bank_correlation': bank_correlation, 'betas': betas, 'momentum_in_rebounds': momentum_in_rebounds,
+          'tax_drag': tax_drag, 'past_winners': past_winners,
           'turnover_cost': turnover_cost, 'regime_warning': regime_warning,
           'dp_at_live_size': dp_at_live_size, 'volatility_clusters': volatility_clusters, 'below_trend_falls': below_trend_falls,
           'diversification': diversification, 'recovery_maths': recovery_maths, 'base_rate': base_rate}

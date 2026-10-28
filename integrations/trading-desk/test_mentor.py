@@ -42,6 +42,19 @@ class MentorTests(unittest.TestCase):
         self.assertEqual(by['losses-need-bigger-gains']['status'], 'checked')                     # arithmetic always holds
         self.assertEqual(by['stops-cost-return']['status'], 'unverified')                         # MENTOR-03 without the broad files
 
+    def test_tax_and_past_winners(self):
+        dates = [f'd{k:05d}' for k in range(252 * 5)]   # five years of sessions: only their number matters to the tax check
+        table = {'A.NS': {d: {'closePaise': 100 * 1.0004 ** k} for k, d in enumerate(dates)}}
+        r = mentor.tax_drag(table, dates)
+        self.assertTrue(r['holds'])
+        self.assertAlmostEqual(r['soldYearlyAfterTaxPct'], round(r['grossCagrPct'] * 0.8, 2), places=1)   # 20% of every year's gain
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(mentor.past_winners(table, dates, rnd=tmp)['holds'])                        # no scout report yet
+            (Path(tmp) / 'scout-2026-09.json').write_text(json.dumps({'walkForward': {'outOfSampleMonths': 70, 'ahead': 31, 'behind': 39,
+                                                                                       'averageExcessPct': -0.118}}), encoding='utf-8')
+            w = mentor.past_winners(table, dates, rnd=tmp)
+            self.assertEqual((w['holds'], w['averageExcessPct']), (True, -0.118))
+
     def test_recovery_needs_more_than_the_fall(self):
         dates = [f'2026-01-{d:02d}' for d in range(1, 6)]
         table = {'A.NS': {d: {'closePaise': c} for d, c in zip(dates, (100, 50, 50, 75, 100))}}

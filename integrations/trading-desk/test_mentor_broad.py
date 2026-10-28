@@ -57,6 +57,21 @@ class BroadMentorTests(unittest.TestCase):
         self.assertGreater(r['stoppedOutPct'], 0)
         self.assertIn('were higher three months later', r['text'])
 
+    def test_momentum_after_falls_and_the_results_season(self):
+        r = mb.momentum_in_rebounds(mb.prepare(universe(shares=60, years=6)))
+        self.assertIn(r['holds'], (None, True, False))                                   # judged with a t-test, whatever noise gives
+        self.assertTrue(r['text'])
+        season = universe(shares=60, years=3)
+        for s, bars in season.items():                                                    # plant extra stock-specific moves in results weeks
+            k = int(s[1:3])
+            for i, b in enumerate(bars[1:], start=1):
+                m, d = int(b['date'][5:7]), int(b['date'][8:10])
+                if (m in (1, 4, 7, 10) and d >= 10) or (m in (2, 5, 8, 11) and d <= 15):
+                    bars[i] = {**b, 'closePaise': max(1, round(b['closePaise'] * (1.02 if (k + i) % 2 else 0.98)))}
+        planted = mb.results_season(mb.prepare(season))
+        self.assertTrue(planted['holds'], planted['text'])
+        self.assertGreater(planted['spreadInSeasonPct'], planted['spreadOtherwisePct'])
+
     def test_falling_knives_and_too_little_data(self):
         knives = mb.falling_knives(mb.prepare(universe(shares=80, years=6)))
         self.assertGreaterEqual(knives['samplesNearLow'], 200, knives['text'])
