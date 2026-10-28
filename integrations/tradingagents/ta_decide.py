@@ -76,12 +76,20 @@ def book(path=HOLDINGS):
     return Book(json.loads(path.read_text(encoding='utf-8'))) if path.exists() else None
 
 
+def provide_key(env, environ=os.environ):
+    """TradingAgents' openai_compatible provider reads OPENAI_COMPATIBLE_API_KEY; without it our llama.cpp server answers
+    401 to every call (found by the first trial, 28 Oct). Only this process, only our local server's key."""
+    if env.get('HERMES_MODEL_API_KEY') and not environ.get('OPENAI_COMPATIBLE_API_KEY'):
+        environ['OPENAI_COMPATIBLE_API_KEY'] = env['HERMES_MODEL_API_KEY']
+
+
 def default_graph(env):
     from tradingagents.default_config import DEFAULT_CONFIG
     from tradingagents.graph.trading_graph import TradingAgentsGraph
     import tradingagents
     config = DEFAULT_CONFIG.copy()
     model = env.get('HERMES_MODEL') or 'local-model'
+    provide_key(env)
     config.update(SETTINGS, llm_provider='openai_compatible', backend_url=env.get('HERMES_MODEL_BASE_URL') or 'http://127.0.0.1:8080/v1',
                   quick_think_llm=model, deep_think_llm=model,
                   results_dir=str(ROOT / '.local' / 'tradingagents' / 'logs'), data_cache_dir=str(ROOT / '.local' / 'tradingagents' / 'cache'),
