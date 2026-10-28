@@ -11,8 +11,8 @@
 // still useful, at most twice each. A job failing unexpectedly is logged and the supervisor carries on. A heartbeat in
 // .local/supervisor/heartbeat.json, refreshed every minute, lets readiness and the status screen tell it is alive.
 import { spawn } from 'node:child_process';
-import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseHolidays } from './readiness.mjs';
@@ -105,7 +105,7 @@ export async function heartbeat(root = ROOT, now = Date.now()) {
 
 /** The commands for a job, given whether the backend and the model answered, and which model (if any) the supervisor may
  *  start itself (MODEL_AUTOSTART). Pure, so it is tested. */
-export function commands(job, { backendUp, modelUp, modelAuto = null, feeds = [] }) {
+export function commands(job, { backendUp, modelUp, modelAuto = null, feeds = [], decisionHealth = null }) {
   const npm = s => ({ cmd: process.platform === 'win32' ? 'npm.cmd' : 'npm', args: ['run', ...s] });
   // the backend is started directly (no shell), so the supervisor holds its real process and can stop exactly it
   const start = backendUp ? [] : [{ cmd: process.execPath, args: ['--env-file=.env', join('backend', 'dist', 'src', 'main.js')], background: true, id: 'start-backend' }];
@@ -119,8 +119,12 @@ export function commands(job, { backendUp, modelUp, modelAuto = null, feeds = []
     const startModel = !modelUp && modelAuto ? [{ cmd: process.execPath, args: ['--env-file=.env', join('scripts', 'local-model.mjs'), 'serve', modelAuto],
       model: true, id: 'start-model' }] : [];
     const withModel = modelUp || !!startModel.length;
-    return [...start, ...startModel, { ...npm(withModel ? ['cycle', '--', '--with-model'] : ['cycle']), id: 'cycle' },
-      ...(startModel.length ? [{ id: 'stop-model', stopModel: true }] : []), ...stop];
+    // MODEL-UPGRADE-01: the decision model (passed our exams) for the debate and TradingAgents; optional, so the cycle
+    // runs on the usual model if it does not come up
+    const startDecision = withModel && decisionHealth ? [{ cmd: process.execPath, args: ['--env-file=.env', join('scripts', 'local-model.mjs'), 'serve', 'decision'],
+      model: true, optional: true, health: decisionHealth, id: 'start-decision-model' }] : [];
+    return [...start, ...startModel, ...startDecision, { ...npm(withModel ? ['cycle', '--', '--with-model'] : ['cycle']), id: 'cycle' },
+      ...(startModel.length || startDecision.length ? [{ id: 'stop-model', stopModel: true }] : []), ...stop];
   }
   // a backup needs the database closed; a backend someone else started is never stopped by the supervisor
   if (job === 'backup') return backendUp ? [{ id: 'backup', skip: 'the backend is running and was not started by the supervisor; stop it to let the weekly backup run' }]
@@ -176,6 +180,16 @@ export function modelHealthUrl(base) {
   return base ? base.replace(/\/+$/, '').replace(/\/v1$/, '') + '/health' : null;
 }
 
+/** The decision model's health URL when the upgrade passed our exams and its weights are on this machine, else null. */
+export async function decisionServerHealth(root = ROOT) {
+  try {
+    const routing = JSON.parse(await readFile(join(root, '.local', 'models', 'routing.json'), 'utf8'));
+    const pins = JSON.parse(await readFile(join(root, '.local', 'models', 'pins.json'), 'utf8'));
+    if (!routing?.decision?.baseUrl || !pins?.decision?.file || !existsSync(join(root, '.local', 'models', pins.decision.file))) return null;
+    return modelHealthUrl(routing.decision.baseUrl);
+  } catch { return null; }
+}
+
 /** Starts the pinned local model server (scripts/local-model.mjs serve) and returns the pids to stop later. */
 function startModel(step, env) {
   return new Promise(done => {
@@ -198,20 +212,24 @@ export async function runJob(job, env = process.env) {
   const health = modelHealthUrl(env.HERMES_MODEL_BASE_URL);
   const modelUp = !!health && await reachable(health);
   const modelAuto = health && /^[A-Za-z0-9._-]{1,80}$/.test(env.MODEL_AUTOSTART ?? '') ? env.MODEL_AUTOSTART : null;
-  let started = null, model = null, ok = true;
+  const decisionHealth = job === 'cycle' ? await decisionServerHealth(ROOT) : null;
+  let started = null, ok = true;
+  const models = [];
   const feeds = job === 'news' ? await enabledFeeds(ROOT) : [];
-  for (const step of commands(job, { backendUp, modelUp, modelAuto, feeds })) {
+  for (const step of commands(job, { backendUp, modelUp, modelAuto, feeds, decisionHealth })) {
     if (step.skip) { await log({ job, step: step.id, ok: true, skipped: step.skip }); continue; }
     if (step.model) {
-      model = await startModel(step, childEnv(env));
-      const up = await waitFor(health, true, 10 * 60_000); // loading the weights takes a while on a laptop
-      await log({ job, step: step.id, ok: up });
-      if (!up) { ok = false; break; }
+      const m = await startModel(step, childEnv(env));
+      models.push({ ...m, health: step.health ?? health });
+      const up = await waitFor(step.health ?? health, true, 10 * 60_000); // loading the weights takes a while on a laptop
+      await log({ job, step: step.id, ok: up, ...(step.optional && !up ? { note: 'optional: the cycle uses the usual model' } : {}) });
+      if (!up && !step.optional) { ok = false; break; }
       continue;
     }
     if (step.stopModel) {
-      for (const pid of [model?.server, model?.wrapper]) if (pid) { try { process.kill(pid); } catch { /* already gone */ } }
-      await log({ job, step: step.id, ok: await waitFor(health, false, 30_000) });
+      for (const m of models) for (const pid of [m.server, m.wrapper]) if (pid) { try { process.kill(pid); } catch { /* already gone */ } }
+      const down = await Promise.all(models.map(m => waitFor(m.health, false, 30_000)));
+      await log({ job, step: step.id, ok: down.every(Boolean) });
       continue;
     }
     if (step.stop) {
@@ -240,8 +258,22 @@ export async function runJob(job, env = process.env) {
   return ok;
 }
 
+/** OPS-04: a machine that handed the organisation over (scripts/handover.mjs) must not run it again by accident: two
+ *  machines would grow two databases that cannot be merged. Returns why it must not start, or null. */
+export function handedOver(root = ROOT, args = []) {
+  const path = join(root, '.local', 'handover.json');
+  if (!existsSync(path) || args.includes('--take-back')) return null;
+  let to = 'another machine';
+  try { to = JSON.parse(readFileSync(path, 'utf8')).to ?? to; } catch { /* still handed over */ }
+  return `This machine handed the organisation over to ${to}. Run it on one machine only. To run it here again, first stop it there, `
+    + 'run "npm run handover" there, pull the data here, then start with: npm run supervisor -- --take-back';
+}
+
 async function main() {
   const args = process.argv.slice(2);
+  const refused = handedOver(ROOT, args);
+  if (refused) throw new Error(refused);
+  if (args.includes('--take-back')) await rm(join(ROOT, '.local', 'handover.json'), { force: true });
   if (args.includes('--plan')) {
     for (const r of nextRuns(Date.now(), await holidays())) console.log(`${r.id.padEnd(9)} ${new Date(r.at + IST).toISOString().slice(0, 16).replace('T', ' ')} IST`);
     return;

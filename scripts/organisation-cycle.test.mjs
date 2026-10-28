@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { planSteps, runCycle, runHttp, escalate, releaseCheck, computeCheck, taSteps, verifyMarketData, verifyFeed, ESCALATE_AFTER,
+import { decisionModel, planSteps, runCycle, runHttp, escalate, releaseCheck, computeCheck, taSteps, verifyMarketData, verifyFeed, ESCALATE_AFTER,
   runManifest, dataManifest, fingerprint, circuitOpen, CIRCUIT_AFTER, CIRCUIT_REST_MS } from './organisation-cycle.mjs';
 
 test('TradingAgents decides only weekly with the model and its own environment; its member proposes every cycle', () => {
@@ -96,6 +96,28 @@ test('the rule bot gets a second, release-gated pass after today\'s fills, so it
     delete process.env.RULE_BOT_ID;
     assert.equal((await planSteps({ root: '/nowhere' })).some(s => s.id === 'rule-bot-entries'), false);
   } finally { if (before === undefined) delete process.env.RULE_BOT_ID; else process.env.RULE_BOT_ID = before; }
+});
+
+test('the bigger decision model is used for the debate and TradingAgents only once it passed the exams and answers', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'org-decision-'));
+  const before = { bull: process.env.DEBATE_BULL_BOT, bear: process.env.DEBATE_BEAR_BOT };
+  try {
+    const up = async () => ({ ok: true }), down = async () => { throw new Error('ECONNREFUSED'); };
+    assert.equal(await decisionModel({ root: dir, fetchImpl: up }), null);                       // no routing: the usual model
+    await mkdir(join(dir, '.local', 'models'), { recursive: true });
+    await writeFile(join(dir, '.local', 'models', 'routing.json'), JSON.stringify({ decision: { alias: 'Big-9B', baseUrl: 'http://127.0.0.1:8081/v1' } }));
+    assert.deepEqual(await decisionModel({ root: dir, fetchImpl: up }), { HERMES_MODEL_BASE_URL: 'http://127.0.0.1:8081/v1', HERMES_MODEL: 'Big-9B' });
+    assert.equal(await decisionModel({ root: dir, fetchImpl: down }), null);                     // its server is down: fall back
+    process.env.DEBATE_BULL_BOT = 'bull'; process.env.DEBATE_BEAR_BOT = 'bear';
+    const big = { HERMES_MODEL_BASE_URL: 'http://127.0.0.1:8081/v1', HERMES_MODEL: 'Big-9B' };
+    const plan = await planSteps({ root: dir, withModel: true, decisionCheck: async () => big });
+    assert.deepEqual(plan.find(s => s.id === 'debate').env, big);
+    assert.equal(plan.find(s => s.id === 'claims-and-fact-check').env, undefined);                // the bulk work stays on the small model
+    assert.equal((await planSteps({ root: dir, withModel: true, decisionCheck: async () => null })).find(s => s.id === 'debate').env, undefined);
+  } finally {
+    for (const [k, v] of [['DEBATE_BULL_BOT', before.bull], ['DEBATE_BEAR_BOT', before.bear]]) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test('the broad research data is refreshed a little each day, never in a replay, and feeds the lab and the lessons', async () => {

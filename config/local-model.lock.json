@@ -33,6 +33,20 @@
       "sha256": "aaf42c8b7c3cab2bf3d69c355048d4a0ee9973d48f16c731c0520ee914699223"
     }
   },
+  "runtimeVulkan": {
+    "asset": "llama-b11435-bin-win-vulkan-x64.zip",
+    "note": "The same llama.cpp release built for Vulkan, so the laptop's integrated graphics can share the work. Not pinned here: resolved on the machine from GitHub's published sha256 digest for this exact asset (local-model.mjs resolve runtime-vulkan), and used only if model-tune.mjs measures it faster than the CPU build."
+  },
+  "upgradeCandidates": [
+    {"key": "qwen3.5-14b-q4km", "alias": "Qwen3.5-14B-Q4_K_M", "baseModel": "Qwen/Qwen3.5-14B", "license": "apache-2.0", "repository": "unsloth/Qwen3.5-14B-GGUF", "file": "Qwen3.5-14B-Q4_K_M.gguf", "minRamGB": 28},
+    {"key": "qwen3-14b-q4km", "alias": "Qwen3-14B-Q4_K_M", "baseModel": "Qwen/Qwen3-14B", "license": "apache-2.0", "repository": "unsloth/Qwen3-14B-GGUF", "file": "Qwen3-14B-Q4_K_M.gguf", "minRamGB": 28},
+    {"key": "qwen3.5-9b-q4km", "alias": "Qwen3.5-9B-Q4_K_M", "baseModel": "Qwen/Qwen3.5-9B", "license": "apache-2.0", "repository": "unsloth/Qwen3.5-9B-GGUF", "file": "Qwen3.5-9B-Q4_K_M.gguf", "minRamGB": 15},
+    {"key": "qwen3-8b-q4km", "alias": "Qwen3-8B-Q4_K_M", "baseModel": "Qwen/Qwen3-8B", "license": "apache-2.0", "repository": "unsloth/Qwen3-8B-GGUF", "file": "Qwen3-8B-Q4_K_M.gguf", "minRamGB": 15}
+  ],
+  "upgradeNote": "The decision model for the debate and TradingAgents: the largest candidate the machine's RAM fits that its repository actually has (tried in this order), pinned on the machine to Hugging Face's published LFS sha256 at an exact commit, and used only after it passes our exams (model-upgrade.mjs). Names that do not exist are skipped. The 4B keeps the bulk work.",
+  "decisionServer": {
+    "port": 8081
+  },
   "server": {
     "host": "127.0.0.1",
     "port": 8080,

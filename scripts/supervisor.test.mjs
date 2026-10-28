@@ -100,6 +100,11 @@ test('the model is started for a cycle only when the owner named one, and stoppe
   assert.deepEqual(ids({ backendUp: true, modelUp: true, modelAuto: 'qwen3.5-4b' }), ['cycle']); // already running: used, not restarted or stopped
   assert.deepEqual(ids({ backendUp: true, modelUp: false }), ['cycle']); // not named: no model, no model steps
   assert.deepEqual(ids({ backendUp: false, modelUp: false, modelAuto: 'm' }), ['start-backend', 'start-model', 'cycle', 'stop-model', 'stop-backend']);
+  // MODEL-UPGRADE-01: a decision model that passed the exams is started too, optionally, and stopped with the other
+  const withDecision = commands('cycle', { backendUp: true, modelUp: false, modelAuto: 'm', decisionHealth: 'http://127.0.0.1:8081/health' });
+  assert.deepEqual(withDecision.map(c => c.id), ['start-model', 'start-decision-model', 'cycle', 'stop-model']);
+  assert.deepEqual([withDecision[1].optional, withDecision[1].health, withDecision[1].args.slice(-2)], [true, 'http://127.0.0.1:8081/health', ['serve', 'decision']]);
+  assert.deepEqual(ids({ backendUp: true, modelUp: false, decisionHealth: 'http://127.0.0.1:8081/health' }), ['cycle']);   // no model steps: no decision model
   assert.equal(modelHealthUrl('http://127.0.0.1:8080/v1'), 'http://127.0.0.1:8080/health');
   assert.equal(modelHealthUrl('http://127.0.0.1:8080/v1/'), 'http://127.0.0.1:8080/health');
   assert.equal(modelHealthUrl(undefined), null);

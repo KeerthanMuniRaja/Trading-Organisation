@@ -33,8 +33,9 @@ export function feedCommand(name, root = ROOT) {
   return { cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'run-feed-cycle.mjs'), 'run', join('.local', name), join('.local', 'feeds', name.slice(5, -5))] };
 }
 
-export async function planSteps({ withModel = false, root = ROOT } = {}) {
+export async function planSteps({ withModel = false, root = ROOT, decisionCheck = decisionModel } = {}) {
   const feeds = await enabledFeeds(root);
+  const decision = withModel ? await decisionCheck({ root }) : null;
   const desk = p => join(root, 'integrations', 'trading-desk', p);
   const steps = [
     { id: 'backend-health', critical: true, kind: 'http', path: '/v1/health' },
@@ -152,10 +153,11 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     ] : [{ id: 'model-allocator', skip: 'no model allocator configured (MODEL_ALLOCATOR_RUN, MODEL_ALLOCATOR_BOT)' }]),
     // TA-01: TradingAgents decides weekly (Fridays, model needed, in its own environment) and its member proposes from the
     // decisions file every cycle; it trades only once it has earned a release on its own shadow record
-    ...taSteps({ withModel, root, desk }),
+    ...taSteps({ withModel, root, desk, decision }),
     // DEBATE-01: a bull and a bear argue every proposal before the review (model needed; two debater bots configured)
     withModel && process.env.DEBATE_BULL_BOT && process.env.DEBATE_BEAR_BOT
-      ? { id: 'debate', cmd: PY, args: [desk('debate.py')], timeoutMs: 1_800_000, computeGate: { botId: process.env.DEBATE_BEAR_BOT } }
+      ? { id: 'debate', cmd: PY, args: [desk('debate.py')], timeoutMs: 1_800_000, computeGate: { botId: process.env.DEBATE_BEAR_BOT },
+          ...(decision ? { env: decision } : {}) }
       : { id: 'debate', skip: withModel ? 'no debaters configured (scripts/debate-setup.mjs)' : 'model steps not enabled (--with-model)' },
     { id: 'eod-trading', cmd: PY, args: [desk('eod_trader.py'), '--source', process.env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 },
     // the rule bot's entries follow its exits: once eod-trading has filled today's exits, a second short pass proposes
@@ -192,7 +194,7 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
 }
 
 /** The TradingAgents member's steps: decide (weekly, with the model, only if its environment is installed), then propose. */
-export function taSteps({ withModel, root, desk, now = Date.now(), env = process.env }) {
+export function taSteps({ withModel, root, desk, now = Date.now(), env = process.env, decision = null }) {
   if (!env.TA_BOT_ID) return [{ id: 'tradingagents', skip: 'no TradingAgents member configured (TA_BOT_ID)' }];
   const ta = p => join(root, 'integrations', 'tradingagents', p);
   const venv = join(root, '.local', 'tradingagents-venv', ...(process.platform === 'win32' ? ['Scripts', 'python.exe'] : ['bin', 'python']));
@@ -201,7 +203,7 @@ export function taSteps({ withModel, root, desk, now = Date.now(), env = process
   const decide = !withModel ? { id: 'tradingagents-decide', skip: 'model steps not enabled (--with-model)' }
     : weekday !== decideDay ? { id: 'tradingagents-decide', skip: `decides weekly (India weekday ${decideDay})` }
       : { id: 'tradingagents-decide', cmd: venv, args: [ta('ta_decide.py'), '--day', day], timeoutMs: 6 * 3_600_000, requires: venv,
-        computeGate: { botId: env.TA_BOT_ID } };
+        computeGate: { botId: env.TA_BOT_ID }, ...(decision ? { env: decision } : {}) };
   return [decide, { id: 'tradingagents-propose', cmd: PY, args: [ta('ta_bot.py'), 'all', '--source', env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 }];
 }
 
@@ -240,9 +242,22 @@ export function verifyFeed(output) {
   return /fail|backoff/.test(String(result.state)) ? { status: 'failed', note: 'feed ' + result.state } : { status: 'done' };
 }
 
+/** MODEL-UPGRADE-01: the decision model's settings for the debate and TradingAgents, or null. Only when the upgrade
+ *  passed our exams (.local/models/routing.json) AND its server answers now; otherwise those steps use the usual model,
+ *  so a missing or failed bigger model never stops the day's work. */
+export async function decisionModel({ root = ROOT, fetchImpl = fetch } = {}) {
+  let routing;
+  try { routing = JSON.parse(await readFile(join(root, '.local', 'models', 'routing.json'), 'utf8')); } catch { return null; }
+  const d = routing?.decision;
+  if (!d?.baseUrl || !d?.alias) return null;
+  const health = d.baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '') + '/health';
+  const up = await fetchImpl(health, { signal: AbortSignal.timeout(3000) }).then(r => r.ok, () => false);
+  return up ? { HERMES_MODEL_BASE_URL: d.baseUrl, HERMES_MODEL: d.alias } : null;
+}
+
 export function runProcess(step, { cwd = ROOT } = {}) {
   return new Promise(done => {
-    const child = spawn(step.cmd, step.args, { cwd, env: process.env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(step.cmd, step.args, { cwd, env: { ...process.env, ...(step.env ?? {}) }, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = '';
     const keep = chunk => { output = (output + chunk.toString()).slice(-65536); };
     child.stdout.on('data', keep); child.stderr.on('data', keep);
