@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Database, audit } from '../backend/dist/src/database.js';
 import { journal } from '../backend/dist/src/treasury.js';
-import { createBackup, verifyBackup, restoreBackup } from './backup.mjs';
+import { createBackup, createVerifiedBackup, verifyBackup, restoreBackup } from './backup.mjs';
 
 const owner = { id: 'owner', role: 'owner' };
 const stopped = async () => false;
@@ -37,6 +37,11 @@ test('a backup restores in memory to exactly the same ledger, audit chain and sc
 
     const check = await verifyBackup(directory);
     assert.deepEqual([check.valid, check.problems, check.auditEvents, check.pendingMigrationsOnOpen], [true, [], 2, []]);
+    // create reads its own backup back before reporting success; a bad write fails at once, not on restore day
+    const verified = await createVerifiedBackup({ dataDir: live, outRoot: join(root, 'out-2'), apiRunning: stopped });
+    assert.equal(verified.verified, true);
+    await assert.rejects(() => createVerifiedBackup({ dataDir: live, outRoot: join(root, 'out-3'), apiRunning: stopped },
+      async () => ({ valid: false, problems: ['archive hash does not match the manifest'] })), /failed its own verification: archive hash/);
 
     const restored = join(root, 'restored');
     await assert.rejects(async () => { await mkdir(restored); await writeFile(join(restored, 'x'), 'occupied'); await restoreBackup(directory, restored); }, /not empty/);

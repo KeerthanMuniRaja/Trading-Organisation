@@ -73,6 +73,15 @@ export async function createBackup({ dataDir = process.env.DATABASE_PATH || '.da
   } finally { await pg.close(); }
 }
 
+/** A backup is only a backup once it has been read back: create, then verify the files just written (the archive's
+ *  hash, a restore in memory, the audit chain, balances and schema), so a bad write is found now, not on restore day. */
+export async function createVerifiedBackup(options = {}, verify = verifyBackup) {
+  const made = await createBackup(options);
+  const check = await verify(made.directory);
+  if (!check.valid) throw new Error(`The new backup ${made.directory} failed its own verification: ${check.problems.join('; ')}`);
+  return { ...made, verified: true };
+}
+
 async function load(directory) {
   const manifest = JSON.parse(await readFile(join(directory, 'manifest.json'), 'utf8'));
   if (manifest.format !== FORMAT) throw new Error('Not a recognised backup');
@@ -120,8 +129,8 @@ export async function restoreBackup(directory, target) {
 async function main([command, ...args]) {
   if (command === 'create') {
     const out = args[0] === '--out' && args[1] ? args[1] : '.local/backups';
-    const { directory, manifest } = await createBackup({ outRoot: out });
-    console.log(JSON.stringify({ directory, archiveBytes: manifest.archiveBytes, auditEvents: manifest.audit.events, balances: manifest.balances }, null, 2));
+    const { directory, manifest, verified } = await createVerifiedBackup({ outRoot: out });
+    console.log(JSON.stringify({ directory, verified, archiveBytes: manifest.archiveBytes, auditEvents: manifest.audit.events, balances: manifest.balances }, null, 2));
   } else if (command === 'verify' && args[0]) {
     const result = await verifyBackup(args[0]);
     console.log(JSON.stringify(result, null, 2));
