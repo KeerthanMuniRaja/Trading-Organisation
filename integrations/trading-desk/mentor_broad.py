@@ -137,10 +137,13 @@ def stop_loss(prepared, stop=0.10, hold=63):
     h, s = round(100 * statistics.fmean(held), 2), round(100 * statistics.fmean(stopped), 2)
     hw, sw = round(100 * q(held), 1), round(100 * q(stopped), 1)
     rate = round(100 * whipsaw / hits) if hits else None
-    return {'entries': len(held), 'stoppedOutPct': round(100 * hits / len(held)), 'avgHeldPct': h, 'avgWithStopPct': s,
+    out = round(100 * hits / len(held))
+    # whole numbers per 100 holdings: the 4B model merged "41% stopped out, 58% of those higher" into "41% recover" (28 Oct)
+    later = round(out * (rate or 0) / 100)
+    return {'entries': len(held), 'stoppedOutPct': out, 'avgHeldPct': h, 'avgWithStopPct': s,
             'worst5HeldPct': hw, 'worst5WithStopPct': sw, 'stoppedThenHigherPct': rate,
-            'text': f'A 10% stop on {len(held):,} three-month holdings: average {s:+}% with the stop against {h:+}% held, worst 5% {sw}% against {hw}%; '
-                    f'{round(100 * hits / len(held))}% were stopped out, and {rate}% of those were higher three months later.',
+            'text': f'A 10% stop on {len(held):,} three-month holdings: average {s:+}% with the stop against {h:+}% held, worst 5% {sw}% against {hw}%. '
+                    f'Of every 100 holdings, {out} hit the stop, and {later} of those {out} were higher three months later.',
             'holds': sw > hw and s <= h + 0.1}
 
 

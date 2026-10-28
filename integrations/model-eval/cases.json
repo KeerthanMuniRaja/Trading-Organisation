@@ -876,14 +876,15 @@
               "title": "A fixed 10% stop cuts the worst losses but costs return",
               "status": "checked",
               "lesson": "A stop caps the damage of the worst holdings, but it also sells many shares that recover, and lowers the average return; with overnight gaps a real stop fills worse than tested. Use a stop to limit risk, not as a source of profit.",
-              "evidence": "A 10% stop on 45,524 three-month holdings: average +5.64% with the stop against +7.16% held, worst 5% -13.3% against -22.9%; 41% were stopped out, and 58% of those were higher three months later."
+              "evidence": "A 10% stop on 45,524 three-month holdings: average +5.64% with the stop against +7.16% held, worst 5% -13.3% against -22.9%; Of every 100 holdings, 41 hit the stop, and 24 of those 41 were higher three months later."
             }
           ]
         }
       },
       "expect": {
         "evidenceIn": [null],
-        "mustMention": ["gap", "recover", "whipsaw", "average return", "not an edge", "58%", "lowers"]
+        "mustMention": ["gap", "recover", "whipsaw", "average return", "not an edge", "24 of", "lowers"],
+        "mustNotMention": ["41% of shares that recover", "41% recover", "41% of shares recover"]
       }
     },
     {
