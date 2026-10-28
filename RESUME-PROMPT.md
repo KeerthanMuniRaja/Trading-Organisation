@@ -1,6 +1,6 @@
 # Resume this organisation project
 
-Open the existing Nexus checkout and read [current status](docs/current-status.md), [documentation index](docs/documentation-index.md), [model selection](docs/model-selection.md), [remaining work](docs/remaining-work-assessment.md) and the latest [verification record](docs/verification.md). Source version is 0.1.34; migrations run through 023. The local model setup (Qwen3.5-4B with the direct structured engine) is documented in docs/model-selection.md. Preserve all uncommitted work and private state.
+Open the existing Trading-Organisation checkout and read [current status](docs/current-status.md), [documentation index](docs/documentation-index.md), [model selection](docs/model-selection.md), [remaining work](docs/remaining-work-assessment.md) and the latest [verification record](docs/verification.md). Source version is 0.1.34; migrations run through 023. The local model setup (Qwen3.5-4B with the direct structured engine) is documented in docs/model-selection.md. Preserve all uncommitted work and private state.
 
 Build the owner's specialised bot organisation using NestJS/TypeScript and Python: distinct identities, academy, reviewed source knowledge, graph lineage, useful experience transfer, evidence-based recruitment and retirement with preserved history. Existing libraries and models are references/adapters; do not recreate a foundation model. The ledger, policy, permissions and independent evaluation remain application-owned.
 

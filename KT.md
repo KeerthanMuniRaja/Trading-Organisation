@@ -281,7 +281,7 @@ v0.1.28 adds [publisher feed intake](docs/publisher-feeds.md) (`sources:feed`), 
 
 Still unset: the owner's first publisher, the model endpoint (Qwen3.5-9B is only provisional) and the first market. Docker testing stays deferred.
 
-Git requires `-c safe.directory=...` in this folder (the repo is owned by another Windows identity). The work from v0.1.23 onward is uncommitted. The folder is now `Nexus`; older docs still say `trading-organisation`.
+Git requires `-c safe.directory=...` in this folder (the repo is owned by another Windows identity). The work from v0.1.23 onward is uncommitted. The project folder is now `Trading-Organisation`.
 
 ## Previous continuation — v0.1.22
 

@@ -14,7 +14,7 @@ export function renderOrganisation(bots, knowledge, prefix, window) {
   const botIds = new Set(bots.map(b => b.id)), evidenceIds = new Set(knowledge.evidence.map(e => e.id));
   const nodes = new Map();
   const link = (kind, id) => `[[${prefix}/${kind}-${id}]]`;
-  const head = (kind, id) => `---\ntype: organisation-${kind.toLowerCase()}\nstatus: historical-snapshot\ntags: [nexus, organisation]\n---\n# ${kind} ${id}\n\n[[${prefix}/Index|Snapshot index]]\n\n`;
+  const head = (kind, id) => `---\ntype: organisation-${kind.toLowerCase()}\nstatus: historical-snapshot\ntags: [trading-organisation, organisation]\n---\n# ${kind} ${id}\n\n[[${prefix}/Index|Snapshot index]]\n\n`;
   for (const b of bots) {
     nodes.set(`Bot-${b.id}.md`, head('Bot', b.id) + `Name: ${text(b.name)}\n\nRecorded state: ${text(b.state)}\n\nDepartment: ${text(b.department)}\n\nSpecialty: ${text(b.specialty)}\n\n` +
       (botIds.has(b.mentor_id) ? `Mentor: ${link('Bot', b.mentor_id)}\n\n` : '') +
@@ -29,12 +29,12 @@ export function renderOrganisation(bots, knowledge, prefix, window) {
     nodes.set(`Lesson-${l.id}.md`, head('Lesson', l.id) +
       `Author bot: ${bot ? link('Bot', l.bot_id) : 'Not included in bounded response'}\n\nSupporting evidence: ${evidence ? link('Evidence', l.evidence_id) : 'Not included in bounded response'}\n\nReturned by the backend reviewed-knowledge endpoint. This note is a historical reference, not approval authority. Full lesson text stays in the backend.\n`);
   }
-  nodes.set('Index.md', `---\ntype: organisation-snapshot\nstatus: historical-snapshot\ntags: [nexus, organisation]\n---\n# Organisation snapshot\n\n[[Nexus/Home]]\n\nCapture window: ${text(window.startedAt)} to ${text(window.finishedAt)}.\n\nSeparate GET requests; not a single transactional snapshot. Revocations or state changes after capture are not reflected here. Older snapshots remain historical.\n\nBots: ${bots.length}; reviewed lessons: ${knowledge.lessons.length}; evidence: ${knowledge.evidence.length}.\n\nThe knowledge endpoint returns at most 200 evidence and 200 lesson records. This view is not a complete organisation graph. References outside the returned records: ${omittedReferences}.\n\n## Bots\n\n${bots.map(b => '- ' + link('Bot', b.id)).join('\n') || 'None returned.'}\n\n## Reviewed lessons\n\n${knowledge.lessons.map(l => '- ' + link('Lesson', l.id)).join('\n') || 'None returned.'}\n`);
+  nodes.set('Index.md', `---\ntype: organisation-snapshot\nstatus: historical-snapshot\ntags: [trading-organisation, organisation]\n---\n# Organisation snapshot\n\n[[Trading-Organisation/Home]]\n\nCapture window: ${text(window.startedAt)} to ${text(window.finishedAt)}.\n\nSeparate GET requests; not a single transactional snapshot. Revocations or state changes after capture are not reflected here. Older snapshots remain historical.\n\nBots: ${bots.length}; reviewed lessons: ${knowledge.lessons.length}; evidence: ${knowledge.evidence.length}.\n\nThe knowledge endpoint returns at most 200 evidence and 200 lesson records. This view is not a complete organisation graph. References outside the returned records: ${omittedReferences}.\n\n## Bots\n\n${bots.map(b => '- ' + link('Bot', b.id)).join('\n') || 'None returned.'}\n\n## Reviewed lessons\n\n${knowledge.lessons.map(l => '- ' + link('Lesson', l.id)).join('\n') || 'None returned.'}\n`);
   return nodes;
 }
 export async function captureOrganisation(vault, env = process.env, transport = fetch) {
-  const root = resolve(vault), parent = join(root, 'Nexus', 'Organisation');
-  for (const path of [root, join(root, '.obsidian'), join(root, 'Nexus'), parent]) {
+  const root = resolve(vault), parent = join(root, 'Trading-Organisation', 'Organisation');
+  for (const path of [root, join(root, '.obsidian'), join(root, 'Trading-Organisation'), parent]) {
     try { const s = await lstat(path); if (s.isSymbolicLink() || !s.isDirectory()) throw Error('Use ordinary vault directories'); }
     catch (e) { if (e.code !== 'ENOENT' || path === root || path.endsWith('.obsidian')) throw e; }
   }
@@ -56,7 +56,7 @@ export async function captureOrganisation(vault, env = process.env, transport = 
   const bots = await get('/v1/bots'), knowledge = await get('/v1/knowledge');
   const finishedAt = new Date().toISOString();
   const name = finishedAt.replace(/[:.]/g, '-') + '-' + randomUUID().slice(0, 8);
-  const nodes = renderOrganisation(bots, knowledge, `Nexus/Organisation/${name}`, { startedAt, finishedAt });
+  const nodes = renderOrganisation(bots, knowledge, `Trading-Organisation/Organisation/${name}`, { startedAt, finishedAt });
   await mkdir(parent, { recursive: true });
   const directory = join(parent, name); await mkdir(directory);
   for (const [file, content] of nodes) await writeFile(join(directory, file), content, { flag: 'wx' });

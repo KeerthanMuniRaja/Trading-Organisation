@@ -6,7 +6,7 @@ Reviewed on 8 October 2026 IST. The user's “vibe-coding repo” is interpreted
 
 The inspected [README](https://github.com/HKUDS/Vibe-Trading/blob/main/README.md) configures an external model/provider. Its [investment committee](https://github.com/HKUDS/Vibe-Trading/blob/main/agent/src/swarm/presets/investment_committee.yaml) separates favourable and adverse arguments, risk examination and synthesis. Its [quant desk](https://github.com/HKUDS/Vibe-Trading/blob/main/agent/src/swarm/presets/quant_strategy_desk.yaml) separates exploration, backtesting and risk examination. These are workflow references, not a transferable foundation-model checkpoint. This was a targeted inspection, not a full repository or model-asset audit.
 
-Nexus now applies an original short adaptation, `research-review-practice-v1`, to its existing knowledge-application and capability-proposal prompts:
+The organisation now applies an original short adaptation, `research-review-practice-v1`, to its existing knowledge-application and capability-proposal prompts:
 
 - Consider an explanation and a serious counterargument.
 - State missing information and a falsifying condition.

@@ -15,7 +15,7 @@ async function bounded(file) {
 export function parseDraft(text) {
   const normalized = text.replace(/\r\n/g, '\n');
   const match = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(normalized);
-  if (!match) throw Error('Expected the Nexus lesson template frontmatter');
+  if (!match) throw Error('Expected the organisation lesson template frontmatter');
   const meta = {};
   for (const line of match[1].split('\n')) {
     const field = /^(type|status|botId|evidenceId): ([A-Za-z0-9_-]+)$/.exec(line);
@@ -23,18 +23,18 @@ export function parseDraft(text) {
     meta[field[1]] = field[2];
   }
   const content = match[2].trim();
-  if (meta.type !== 'nexus-lesson' || meta.status !== 'draft' || !/^[A-Za-z0-9_-]{1,80}$/.test(meta.botId ?? '') ||
+  if (meta.type !== 'organisation-lesson' || meta.status !== 'draft' || !/^[A-Za-z0-9_-]{1,80}$/.test(meta.botId ?? '') ||
       !uuid.test(meta.evidenceId ?? '') || !content || content.length > 4000) throw Error('Fill in a valid bot ID, supporting evidence UUID and lesson of 1–4000 characters');
   return { botId: meta.botId, evidenceId: meta.evidenceId, content };
 }
 export async function prepareLesson(vault, note, output) {
-  if (isAbsolute(note) || note.split(/[\\/]/).some(s => !s || s === '.' || s === '..' || s.includes(':')) || !note.endsWith('.md')) throw Error('Supply a Markdown path relative to Nexus/Notes');
+  if (isAbsolute(note) || note.split(/[\\/]/).some(s => !s || s === '.' || s === '..' || s.includes(':')) || !note.endsWith('.md')) throw Error('Supply a Markdown path relative to Trading-Organisation/Notes');
   const root = resolve(vault);
   const config = await lstat(join(root, '.obsidian'));
   if (!config.isDirectory() || config.isSymbolicLink()) throw Error('An existing vault is required');
-  const notes = join(root, 'Nexus', 'Notes');
+  const notes = join(root, 'Trading-Organisation', 'Notes');
   let cursor = root;
-  for (const segment of ['Nexus', 'Notes', ...note.split(/[\\/]/)]) {
+  for (const segment of ['Trading-Organisation', 'Notes', ...note.split(/[\\/]/)]) {
     cursor = join(cursor, segment);
     if ((await lstat(cursor)).isSymbolicLink()) throw Error('Linked note paths are not allowed');
   }
@@ -55,7 +55,7 @@ export function validateSnapshot(value) {
       !/^[a-f0-9]{64}$/.test(value.noteSha256)) throw Error('Invalid prepared snapshot');
   const b = value.body;
   if (!b || Object.keys(b).sort().join(',') !== 'botId,content,evidenceId' || typeof b.content !== 'string') throw Error('Invalid lesson body');
-  const body = parseDraft(`---\ntype: nexus-lesson\nstatus: draft\nbotId: ${b.botId}\nevidenceId: ${b.evidenceId}\n---\n${b.content}`);
+  const body = parseDraft(`---\ntype: organisation-lesson\nstatus: draft\nbotId: ${b.botId}\nevidenceId: ${b.evidenceId}\n---\n${b.content}`);
   if (JSON.stringify(body) !== JSON.stringify(b)) throw Error('Noncanonical lesson body');
   const { snapshotSha256, ...snapshot } = value;
   if (snapshotSha256 !== digest(snapshot)) throw Error('Snapshot was changed; prepare the note again');

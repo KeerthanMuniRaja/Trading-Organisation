@@ -4,7 +4,7 @@ This experiment downloads RELIANCE.NS five-minute bars through the open-source [
 
 ## Run in Command Prompt
 
-All commands are run from the Nexus directory. Dependencies are isolated in `.local/replay-venv`; there are no global installs, persistent services or bank connections.
+All commands are run from the project directory. Dependencies are isolated in `.local/replay-venv`; there are no global installs, persistent services or bank connections.
 
 ```bat
 integrations\skfolio\.venv\Scripts\python.exe -m venv .local\replay-venv

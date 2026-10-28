@@ -9,7 +9,7 @@
 param([switch]$Remove, [switch]$WhatIf)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$name = 'Nexus organisation supervisor'
+$name = 'Trading organisation supervisor'
 
 if ($Remove) {
   if ($WhatIf) { "Would remove the scheduled task '$name'."; return }

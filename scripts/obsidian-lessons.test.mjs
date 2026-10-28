@@ -5,11 +5,11 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parseDraft, prepareLesson, validateSnapshot, submitLesson } from './obsidian-lessons.mjs';
 const id = '11111111-1111-4111-8111-111111111111';
-const text = `---\ntype: nexus-lesson\nstatus: draft\nbotId: student\nevidenceId: ${id}\n---\nThis sample needs cost checks.\n`;
+const text = `---\ntype: organisation-lesson\nstatus: draft\nbotId: student\nevidenceId: ${id}\n---\nThis sample needs cost checks.\n`;
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), 'nexus-note-'));
-  await mkdir(join(root, '.obsidian')); await mkdir(join(root, 'Nexus', 'Notes'), { recursive: true });
-  await writeFile(join(root, 'Nexus', 'Notes', 'lesson.md'), text);
+  const root = await mkdtemp(join(tmpdir(), 'org-note-'));
+  await mkdir(join(root, '.obsidian')); await mkdir(join(root, 'Trading-Organisation', 'Notes'), { recursive: true });
+  await writeFile(join(root, 'Trading-Organisation', 'Notes', 'lesson.md'), text);
   const prepared = await prepareLesson(root, 'lesson.md', join(root, 'snapshots'));
   return { root, prepared, snapshot: JSON.parse(await readFile(prepared.snapshot, 'utf8')) };
 }

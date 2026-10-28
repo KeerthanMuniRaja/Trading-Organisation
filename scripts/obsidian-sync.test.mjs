@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { syncVault } from './obsidian-sync.mjs';
 test('vault export is selective, repeatable, and preserves user edits', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'nexus-obsidian-'));
+  const root = await mkdtemp(join(tmpdir(), 'org-obsidian-'));
   const project = join(root, 'project'), vault = join(root, 'vault');
   for (const p of [join(project, 'docs'), join(project, 'integrations'), join(vault, '.obsidian')]) await mkdir(p, { recursive: true });
   await writeFile(join(project, 'docs', 'guide.md'), '# Guide\n');
@@ -16,18 +16,18 @@ test('vault export is selective, repeatable, and preserves user edits', async ()
   assert.equal((await syncVault(project, vault)).conflicts.length, 0);
   assert.equal(await readFile(join(vault, '.obsidian', 'app.json'), 'utf8'), '{"existing":true}');
   // the home page leads with live operation and the honest status, not the superseded status pages
-  const home = await readFile(join(vault, 'Nexus', 'Home.md'), 'utf8');
+  const home = await readFile(join(vault, 'Trading-Organisation', 'Home.md'), 'utf8');
   assert.match(home, /## Operating now[\s\S]*docs\/live-testing[\s\S]*docs\/audit-2026-10-14/);
   assert.doesNotMatch(home, /current-status\|Implementation status/);
-  const note = join(vault, 'Nexus', 'Library', 'docs', 'guide.md');
+  const note = join(vault, 'Trading-Organisation', 'Library', 'docs', 'guide.md');
   await writeFile(note, '# My edit');
   await writeFile(join(project, 'docs', 'guide.md'), '# New source');
   assert.deepEqual((await syncVault(project, vault)).conflicts, ['Library/docs/guide.md']);
   assert.equal(await readFile(note, 'utf8'), '# My edit');
-  assert.deepEqual(await readdir(join(vault, 'Nexus', 'Library')), ['docs']);
+  assert.deepEqual(await readdir(join(vault, 'Trading-Organisation', 'Library')), ['docs']);
 });
 test('parent folder is not silently turned into a vault', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'nexus-not-vault-'));
+  const directory = await mkdtemp(join(tmpdir(), 'org-not-vault-'));
   await assert.rejects(syncVault(directory, directory));
   assert.deepEqual(await readdir(directory), []);
 });

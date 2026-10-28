@@ -1,14 +1,14 @@
 # NSE live-data paper diagnostic
 
 Chosen first instrument: NSE:RELIANCE. Duration: 30 minutes. Initial simulated capital: ₹10,000.
-This standalone diagnostic does not touch Nexus wallets, qualify bots, use an AI model, or submit broker orders.
+This standalone diagnostic does not touch the organisation's wallets, qualify bots, use an AI model, or submit broker orders.
 It prepares the data/execution experiment before connecting a qualified organisation strategy.
 
 ## Setup
 
 Use a Zerodha Kite Connect account with access to market quotes. Account creation, any subscription and interactive login are owner steps. The agent has not purchased or activated anything.
 Follow the official [authentication documentation](https://kite.trade/docs/connect/v3/user/) to obtain an access token; never paste credentials into chat or commit them.
-Create the ignored file `.env.market` in the Nexus root, locally:
+Create the ignored file `.env.market` in the project root, locally:
 
 ```dotenv
 KITE_API_KEY=your_api_key
@@ -17,7 +17,7 @@ KITE_ACCESS_TOKEN=your_access_token
 
 The runner only calls the fixed HTTPS `/quote` endpoint. These broker credentials may have broader account permissions: this is not a claim that Kite issues a read-only token. Keep them out of agent prompts and other workers. No API secret is needed by the runner. Renew expired tokens through the provider's login flow.
 
-In Command Prompt, from the Nexus directory:
+In Command Prompt, from the project directory:
 
 ```bat
 npm run paper:nse -- --check

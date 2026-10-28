@@ -40,7 +40,7 @@ function localLines(f) {
 
 /** Pure: facts in, the overview lines out. */
 export function render(f) {
-  const out = [`Nexus organisation, ${f.at.slice(0, 16).replace('T', ' ')} UTC (paper only)`, ''];
+  const out = [`Trading organisation, ${f.at.slice(0, 16).replace('T', ' ')} UTC (paper only)`, ''];
   out.push(`Backend   ${f.backend ? 'up' : 'DOWN (npm start)'}${f.digest?.halted ? '; NEW RISK HALTED' : ''}    Model ${f.model === null ? 'not configured' : f.model ? 'up' : 'down'}`);
   if (!f.backend) return [...out, '', 'Nothing more can be read from the backend while it is down.', ...localLines(f)];
   const p = f.autonomy?.policy;
