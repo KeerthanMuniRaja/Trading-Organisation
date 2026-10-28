@@ -1083,6 +1083,112 @@
           "consecutive"
         ]
       }
+    },
+    {
+      "id": "exam-short-term-tax",
+      "task": "debate",
+      "side": "bear",
+      "input": {
+        "proposal": {
+          "symbol": "INFY",
+          "action": "enter-long",
+          "conviction": "high",
+          "horizonDays": 20,
+          "targetWeightPct": 33,
+          "thesis": "A quick 20-day trade: Infosys should gain about 3% after its results, then we sell and look for the next one.",
+          "invalidation": "Falls 3% below entry"
+        },
+        "recentCloses": [
+          {
+            "date": "2026-10-26",
+            "closePaise": 152000
+          },
+          {
+            "date": "2026-10-27",
+            "closePaise": 150100
+          }
+        ],
+        "verifiedNews": [],
+        "verifiedEvidenceIds": [],
+        "mentorNotes": {
+          "note": "an experienced mentor's lessons, checked on our data where a check exists: background, never evidence",
+          "lessons": [
+            {
+              "title": "Patience is taxed less",
+              "status": "checked",
+              "lesson": "In India a gain on shares held over 12 months is taxed at the long-term rate (12.5%), a shorter holding at the short-term rate (20%). A strategy that sells within the year gives up part of every gain; holding longer keeps more of it.",
+              "evidence": "Our basket grew 15.25% a year over 9.8 years. Sold and rebought every year, short-term tax leaves 12.2% a year; held throughout and taxed once at the long-term rate, 14.09% a year."
+            }
+          ]
+        }
+      },
+      "expect": {
+        "evidenceIn": [
+          null
+        ],
+        "mustMention": [
+          "20%",
+          "short-term",
+          "tax"
+        ],
+        "mustNotMention": [
+          "tax-free",
+          "no tax"
+        ]
+      }
+    },
+    {
+      "id": "exam-past-winners-mislead",
+      "task": "debate",
+      "side": "bear",
+      "input": {
+        "proposal": {
+          "symbol": "HDFCBANK",
+          "action": "enter-long",
+          "conviction": "high",
+          "horizonDays": 30,
+          "targetWeightPct": 33,
+          "thesis": "Switch to the strategy with the best record over the last three years; it picks HDFC Bank this month, so buy it.",
+          "invalidation": "The strategy stops picking HDFC Bank"
+        },
+        "recentCloses": [
+          {
+            "date": "2026-10-26",
+            "closePaise": 95100
+          },
+          {
+            "date": "2026-10-27",
+            "closePaise": 94650
+          }
+        ],
+        "verifiedNews": [],
+        "verifiedEvidenceIds": [],
+        "mentorNotes": {
+          "note": "an experienced mentor's lessons, checked on our data where a check exists: background, never evidence",
+          "lessons": [
+            {
+              "title": "Past winners mislead",
+              "status": "checked",
+              "lesson": "Choosing each year the idea with the best record over the previous years lost to the basket on our history. Trust live, pre-registered results over any backtest, including your own reasoning about why something worked.",
+              "evidence": "Picking, each year, the idea with the best record so far and holding it the next year: 31 months ahead of the basket and 39 behind out of sample, -0.118% a month on average."
+            }
+          ]
+        }
+      },
+      "expect": {
+        "evidenceIn": [
+          null
+        ],
+        "mustMention": [
+          "past",
+          "best record",
+          "walk-forward",
+          "out of sample",
+          "31",
+          "39",
+          "lost to the basket"
+        ]
+      }
     }
   ]
 }
