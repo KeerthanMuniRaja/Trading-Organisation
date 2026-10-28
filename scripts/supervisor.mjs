@@ -263,7 +263,7 @@ export async function runJob(job, env = process.env) {
     if (r.code !== 0) ok = false;
   }
   // a model this job started is never left running, whatever happened in between
-  if (model) for (const pid of [model.server, model.wrapper]) if (pid) { try { process.kill(pid); } catch { /* already gone */ } }
+  for (const m of models) for (const pid of [m.server, m.wrapper]) if (pid) { try { process.kill(pid); } catch { /* already gone */ } }
   return ok;
 }
 
