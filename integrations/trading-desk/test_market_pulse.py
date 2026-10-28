@@ -93,6 +93,12 @@ class BroadViewTests(unittest.TestCase):
         self.assertEqual((v['risers'][0]['company'], v['risers'][0]['why'], v['risers'][0]['explained']), ('Jumper', 'order win', True))
         self.assertFalse(v['fallers'][0]['explained'])
         self.assertIsNone(mp.broad_view({'A.NS': data['S00.NS']}, names, sectors))                  # too few shares to judge a market
+        # a rolling refresh: a few files are a week newer; the view stays as of the date most files reach
+        newer = {**data, **{s: data[s] + [{'date': f'2026-11-0{d}', 'closePaise': data[s][-1]['closePaise'] * 2} for d in range(2, 7)]
+                            for s in ('S00.NS', 'S01.NS', 'S02.NS')}}
+        w = mp.broad_view(newer, names, sectors, news)
+        self.assertEqual((w['asOf'], w['freshShares']), ('2026-10-27', 31))
+        self.assertNotEqual(w['risers'][0]['company'], 'Share 0')                               # its doubling after the date is not counted
 
 
 if __name__ == '__main__':

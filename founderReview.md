@@ -20,6 +20,7 @@ exact command. About an hour in all; markets are closed, so nothing trades while
 | W7 | **Point-in-time NIFTY 500 membership** (B14): the only way to tell whether the momentum finding is real or survivorship | Download NSE's index-change notices; I turn them into the monthly lists | Bring the files; I do the rest |
 | W8 | **What the big players actually trade** (B15): bulk and block deals, insider and promoter trades, pledges, FII/DII flows. The news gives only what the press reports ([market pulse](docs/market-pulse.md)) | Start with NSE's downloadable CSVs by hand once a week; a paid feed only if it proves useful | Choose |
 | W9 | **The code repository is public** (B25) | Make it private | GitHub → Settings → Change visibility |
+| W10 | **Daily prices for all NIFTY 500 shares.** Today the 484 research files are refreshed monthly (40 a day), so the sector view and the week's movers ([market pulse](docs/market-pulse.md)) are only as fresh as the latest month; they say their date | Yes if your office network allows it: about 500 small requests a day to the same Yahoo source, 1 s apart, about 10 minutes in the 16:05 cycle | Say yes, and I switch the `broad-data` step to daily |
 
 The full list with the evidence follows in Part B.
 

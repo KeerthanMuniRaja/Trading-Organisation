@@ -177,19 +177,21 @@ def _ret(closes, n):
 def broad_view(bars_by_symbol, names, sectors, movers_news=(), fresh_days=5, top=8):
     """From the research files (NIFTY 500, prices only): each sector's median return over a week, a month and three
     months, and its share of members above their 200-day average; and the week's biggest risers and fallers, each with
-    the press's reason when a headline about it reports one. Only files fresh within `fresh_days` of the newest count,
-    so a rolling monthly refresh never mixes stale and fresh weeks."""
-    last = {s: bars[-1]['date'] for s, bars in bars_by_symbol.items() if bars}
+    the press's reason when a headline about it reports one. Everything is as of one date: the latest that at least 80%
+    of the files reach (newer files are cut there), so a rolling monthly refresh gives a consistent, dated view rather
+    than a mix of stale and fresh weeks; a file ending more than `fresh_days` before it is left out."""
+    last = sorted((bars[-1]['date'] for bars in bars_by_symbol.values() if bars), reverse=True)
     if not last:
         return None
-    newest = max(last.values())
+    newest = last[max(0, int(0.8 * len(last)) - 1)]
     cutoff = (datetime.fromisoformat(newest) - timedelta(days=fresh_days)).date().isoformat()
     rows = []
     for s, bars in bars_by_symbol.items():
-        if not bars or last[s] < cutoff or len(bars) < 210:
+        bars = [b for b in bars if b['date'] <= newest]
+        if not bars or bars[-1]['date'] < cutoff or len(bars) < 210:
             continue
         closes = [b['closePaise'] for b in bars]
-        rows.append({'symbol': s, 'company': names.get(s, s), 'sector': sectors.get(s, 'Unknown'), 'asOf': last[s],
+        rows.append({'symbol': s, 'company': names.get(s, s), 'sector': sectors.get(s, 'Unknown'), 'asOf': bars[-1]['date'],
                      'week': _ret(closes, 5), 'month': _ret(closes, 21), 'quarter': _ret(closes, 63),
                      'above200': closes[-1] > statistics.fmean(closes[-200:])})
     if len(rows) < 25:
