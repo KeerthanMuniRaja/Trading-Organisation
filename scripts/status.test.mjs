@@ -39,6 +39,10 @@ test('one screen: health, autonomy, agenda, every member, money, the day and wha
     { name: 'm12', status: 'waiting', monthsJudged: 0, monthsNeeded: 24, firstMonth: '2026-11', waitingForDataFrom: null },
     { name: 'm6', status: 'running', monthsJudged: 3, monthsNeeded: 24, averageExcessPct: 0.41, ahead: 2, icTStat: 0.9, waitingForDataFrom: '2027-02' }] }).join('\n');
   assert.match(forward, /Forward   m12: waiting \(first month 2026-11\)/);
+  const models = render({ ...FACTS, tuning: { measuredAt: '2026-10-28T20:00:00Z', runtime: 'cpu', threads: 4, threadsBatch: 8, secondsPerCall: 31.2 },
+    routing: { decision: { alias: 'Qwen3.5-9B-Q4_K_M', examOverall: 'SHIP', decidedAt: '2026-10-28T21:00:00Z' } } }).join('\n');
+  assert.match(models, /Models    tuned 2026-10-28: CPU, 4 threads \(8 for prompts\), about 31.2s a typical call; decisions: Qwen3.5-9B-Q4_K_M \(exams SHIP 2026-10-28\)/);
+  assert.doesNotMatch(render(FACTS).join('\n'), /Models /);                     // nothing measured yet: no line
   const pulse = render({ ...FACTS, pulse: { windowDays: 7, counts: { up: 2, down: 1, bigPlayers: 1, unexplainedDeskMoves: 1 },
     movers: [{ company: 'KEI Industries Ltd.', direction: 'down', pct: 8 }, { company: 'Welspun Corp Ltd.', direction: 'up', pct: 230, period: 'YTD' },
       { company: 'Mankind Pharma Ltd.', direction: 'up', pct: 8 }],

@@ -57,6 +57,11 @@ function localLines(f) {
 export function render(f) {
   const out = [`Trading organisation, ${f.at.slice(0, 16).replace('T', ' ')} UTC (paper only)`, ''];
   out.push(`Backend   ${f.backend ? 'up' : 'DOWN (npm start)'}${f.digest?.halted ? '; NEW RISK HALTED' : ''}    Model ${f.model === null ? 'not configured' : f.model ? 'up' : 'down'}`);
+  // MODEL-SPEED-01 / MODEL-UPGRADE-01: what this machine measured and which model makes decisions
+  const t = f.tuning, d = f.routing?.decision;
+  if (t || d) out.push(`Models    ${t ? `tuned ${String(t.measuredAt).slice(0, 10)}: ${t.runtime === 'vulkan' ? 'graphics (Vulkan)' : 'CPU'}, ${t.threads} threads `
+    + `(${t.threadsBatch} for prompts), about ${t.secondsPerCall}s a typical call` : 'not tuned (npm run model:tune)'}; decisions: `
+    + `${d ? `${d.alias} (exams ${d.examOverall} ${String(d.decidedAt).slice(0, 10)})` : 'the same model'}`);
   if (!f.backend) return [...out, '', 'Nothing more can be read from the backend while it is down.', ...localLines(f)];
   const p = f.autonomy?.policy;
   const on = p ? RULES.filter(r => p.rules[r] && p.rules[r] !== null) : [];
@@ -122,6 +127,8 @@ export async function gather(env = process.env, { fetchImpl = fetch, root = ROOT
   const scout = screens.length ? await json(join(rnd, screens.at(-1))) : null;
   facts.scout = scout ? { through: scout.through, ideasTried: scout.ideasTried, passing: scout.candidates.filter(c => c.passes).length } : null;
   facts.pulse = await json(join(root, '.local', 'world', 'market-pulse.json'));  // AWARE-01
+  facts.tuning = await json(join(root, '.local', 'models', 'tuning.json'));
+  facts.routing = await json(join(root, '.local', 'models', 'routing.json'));
   const forward = join(root, '.local', 'trading-desk', 'factor-forward', 'reports');  // RESEARCH-03: pre-registered factor tests
   facts.forward = existsSync(forward) ? (await Promise.all((await readdir(forward)).filter(n => n.endsWith('.json')).sort().map(n => json(join(forward, n))))).filter(Boolean) : [];
   const decisions = join(root, '.local', 'tradingagents', 'decisions');
