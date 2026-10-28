@@ -85,6 +85,32 @@ class DebateTests(unittest.TestCase):
         self.assertEqual(ctx['verifiedNews'][0]['title'], 'HDFC Bank profit rises')
         self.assertEqual(schema['properties']['evidenceId']['anyOf'][0]['enum'], ['ev-1'])
 
+    def test_the_second_pass_corrects_what_the_data_does_not_support_and_can_only_help(self):
+        signal = {**PENDING[0], 'challenges': []}
+        ctx = {'verifiedEvidenceIds': [], 'marketPulse': {'note': 'press reports read by rules: unverified context, never evidence'}}
+        first = 'The verified evidence shows a promoter block deal, so the shares will fall hard next week.'
+        fixed = 'An unverified press report says a promoter sold shares; if true it adds supply, but nothing confirms it yet.'
+        calls = []
+
+        def llm(system, user, schema):
+            calls.append(json.loads(user))
+            if system == db.REVIEW_SYSTEM:
+                return {'problems': ['Called an unverified press report verified evidence.'], 'argument': fixed}, {}
+            return {'argument': first, 'evidenceId': None, 'evidenceQuote': None}, {}
+        body, meta = db.argue(llm, 'bear', signal, ctx)
+        self.assertEqual(body['argument'], fixed)
+        self.assertEqual((meta['selfCheck'], calls[1]['argumentToCheck']), (1, first))      # it checked its own first answer, with the data
+        self.assertIn('marketPulse', calls[1])
+        clean = lambda system, user, schema: ({'problems': [], 'argument': 'something else entirely, rewritten'}, {}) \
+            if system == db.REVIEW_SYSTEM else ({'argument': first, 'evidenceId': None, 'evidenceQuote': None}, {})  # noqa: E731
+        self.assertEqual(db.argue(clean, 'bear', signal, ctx)[0]['argument'], first)       # no problem found: never rewritten
+        def broken(system, user, schema):
+            if system == db.REVIEW_SYSTEM:
+                raise TimeoutError('ENDPOINT_TIMEOUT')
+            return {'argument': first, 'evidenceId': None, 'evidenceQuote': None}, {}
+        body, meta = db.argue(broken, 'bear', signal, ctx)
+        self.assertEqual((body['argument'], meta['selfCheck']), (first, 'failed'))          # a failed check keeps the first answer
+
     def test_a_citation_counts_only_when_its_quote_is_found_in_the_evidence(self):
         signal = {**PENDING[0], 'challenges': []}
         ctx = {'verifiedEvidenceIds': ['ev-1']}
@@ -155,7 +181,7 @@ class DebateTests(unittest.TestCase):
         finally:
             eod_trader.pages = real
         self.assertEqual([(o['side'], o.get('answered')) for o in out], [('bear', None), ('bull', True)])
-        (bear_system, bear_ctx), (bull_system, bull_ctx) = seen
+        (bear_system, bear_ctx), (bull_system, bull_ctx) = [s for s in seen if s[0] != db.REVIEW_SYSTEM]   # the arguments, not their self-checks
         self.assertNotIn('opposingArgument', bear_ctx)
         self.assertEqual(bull_ctx['opposingArgument'], 'The bear case: margins, valuation and the recent fall all matter here.')
         self.assertEqual([h['title'] for h in bear_ctx['verifiedNews']], ['Before: HDFC Bank profit rises'])  # time zones compared as instants

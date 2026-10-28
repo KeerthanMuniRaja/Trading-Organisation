@@ -240,7 +240,14 @@ def run(llm, cases, tasks=TASKS, repeats=2, clock=time.monotonic, log=print):
                 entry = {'case': case['id'], 'task': case['task'], 'persona': persona, 'kind': kind}
                 try:
                     value, meta = llm(system, user, schema)
+                    checked = None
+                    if case['task'] == 'debate' and debate.SELF_CHECK and isinstance(value, dict) and isinstance(value.get('argument'), str):
+                        # the exams judge what production posts: the argument after its second pass (debate.self_check)
+                        revised, checked = debate.self_check(llm, json.loads(user), value['argument'])
+                        value = {**value, 'argument': revised}
                     valid, correct, key, notes = judge(case, given, value)
+                    if checked and checked.get('problems'):
+                        notes = notes + [f"self-check fixed: {'; '.join(checked['problems'])[:300]}"]
                     # the full exchange is kept: for diagnosis, and as labelled training data (build_dataset.py)
                     entry.update(valid=valid, correct=correct, key=key, notes=notes, system=system, user=user, answer=value,
                                  tokens=[(meta or {}).get('promptTokens'), (meta or {}).get('completionTokens')])
