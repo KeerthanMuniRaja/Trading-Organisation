@@ -115,6 +115,41 @@ elseif (-not (Test-Path $autolearn)) {
 Step 'Your three secret files'
 $secrets = @(@('.env', (Join-Path $root '.env')), @('credentials.json', (Join-Path $root '.local\credentials.json')), @('owner-signing-key.pem', (Join-Path $root '.local\owner-signing-key.pem')))
 $absent = @($secrets | Where-Object { -not (Test-Path $_[1]) } | ForEach-Object { $_[0] })
+# restored from the owner's secret backup in the private data repository ("DO NOT OPEN": each file's path on a line of
+# its own, then its content; npm run handover refreshes it). Checked, never printed.
+$bundlePath = Join-Path $dataRepo 'DO NOT OPEN'
+if ($absent.Count -and (Test-Path $bundlePath)) {
+  if ($Check) { Note ("a real run restores " + ($absent -join ', ') + " from the data repository's secret backup") }
+  else {
+    $targets = @{ 'owner-signing-key.pem' = '.local\owner-signing-key.pem'; '.env' = '.env'; '.local/credentials.json' = '.local\credentials.json' }
+    $sections = @{}; $current = $null
+    foreach ($line in [IO.File]::ReadAllText($bundlePath).Replace("`r`n", "`n").Split("`n")) {
+      if ($targets.ContainsKey($line.Trim())) { $current = $line.Trim(); $sections[$current] = New-Object System.Collections.Generic.List[string]; continue }
+      if ($current) { $sections[$current].Add($line) }
+    }
+    New-Item -ItemType Directory -Force (Join-Path $root '.local') | Out-Null
+    foreach ($marker in $targets.Keys) {
+      $path = Join-Path $root $targets[$marker]
+      if ((Test-Path $path) -or -not $sections.ContainsKey($marker)) { continue }
+      $content = ($sections[$marker] -join "`n").TrimEnd("`n") + "`n"
+      $valid = switch ($marker) {
+        'owner-signing-key.pem' { $content -match 'BEGIN PRIVATE KEY' -and $content -match 'END PRIVATE KEY' }
+        '.env' { $content -match '(?m)^APP_MODE=paper' }
+        default { try { $null = $content | ConvertFrom-Json; $true } catch { $false } }
+      }
+      if (-not $valid) { Stop-Here "The secret backup's $marker section does not look right; put that file in place by hand" }
+      [IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding $false))
+      Ok "$marker restored from the secret backup (not shown)"
+    }
+    $absent = @($secrets | Where-Object { -not (Test-Path $_[1]) } | ForEach-Object { $_[0] })
+  }
+}
+if ($absent.Count -and $Check) {
+  if (-not (Test-Path $bundlePath)) { Note ("missing and no secret backup to restore from: " + ($absent -join ', ')) }
+  Write-Host ''
+  Write-Host 'Check finished: nothing was changed. A real run restores the secrets, then installs and starts everything.' -ForegroundColor Green
+  exit 0
+}
 if ($absent.Count) {
   Stop-Here ("Missing: " + ($absent -join ', ') + ". Take them from your private backup (the data repository's 'DO NOT OPEN' file): .env goes in the project folder, credentials.json and owner-signing-key.pem in .local\")
 }

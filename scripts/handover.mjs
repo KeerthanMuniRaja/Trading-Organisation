@@ -16,6 +16,26 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const HEARTBEAT = join(root, '.local', 'supervisor', 'heartbeat.json');
 
+// The owner's secret backup in the private data repository ("DO NOT OPEN"): each file's path on a line of its own,
+// then its content, sections separated by two blank lines. The handover refreshes it from the current files (the old
+// copy lacked later settings), and setup-machine.ps1 restores the three files from it. Values are never printed.
+export const SECRET_FILES = [['owner-signing-key.pem', '.local/owner-signing-key.pem'], ['.env', '.env'], ['.local/credentials.json', '.local/credentials.json']];
+
+export function secretsBundle(contents) {
+  return SECRET_FILES.map(([marker]) => `${marker}\n${String(contents[marker]).replace(/\r\n/g, '\n').replace(/\n+$/, '')}\n`).join('\n\n');
+}
+
+/** The inverse, for tests and checks: marker -> content. The same rule setup-machine.ps1 applies. */
+export function parseBundle(text) {
+  const markers = new Set(SECRET_FILES.map(([m]) => m)), out = {};
+  let current = null;
+  for (const line of text.replace(/\r\n/g, '\n').split('\n')) {
+    if (markers.has(line.trim())) { current = line.trim(); out[current] = []; continue; }
+    if (current) out[current].push(line);
+  }
+  return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, v.join('\n').replace(/\n+$/, '') + '\n']));
+}
+
 /** What the supervisor is doing: 'none' (no live heartbeat), 'idle' or 'busy'. Its heartbeat beats every minute. */
 export function supervisorState(beat, now = Date.now()) {
   if (!beat || now - Date.parse(beat.at) > 5 * 60_000) return { state: 'none' };
@@ -42,7 +62,15 @@ async function main() {
   // 2. the backend must be down for a consistent backup
   const api = await fetch('http://127.0.0.1:3000/v1/health', { signal: AbortSignal.timeout(3000) }).then(r => r.ok, () => false);
   if (api) throw new Error('The backend is still running. Stop it (close its window, or stop "npm start"), then run the handover again');
-  // 3. backup, export, data repository
+  // 3. the secret backup refreshed from the current files (never printed), then backup, export, data repository
+  if (!process.argv.includes('--keep-secret-backup')) {
+    const contents = Object.fromEntries(SECRET_FILES.map(([marker, path]) => [marker, readFileSync(join(root, path), 'utf8')]));
+    const bundle = secretsBundle(contents);
+    const back = parseBundle(bundle);
+    if (SECRET_FILES.some(([m]) => back[m] !== contents[m].replace(/\r\n/g, '\n').replace(/\n+$/, '') + '\n')) throw new Error('The secret backup would not restore exactly; nothing was written');
+    await writeFile(join(root, '.local', 'data-repo', 'DO NOT OPEN'), bundle);
+    say('secret backup refreshed from the current three files (contents not shown)');
+  }
   for (const [what, cmd, args, cwd] of [
     ['backup', 'npm', ['run', 'backup', '--', 'create']],
     ['export', 'npm', ['run', 'export-data', '--', '--write']],

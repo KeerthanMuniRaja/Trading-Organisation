@@ -3,7 +3,19 @@ import test from 'node:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { supervisorState } from './handover.mjs';
+import { parseBundle, secretsBundle, supervisorState } from './handover.mjs';
+
+test('the secret backup restores the three files exactly, in the layout the owner keeps', () => {
+  const contents = { 'owner-signing-key.pem': '-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n', '.env': 'APP_MODE=paper\r\nHOST=127.0.0.1\r\n',
+    '.local/credentials.json': '[\n  {"role": "owner"}\n]' };
+  const text = secretsBundle(contents);
+  assert.match(text, /^owner-signing-key\.pem\n-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n\n\n\.env\nAPP_MODE=paper\nHOST=127\.0\.0\.1\n\n\n\.local\/credentials\.json\n\[/);
+  const back = parseBundle(text);
+  assert.equal(back['.env'], 'APP_MODE=paper\nHOST=127.0.0.1\n');                 // line endings normalised, nothing lost
+  assert.equal(back['.local/credentials.json'], '[\n  {"role": "owner"}\n]\n');
+  assert.equal(back['owner-signing-key.pem'], contents['owner-signing-key.pem']);
+  assert.deepEqual(Object.keys(parseBundle('owner-signing-key.pem\nK\n\n\n.env\nA=1\n')), ['owner-signing-key.pem', '.env']);   // the owner's older file reads too
+});
 import { handedOver } from './supervisor.mjs';
 
 test('the handover waits for a running job and knows a stale heartbeat from a live one', () => {

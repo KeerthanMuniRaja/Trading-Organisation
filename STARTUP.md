@@ -20,7 +20,10 @@ orders fill at verified prices; every result is scored and audited. It is paper 
 1. **On the machine it runs on now:** `npm run handover -- --to "home EliteBook"`. It:
    - waits for any running job, then stops the supervisor;
    - takes a verified backup, exports the data, and pushes the data repository and `dev`;
-   - marks this machine handed over, so its supervisor refuses to start (`npm run supervisor -- --take-back` undoes it).
+   - marks this machine handed over, so its supervisor refuses to start (`npm run supervisor -- --take-back` undoes it);
+   - first refreshes your secret backup in the data repository (`DO NOT OPEN`) from the current three secret files,
+     since the old copy lacked later settings. The setup on the new machine restores them from it by itself.
+     Contents are never printed.
 2. **On the new machine,** in PowerShell:
    ```
    gh repo clone KeerthanMuniRaja/Trading-Organisation; cd Trading-Organisation; git checkout dev
