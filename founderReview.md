@@ -11,7 +11,7 @@ exact command. About an hour in all; markets are closed, so nothing trades while
 
 | # | What | Recommendation | How |
 | --- | --- | --- | --- |
-| W1 | **Push the week's work** to GitHub (`dev`, then merge to `main` so it counts on your graph) | Yes | Say "push" |
+| W1 | **Push the week's work** to GitHub (`dev` only; `main` is yours to merge) | Yes | Say "push" |
 | W2 | **Make rule bot release v3 fully active.** Today's code is v3; it already trades as a canary, so nothing is blocked | Yes | `npm run agenda -- accept ab95ac3b` |
 | W3 | **Real Indian charges on paper fills** (B28) | Yes: `nse-delivery` | In `.env`: `PAPER_COST_MODEL=nse-delivery` |
 | W4 | **Loss brakes and a 50% sector limit** (B3, B29) | Yes | `npm run protections -- set docs/policies/protections-with-sectors.json --reason "Brakes and a sector limit"` |
