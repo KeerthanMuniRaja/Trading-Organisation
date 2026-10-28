@@ -1,10 +1,41 @@
-# Founder review: what needs you, and the decisions waiting (updated 23 October 2026)
+# Founder review: what needs you, and the decisions waiting (updated 28 October 2026)
 
 This file lists everything only the founder can do or decide. Everything else, the agents and development can do by
 themselves. Each item says what it is, why it matters, the recommendation and where the evidence is. Tick items off by
 answering in a session ("decision 3: yes"). This file is updated as items close.
 
-**Where things stand (23 Oct).**
+## This weekend (31 Oct – 1 Nov): the short list, in order
+
+During the week the agents develop alone and queue here what only you can do. Each line has my recommendation and the
+exact command. About an hour in all; markets are closed, so nothing trades while you change things.
+
+| # | What | Recommendation | How |
+| --- | --- | --- | --- |
+| W1 | **Push the week's work** to GitHub (`dev`, then merge to `main` so it counts on your graph) | Yes | Say "push" |
+| W2 | **Make rule bot release v3 fully active.** Today's code is v3; it already trades as a canary, so nothing is blocked | Yes | `npm run agenda -- accept ab95ac3b` |
+| W3 | **Real Indian charges on paper fills** (B28) | Yes: `nse-delivery` | In `.env`: `PAPER_COST_MODEL=nse-delivery` |
+| W4 | **Loss brakes and a 50% sector limit** (B3, B29) | Yes | `npm run protections -- set docs/policies/protections-with-sectors.json --reason "Brakes and a sector limit"` |
+| W5 | **Limits** (B26, B27) | Raise exposure to ₹10,000 and the lifetime loss limit to ₹2,500 | In `.env`: `MAX_EXPOSURE_PAISE=1000000`, `MAX_REALISED_LOSS_PAISE=250000` |
+| W6 | **Restart after the supervisor can survive a reboot.** Today it runs in a taskbar window and stops if the laptop restarts | Your office-laptop policy decides: a Windows scheduled task (`scripts/install-supervisor-task.ps1`), or keep starting `npm run supervisor` by hand | Tell me which |
+| W7 | **Point-in-time NIFTY 500 membership** (B14): the only way to tell whether the momentum finding is real or survivorship | Download NSE's index-change notices; I turn them into the monthly lists | Bring the files; I do the rest |
+| W8 | **What the big players actually trade** (B15): bulk and block deals, insider and promoter trades, pledges, FII/DII flows. The news gives only what the press reports ([market pulse](docs/market-pulse.md)) | Start with NSE's downloadable CSVs by hand once a week; a paid feed only if it proves useful | Choose |
+| W9 | **The code repository is public** (B25) | Make it private | GitHub → Settings → Change visibility |
+
+The full list with the evidence follows in Part B.
+
+**Where things stand (28 Oct).**
+- **Running by itself:** the supervisor runs readiness at 09:00, news through the day and the full cycle with the
+  model at 16:05, as long as the laptop is on.
+- **New this week:**
+  - the news is now fact-checked;
+  - the market pulse (movers and why, big players, flows);
+  - a pre-registered momentum forward test;
+  - curriculum v3 (tips tested on 484 shares);
+  - the model's debate exams pass 6 of 6.
+- **Trading:** paper only. momentum-rules is −3.8%, 1 point behind the basket over 9 days; no call is old enough to
+  score until mid-November.
+
+**Where things stood (23 Oct).**
 - **Trading:** paper only, and two bots.
   - `momentum-rules` (release v2, ₹5,000 budget) holds HDFC Bank, Axis Bank and ICICI Bank. It is at −₹134 (−2.7%),
     0.9 points behind simply holding the 8 shares.
