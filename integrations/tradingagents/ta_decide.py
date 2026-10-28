@@ -12,7 +12,7 @@ Runs in its own environment, so our pinned research environment is never touched
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import hashlib
 import json
 import os
@@ -25,7 +25,20 @@ OUT = ROOT / '.local' / 'tradingagents' / 'decisions'
 SYMBOLS = ['AXISBANK', 'HDFCBANK', 'ICICIBANK', 'INFY', 'ITC', 'NTPC', 'RELIANCE', 'SBIN']
 RATINGS = ('BUY', 'OVERWEIGHT', 'HOLD', 'UNDERWEIGHT', 'SELL')
 ANALYSTS = ['market', 'news', 'fundamentals']
-SETTINGS = {'max_debate_rounds': 1, 'max_risk_discuss_rounds': 1, 'max_tool_rounds': 8, 'holding_period_days': 5, 'output_language': 'English'}
+# 3 tool rounds, not 8: the first trial (28 Oct) took 2.5-3 hours for ONE share on the laptop, as every later agent reads
+# all earlier reports (prompts reached 10,484 tokens, 9 minutes just to read one); fewer tool rounds, shorter reports
+SETTINGS = {'max_debate_rounds': 1, 'max_risk_discuss_rounds': 1, 'max_tool_rounds': 3, 'holding_period_days': 5, 'output_language': 'English'}
+PER_RUN = 2  # new shares rated per weekly run, beside every share it holds; all 8 come round within 4 weeks
+
+
+def rotation(day, held=(), symbols=SYMBOLS, per_run=PER_RUN):
+    """The shares to rate on `day`: every share the member holds (it must be able to exit), then `per_run` others in a
+    weekly rotation by ISO week, so a laptop finishes the run in hours and every share is rated at least monthly."""
+    week = date.fromisoformat(day).isocalendar()[1]
+    others = [s for s in symbols if s not in held]
+    start = (week * per_run) % len(others) if others else 0
+    picked = (others[start:] + others[:start])[:per_run]
+    return [s for s in symbols if s in held or s in picked]
 
 
 def config_version():
@@ -167,7 +180,7 @@ def report(out=OUT):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--day', help='the last settled session (YYYY-MM-DD)')
-    parser.add_argument('--symbols', default=','.join(SYMBOLS))
+    parser.add_argument('--symbols', default=None, help='default: the shares it holds plus this week\'s rotation (rotation())')
     parser.add_argument('--report', action='store_true', help='readability over every decision day, and stop')
     args = parser.parse_args(argv)
     if args.report:
@@ -175,7 +188,12 @@ def main(argv=None):
         return
     if not args.day:
         parser.error('--day is required (or --report)')
-    record = decide(args.day, [s for s in args.symbols.split(',') if s in SYMBOLS])
+    if args.symbols:
+        symbols = [s for s in args.symbols.split(',') if s in SYMBOLS]
+    else:
+        held = {s.removesuffix('.NS') for s, p in ((book().holdings if book() else {}).get('positions') or {}).items() if int(p.get('quantity', 0)) > 0}
+        symbols = rotation(args.day, held)
+    record = decide(args.day, symbols)
     print(json.dumps({'day': record['day'], 'ratings': {s: d.get('rating') for s, d in record['decisions'].items()},
                       'errors': sum(1 for d in record['decisions'].values() if d.get('error'))}, indent=2))
 

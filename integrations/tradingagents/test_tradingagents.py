@@ -61,6 +61,15 @@ class Backend:
 
 
 class DecideTests(unittest.TestCase):
+    def test_a_weekly_run_rates_its_holdings_and_a_rotating_few(self):
+        week = lambda day: ta_decide.rotation(day)  # noqa: E731
+        self.assertEqual(len(week('2026-10-30')), ta_decide.PER_RUN)                          # nothing held: two shares
+        covered = {s for d in ('2026-10-30', '2026-11-06', '2026-11-13', '2026-11-20') for s in week(d)}
+        self.assertEqual(covered, set(ta_decide.SYMBOLS))                                     # all 8 within 4 weeks
+        held = ta_decide.rotation('2026-10-30', held={'ITC', 'NTPC'})
+        self.assertTrue({'ITC', 'NTPC'} <= set(held) and len(held) == 2 + ta_decide.PER_RUN)  # it can always exit what it holds
+        self.assertEqual(ta_decide.SETTINGS['max_tool_rounds'], 3)                            # short enough for a laptop
+
     def test_the_local_model_key_reaches_the_openai_compatible_provider(self):
         environ = {}
         ta_decide.provide_key({'HERMES_MODEL_API_KEY': 'local-key'}, environ)

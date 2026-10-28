@@ -15,6 +15,26 @@ orders fill at verified prices; every result is scored and audited. It is paper 
 | Daily cycle | `scripts/organisation-cycle.mjs` | Runs every daily step in order, resumable |
 | Local model (optional) | `.local/models/` (Qwen 3.5-4B) | Claims, debate, scenario panel, R&D ideas |
 
+## 0. Moving to a new machine: two commands (28 Oct 2026)
+
+1. **On the machine it runs on now:** `npm run handover -- --to "home EliteBook"`. It:
+   - waits for any running job, then stops the supervisor;
+   - takes a verified backup, exports the data, and pushes the data repository and `dev`;
+   - marks this machine handed over, so its supervisor refuses to start (`npm run supervisor -- --take-back` undoes it).
+2. **On the new machine,** in PowerShell:
+   ```
+   gh repo clone KeerthanMuniRaja/Trading-Organisation; cd Trading-Organisation; git checkout dev
+   powershell -ExecutionPolicy Bypass -File scripts\setup-machine.ps1
+   ```
+   It does every step of section 1 below by itself:
+   - programs, both repositories, the data, the database, the knowledge index and the model;
+   - then it measures the fastest model settings for that machine (threads; the Intel graphics build if faster);
+   - tries a bigger decision model that is used only if it passes our exams;
+   - checks everything and starts the supervisor (optionally at every logon).
+
+   It stops with a plain message when only you can act: a program to install, or your three secret files. Run it
+   again afterwards; finished steps are skipped. Options: `-SkipUpgrade` (no bigger model), `-NoStart`.
+
 ## 1. First-time setup (new machine), about an hour
 
 **Before you start, you need:**
