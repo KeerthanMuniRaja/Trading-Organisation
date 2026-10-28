@@ -68,5 +68,32 @@ class PulseTests(unittest.TestCase):
             self.assertIsNone(mp.for_share('HDFCBANK', out, as_of='2026-10-27T04:00:00Z'))   # a proposal made before the report: not shown
 
 
+class BroadViewTests(unittest.TestCase):
+    def test_sectors_and_the_weeks_movers_with_their_reasons(self):
+        def bars(daily_pct, n=260, last='2026-10-27', end_jump=0.0):
+            from datetime import date, timedelta
+            end, out, price = date.fromisoformat(last), [], 100_000.0
+            days = [end - timedelta(days=k) for k in range(n)][::-1]
+            for k, d in enumerate(days):
+                price *= 1 + daily_pct + (end_jump if k >= n - 5 else 0)
+                out.append({'date': d.isoformat(), 'closePaise': round(price)})
+            return out
+        data, names, sectors = {}, {}, {}
+        for k in range(30):
+            s = f'S{k:02d}.NS'
+            up = k < 15
+            data[s], names[s], sectors[s] = bars(0.003 if up else -0.002), f'Share {k}', 'Rising' if up else 'Falling'
+        data['JUMP.NS'], names['JUMP.NS'], sectors['JUMP.NS'] = bars(0.0, end_jump=0.04), 'Jumper', 'Rising'
+        data['OLD.NS'], names['OLD.NS'], sectors['OLD.NS'] = bars(0.01, last='2026-09-01'), 'Stale', 'Falling'
+        news = [{'symbol': 'JUMP.NS', 'why': 'order win', 'title': 'Jumper shares jump 4% on order win'}]
+        v = mp.broad_view(data, names, sectors, news)
+        self.assertEqual((v['asOf'], v['freshShares'], v['sharesInFiles']), ('2026-10-27', 31, 32))    # the stale file is left out
+        self.assertEqual([t['sector'] for t in v['sectors']], ['Rising', 'Falling'])
+        self.assertEqual(v['breadthAbove200Pct'], round(100 * 16 / 31))                       # 15 rising shares and the jumper
+        self.assertEqual((v['risers'][0]['company'], v['risers'][0]['why'], v['risers'][0]['explained']), ('Jumper', 'order win', True))
+        self.assertFalse(v['fallers'][0]['explained'])
+        self.assertIsNone(mp.broad_view({'A.NS': data['S00.NS']}, names, sectors))                  # too few shares to judge a market
+
+
 if __name__ == '__main__':
     unittest.main()

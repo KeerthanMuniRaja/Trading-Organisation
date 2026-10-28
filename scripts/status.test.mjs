@@ -42,7 +42,10 @@ test('one screen: health, autonomy, agenda, every member, money, the day and wha
   const pulse = render({ ...FACTS, pulse: { windowDays: 7, counts: { up: 2, down: 1, bigPlayers: 1, unexplainedDeskMoves: 1 },
     movers: [{ company: 'KEI Industries Ltd.', direction: 'down', pct: 8 }, { company: 'Welspun Corp Ltd.', direction: 'up', pct: 230, period: 'YTD' },
       { company: 'Mankind Pharma Ltd.', direction: 'up', pct: 8 }],
-    flows: [{ actors: ['foreign-investors'], action: 'buy', amountCrore: 6500 }] } }).join('\n');
+    flows: [{ actors: ['foreign-investors'], action: 'buy', amountCrore: 6500 }],
+    market: { asOf: '2026-10-27', freshShares: 480, breadthAbove200Pct: 34, sectors: [{ sector: 'Information Technology', monthPct: 11.8 },
+      { sector: 'Media', monthPct: 6 }, { sector: 'Realty', monthPct: -8.9 }, { sector: 'Construction', monthPct: -12.1 }] } } }).join('\n');
+  assert.match(pulse, /Sectors   1 month to 2026-10-27: best Information Technology \+11.8%, Media \+6%; worst Realty -8.9%, Construction -12.1%; 34% of 480 NIFTY 500 shares above their 200-day average/);
   assert.match(pulse, /Pulse     7d: 2 up, 1 down in the press \(KEI Industries -8%, Mankind Pharma \+8%\); 1 big-player item\(s\); flows: foreign-investors buy Rs 6,500 cr; 1 UNEXPLAINED desk move\(s\)/);
   assert.match(forward, /Forward   m6: running, 3\/24 months, top fifth \+0.41% a month \(ahead 2\/3\), IC t 0.9; waiting for 2027-02 prices/);
 });

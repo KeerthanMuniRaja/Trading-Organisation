@@ -20,6 +20,26 @@ grouped into stories.
 | **Flows** | "₹4 lakh crore rally, ₹6,500 crore FII buying" | Market-wide FII, FPI or DII buying or selling: here FII buy ₹6,500 crore, not the rally's ₹4 lakh crore |
 | **Our shares** | (prices) | Each desk share's last session against the basket, measured in its own daily swings over 60 sessions. A move of 2 swings or more with no news about the share in the two days before is flagged **unexplained** |
 
+## The broad market from prices
+
+The press covers only what it writes about, so the pulse also reads the NIFTY 500 research price files
+(`daily-nifty500`, refreshed by the cycle's `broad-data` step). Only files within 5 days of the newest count, so a
+rolling refresh never mixes stale and fresh weeks.
+- **Sectors:** each NSE industry's median return over a week, a month and three months, and the share of its members
+  above their 200-day average.
+- **Breadth:** the share of all NIFTY 500 shares above their 200-day average.
+- **The week's biggest risers and fallers,** each with the press's reason when a headline reports one, or "no news".
+
+First reading, to 27 Oct 2026:
+- breadth was weak: 34% of 475 shares above their 200-day average;
+- strongest this month: Media +16.5%, Information Technology +11.8%, the latter matching the "₹6,500 crore FII buying
+  into IT" headline;
+- weakest: Construction −12.1%, Chemicals −9.5%;
+- Financial Services, home of our four banks, ranked 13th of 19 at −7.5%.
+
+In the debate, a share's `marketPulse.sector` gives its sector, the sector's rank and month, and the market breadth,
+as of the proposal.
+
 ## What it refuses to count
 
 - **Profit is not a share move.** "KEI Industries Q2 profit jumps 29%" is left out: the shares must be what moved.

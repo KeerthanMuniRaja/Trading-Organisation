@@ -29,6 +29,12 @@ function localLines(f) {
     out.push(`Pulse     ${pulse.windowDays}d: ${pulse.counts.up} up, ${pulse.counts.down} down in the press${top.length ? ` (${top.join(', ')})` : ''}; `
       + `${pulse.counts.bigPlayers} big-player item(s)${flow ? `; flows: ${flow.actors.join('/')} ${flow.action}${flow.amountCrore ? ` Rs ${flow.amountCrore.toLocaleString('en-IN')} cr` : ''}` : ''}`
       + `${pulse.counts.unexplainedDeskMoves ? `; ${pulse.counts.unexplainedDeskMoves} UNEXPLAINED desk move(s)` : ''} (npm run pulse)`);
+    const m = pulse.market;
+    if (m?.sectors?.length) {
+      const fmt = t => `${t.sector} ${t.monthPct >= 0 ? '+' : ''}${t.monthPct}%`;
+      out.push(`Sectors   1 month to ${m.asOf}: best ${m.sectors.slice(0, 2).map(fmt).join(', ')}; worst ${m.sectors.slice(-2).map(fmt).join(', ')}; `
+        + `${m.breadthAbove200Pct}% of ${m.freshShares} NIFTY 500 shares above their 200-day average`);
+    }
   }
   for (const t of f.forward ?? []) out.push(`Forward   ${t.name}: ${t.status}${t.monthsJudged ? `, ${t.monthsJudged}/${t.monthsNeeded} months, `
     + `top fifth ${t.averageExcessPct >= 0 ? '+' : ''}${t.averageExcessPct}% a month (ahead ${t.ahead}/${t.monthsJudged}), IC t ${t.icTStat ?? '?'}`

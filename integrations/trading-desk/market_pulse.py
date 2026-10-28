@@ -115,8 +115,9 @@ def mover(title, alias_list):
         period = PERIOD.search(re.split(r'[,;|:]', title[m.end():m.end() + 40])[0])  # "drops 2%, down 30% YTD": today's 2%
         up = re.fullmatch(UP, m.group('verb'), re.IGNORECASE) is not None
         reason = re.split(r'\.\s+[A-Z]|\s+-\s+', why.group('why'))[0].strip(' ,.-—') if why else None
+        span = period.group('period') if period else None
         return {'symbol': before[-1], 'direction': 'up' if up else 'down', 'pct': float(m.group('pct')),
-                'period': period.group('period') if period else None, 'why': reason}
+                'period': None if span and span.lower() in ('today', 'intraday') else span, 'why': reason}  # 'today' is the day's move
     return None
 
 
@@ -168,8 +169,60 @@ def desk_moves(cache=daily.DAILY, headlines=(), lookback=60, sigma=UNEXPLAINED_S
     return sorted(out, key=lambda r: -(r['sigmas'] or 0))
 
 
+# ---------- the broad market from prices: sectors and the week's biggest movers ----------
+def _ret(closes, n):
+    return closes[-1] / closes[-1 - n] - 1 if len(closes) > n and closes[-1 - n] > 0 else None
+
+
+def broad_view(bars_by_symbol, names, sectors, movers_news=(), fresh_days=5, top=8):
+    """From the research files (NIFTY 500, prices only): each sector's median return over a week, a month and three
+    months, and its share of members above their 200-day average; and the week's biggest risers and fallers, each with
+    the press's reason when a headline about it reports one. Only files fresh within `fresh_days` of the newest count,
+    so a rolling monthly refresh never mixes stale and fresh weeks."""
+    last = {s: bars[-1]['date'] for s, bars in bars_by_symbol.items() if bars}
+    if not last:
+        return None
+    newest = max(last.values())
+    cutoff = (datetime.fromisoformat(newest) - timedelta(days=fresh_days)).date().isoformat()
+    rows = []
+    for s, bars in bars_by_symbol.items():
+        if not bars or last[s] < cutoff or len(bars) < 210:
+            continue
+        closes = [b['closePaise'] for b in bars]
+        rows.append({'symbol': s, 'company': names.get(s, s), 'sector': sectors.get(s, 'Unknown'), 'asOf': last[s],
+                     'week': _ret(closes, 5), 'month': _ret(closes, 21), 'quarter': _ret(closes, 63),
+                     'above200': closes[-1] > statistics.fmean(closes[-200:])})
+    if len(rows) < 25:
+        return None
+    by_sector = {}
+    for r in rows:
+        by_sector.setdefault(r['sector'], []).append(r)
+    med = lambda xs: round(100 * statistics.median(xs), 2) if xs else None  # noqa: E731
+    table = sorted(({'sector': k, 'shares': len(v), 'weekPct': med([r['week'] for r in v if r['week'] is not None]),
+                     'monthPct': med([r['month'] for r in v if r['month'] is not None]),
+                     'quarterPct': med([r['quarter'] for r in v if r['quarter'] is not None]),
+                     'above200Pct': round(100 * sum(r['above200'] for r in v) / len(v))} for k, v in by_sector.items() if len(v) >= 3),
+                   key=lambda t: -(t['monthPct'] or 0))
+    why = {}
+    for m in movers_news:  # the newest reported reason per share
+        why.setdefault(m['symbol'], m)
+    weekly = sorted((r for r in rows if r['week'] is not None), key=lambda r: r['week'])
+    def mover_row(r):
+        news = why.get(r['symbol'])
+        return {'symbol': r['symbol'], 'company': r['company'], 'sector': r['sector'], 'weekPct': round(100 * r['week'], 1),
+                'why': (news['why'] or news['title']) if news else None, 'explained': bool(news)}
+    sector_row = {t['sector']: t for t in table}
+    desk = {s: {'sector': sectors.get(s), 'sectorRank': next((k + 1 for k, t in enumerate(table) if t['sector'] == sectors.get(s)), None),
+                'sectorsRanked': len(table), **({'sectorMonthPct': sector_row[sectors[s]]['monthPct']} if sectors.get(s) in sector_row else {})}
+            for s in datasets.UNIVERSE}
+    return {'asOf': newest, 'freshShares': len(rows), 'sharesInFiles': len(bars_by_symbol), 'desk': desk,
+            'breadthAbove200Pct': round(100 * sum(r['above200'] for r in rows) / len(rows)),
+            'medianMonthPct': med([r['month'] for r in rows if r['month'] is not None]),
+            'sectors': table, 'risers': [mover_row(r) for r in weekly[::-1][:top]], 'fallers': [mover_row(r) for r in weekly[:top]]}
+
+
 # ---------- the pulse ----------
-def build(headlines_path=HEADLINES, out=OUT, cache=daily.DAILY, days=7, now=None, rows=None):
+def build(headlines_path=HEADLINES, out=OUT, cache=daily.DAILY, days=7, now=None, rows=None, broad=daily.BROAD):
     now = now or datetime.now(timezone.utc)
     items = json.loads(Path(headlines_path).read_text(encoding='utf-8')) if Path(headlines_path).exists() else []
     recent = [h for h in items if h.get('publishedAt') and datetime.fromisoformat(str(h['publishedAt'])) >= now - timedelta(days=days)]
@@ -190,10 +243,13 @@ def build(headlines_path=HEADLINES, out=OUT, cache=daily.DAILY, days=7, now=None
             players.append({**{k: v for k, v in p.items() if k != 'marketWide'}, 'companies': [names.get(s, s) for s in p['symbols']],
                             'desk': any(s in datasets.UNIVERSE for s in p['symbols']), **base})
     ours = desk_moves(cache, items) if cache else []
+    market = None
+    if broad and Path(broad).exists():
+        market = broad_view(daily.load(sorted(names), broad), names, sectors, [m for m in movers if not m['period']])
     report = {'generatedAt': now.isoformat(), 'windowDays': days, 'headlinesRead': len(recent),
               'counts': {'movers': len(movers), 'up': sum(m['direction'] == 'up' for m in movers), 'down': sum(m['direction'] == 'down' for m in movers),
                          'bigPlayers': len(players), 'flows': len(flows), 'unexplainedDeskMoves': sum(r['unexplained'] for r in ours)},
-              'movers': movers, 'bigPlayers': players, 'flows': flows, 'deskMoves': ours,
+              'movers': movers, 'bigPlayers': players, 'flows': flows, 'deskMoves': ours, 'market': market,
               'note': 'The press\'s account, read by fixed rules: unverified, context only, never evidence or a signal by itself.'}
     batch.save(Path(out), report)
     return report
@@ -211,9 +267,12 @@ def for_share(symbol, path=OUT, limit=3, as_of=None):
     moves = [{k: m[k] for k in ('publishedAt', 'direction', 'pct', 'period', 'why', 'title')} for m in r['movers'] if m['symbol'] == s and known(m)][:limit]
     players = [{k: p[k] for k in ('publishedAt', 'actors', 'action', 'amountCrore', 'title')} for p in r['bigPlayers'] if s in p['symbols'] and known(p)][:limit]
     own = next((d for d in r.get('deskMoves', []) if d['symbol'] == s and (cut is None or d['date'] <= cut.date().isoformat())), None)
-    if not (moves or players or own):
+    market = r.get('market') or {}
+    sector = (market.get('desk') or {}).get(s) if market and (cut is None or market['asOf'] <= cut.date().isoformat()) else None
+    if not (moves or players or own or sector):
         return None
     return {'reportedMoves': moves, 'bigPlayers': players, 'lastSession': own, 'asOf': r['generatedAt'],
+            **({'sector': {**sector, 'marketBreadthAbove200Pct': market['breadthAbove200Pct'], 'pricesAsOf': market['asOf']}} if sector else {}),
             'note': 'press reports read by rules: unverified context, never evidence'}
 
 
@@ -225,12 +284,18 @@ def main(argv=None):
     show = lambda m: (f"{m['company']} {'+' if m['direction'] == 'up' else '-'}{m['pct']:g}%" + (f" {m['period']}" if m['period'] else '')  # noqa: E731
                       + (f" ({m['why']})" if m['why'] else ''))
     print(json.dumps({'headlinesRead': r['headlinesRead'], 'counts': r['counts'],
-                      'topMovers': [show(m) for m in sorted(r['movers'], key=lambda m: -m['pct'])[:8]],
+                      'topMovers': [show(m) for m in sorted((m for m in r['movers'] if not m['period']), key=lambda m: -m['pct'])[:8]],
                       'bigPlayers': [f"{', '.join(p['actors'])} {p['action']} {', '.join(p['companies']) or '(not a NIFTY 500 name)'}"
                                      + (f" Rs {p['amountCrore']:,.0f} cr" if p['amountCrore'] else '') for p in r['bigPlayers'][:8]],
                       'flows': [f"{', '.join(f['actors'])} {f['action']}" + (f" Rs {f['amountCrore']:,.0f} cr" if f['amountCrore'] else '') for f in r['flows'][:5]],
                       'deskMoves': [f"{d['symbol']} {d['vsBasketPct']:+}% vs basket ({d['sigmas']} sigma)" + (' UNEXPLAINED' if d['unexplained'] else '')
-                                    for d in r['deskMoves'][:4]]}, indent=2, ensure_ascii=False))
+                                    for d in r['deskMoves'][:4]],
+                      **({'market': {'asOf': r['market']['asOf'], 'breadthAbove200Pct': r['market']['breadthAbove200Pct'],
+                                     'strongestSectorsMonth': [f"{t['sector']} {t['monthPct']:+}%" for t in r['market']['sectors'][:4]],
+                                     'weakestSectorsMonth': [f"{t['sector']} {t['monthPct']:+}%" for t in r['market']['sectors'][-4:]],
+                                     'weekRisers': [f"{m['company']} {m['weekPct']:+}%" + (f" ({m['why'][:60]})" if m['why'] else ' (no news)') for m in r['market']['risers'][:5]],
+                                     'weekFallers': [f"{m['company']} {m['weekPct']:+}%" + (f" ({m['why'][:60]})" if m['why'] else ' (no news)') for m in r['market']['fallers'][:5]]}}
+                         if r.get('market') else {})}, indent=2, ensure_ascii=False))
 
 
 if __name__ == '__main__':
