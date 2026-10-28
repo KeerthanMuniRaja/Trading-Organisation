@@ -85,6 +85,31 @@ class DebateTests(unittest.TestCase):
         self.assertEqual(ctx['verifiedNews'][0]['title'], 'HDFC Bank profit rises')
         self.assertEqual(schema['properties']['evidenceId']['anyOf'][0]['enum'], ['ev-1'])
 
+    def test_quote_checked_claims_reach_the_debate_labelled_and_filtered(self):
+        state = Path(self.tmp.name) / 'claims'
+        state.mkdir()
+        claim = lambda ev, when, certainty='reported-fact', symbols=('HDFCBANK.NS',), statement='HDFC Bank raised its deposit rates.': {  # noqa: E731
+            'evidenceId': ev, 'publishedAt': when, 'sourceName': 'Mint', 'statement': statement, 'symbols': list(symbols),
+            'eventType': 'corporate-action', 'direction': 'neutral', 'certainty': certainty, 'metric': None}
+        (state / 'extracted.json').write_text(json.dumps({'results': {
+            'a': {'accepted': [claim('a', '2026-10-27T10:00:00+05:30')]},
+            'b': {'accepted': [claim('b', '2026-10-27T11:00:00+05:30', certainty='rumour')]},                  # rumour: never
+            'c': {'accepted': [claim('c', '2026-10-27T12:00:00+05:30', symbols=('SBIN.NS',))]},               # another share
+            'd': {'accepted': [claim('d', '2026-10-29T10:00:00+05:30')]},                                     # after the proposal
+            'e': {'accepted': [claim('e', '2026-09-01T10:00:00+05:30')]},                                     # too old
+            'f': {'accepted': [claim('f', '2026-10-26T10:00:00+05:30', certainty='company-statement')]},
+            'g': {'accepted': [claim('g', '2026-10-25T10:00:00+05:30')]}}}), encoding='utf-8')          # revoked below
+        (state / 'revocations.json').write_text(json.dumps({'g': {'reason': 'contradicted'}}), encoding='utf-8')
+        got = db.checked_claims('HDFCBANK', '2026-10-28T06:00:00Z', state=state)
+        self.assertEqual([c['publishedAt'][:10] for c in got], ['2026-10-27', '2026-10-26'])
+        self.assertEqual([c['certainty'] for c in got], ['reported-fact', 'company-statement'])
+        signal = {'id': 's', 'symbol': 'HDFCBANK', 'createdAt': '2026-10-28T06:00:00Z', 'evidenceIds': []}
+        ctx = db.context(signal, self.cache, [], checked=got)
+        self.assertEqual((ctx['checkedClaims']['note'], len(ctx['checkedClaims']['claims'])), (db.CHECKED_NOTE, 2))
+        self.assertIn('never evidence', ctx['checkedClaims']['note'])
+        self.assertEqual(ctx['verifiedEvidenceIds'], [])                                  # citation rights unchanged
+        self.assertEqual(db.checked_claims('HDFCBANK', state=Path(self.tmp.name) / 'none'), [])
+
     def test_the_second_pass_corrects_what_the_data_does_not_support_and_can_only_help(self):
         signal = {**PENDING[0], 'challenges': []}
         ctx = {'verifiedEvidenceIds': [], 'marketPulse': {'note': 'press reports read by rules: unverified context, never evidence'}}

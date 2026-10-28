@@ -102,6 +102,17 @@ Every cycle also rewrites `.local/claims/auto/verified-headlines.json`. It conta
 
 Each cycle is logged to `.local/claims/auto/cycles.jsonl`. Every decision is recorded with its reason in `decisions.json`, `lesson-reviews.json` and `revocations.json`. The backend's audit trail notifies the owner's inbox of each review.
 
+**The quote-checked tier (NEWS-06, 28 Oct 2026).** Verification needs the same figure from two independent publishers.
+With three Indian feeds that often carry the same wire copy, that is rare: on the first full day, all 16 claim groups
+were single-source. So the debate also reads **quote-checked** claims, those the fact-checker accepted because their
+quote is in the article word for word:
+- reported facts and company statements only, never rumour, opinion or forecast;
+- about the share under debate, published before the proposal, within 14 days;
+- never from revoked evidence.
+
+They are labelled "single source, not verified: background, never evidence" (`debate.checked_claims`, context field
+`checkedClaims`). Citations stay limited to verified evidence ids; "verified" keeps its meaning.
+
 **What "verified" means here:** quote-checked, attributed and corroborated by independent reports, or stated by a primary source. It does not mean proven true. Bots receive it as dated context, and knowledge never grants trading, spending or permission changes.
 
 **Limits:** model calls here are bounded per cycle, but they are not yet charged to the backend's daily token ceiling, which covers only backend-managed requests.

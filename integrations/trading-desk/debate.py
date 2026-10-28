@@ -79,6 +79,45 @@ def self_check(llm, payload, argument):
     return revised, {'selfCheck': len(problems), 'problems': problems}
 
 
+# NEWS-06, the quote-checked tier: verification needs the same figure from two independent publishers, which our three
+# feeds rarely give (28 Oct: 16 claim groups, every one single-source), so the verified feed may stay empty for long.
+# A claim the fact-checker accepted has passed its own check that the quote is in the article word for word; reported
+# facts and company statements from approved publishers are worth reading, labelled for what they are. "Verified" keeps
+# its meaning, and citations stay limited to verified evidence ids.
+CLAIMS_STATE = daily.ROOT / '.local' / 'claims' / 'auto'
+CHECKED_CERTAINTY = ('reported-fact', 'company-statement')
+CHECKED_NOTE = 'quote-checked against the article by the fact-checker, single source, not verified: background, never evidence'
+
+
+def checked_claims(symbol, as_of=None, state=CLAIMS_STATE, days=14, limit=5):
+    """The share's quote-checked claims (reported facts and company statements, never rumour, opinion or forecast),
+    published before `as_of` and within `days` of it, newest first; revoked evidence left out."""
+    path = Path(state) / 'extracted.json'
+    if not path.exists():
+        return []
+    revoked = set()
+    try:
+        revoked = set(json.loads((Path(state) / 'revocations.json').read_text(encoding='utf-8')))
+    except (OSError, ValueError):
+        pass
+    share = symbol if str(symbol).endswith('.NS') else f'{symbol}.NS'
+    cut = datetime.fromisoformat(str(as_of).replace('Z', '+00:00')) if as_of else datetime.now(timezone.utc)
+    out = []
+    for record in json.loads(path.read_text(encoding='utf-8')).get('results', {}).values():
+        for c in record.get('accepted') or []:
+            if c.get('certainty') not in CHECKED_CERTAINTY or share not in (c.get('symbols') or []) or c.get('evidenceId') in revoked:
+                continue
+            try:
+                at = datetime.fromisoformat(str(c['publishedAt']).replace('Z', '+00:00'))
+            except (KeyError, ValueError):
+                continue
+            if at <= cut and (cut - at).days <= days:
+                out.append({'publishedAt': c['publishedAt'], 'source': c.get('sourceName'), 'statement': c.get('statement'),
+                            'event': c.get('eventType'), 'direction': c.get('direction'), 'certainty': c.get('certainty'),
+                            **({'figure': {k: c.get(k) for k in ('metric', 'period', 'reportedChangePct')}} if c.get('metric') else {})})
+    return sorted(out, key=lambda c: c['publishedAt'], reverse=True)[:limit]
+
+
 def schema(evidence_ids):
     return {'type': 'object', 'additionalProperties': False, 'required': ['argument', 'evidenceId', 'evidenceQuote'], 'properties': {
         'argument': {'type': 'string', 'minLength': 20, 'maxLength': 600},
@@ -158,7 +197,7 @@ def press_dossier(symbol, as_of, index=None):
 
 
 def context(signal, cache, headlines, knowledge=None, record=None, news_status='ok', press='unset', reads=None, calendar=None, evidence=None,
-            mentor_notes=None, pulse=None):
+            mentor_notes=None, pulse=None, checked=None):
     """What a debater sees. Everything is as of the proposal: no headline published after it was made (so a replay of a
     past day never sees the future), and dataStatus says plainly what is missing (TradingAgents' 'no data' vs
     'unavailable' markers)."""
@@ -196,7 +235,9 @@ def context(signal, cache, headlines, knowledge=None, record=None, news_status='
             **({'mentorNotes': {'note': "an experienced mentor's lessons, checked on our data where a check exists: background, never evidence",
                                 'lessons': mentor_notes}} if mentor_notes else {}),
             # AWARE-01: what the press reports about this share's moves and big players, and how unusual its last move was
-            **({'marketPulse': pulse} if pulse else {})}
+            **({'marketPulse': pulse} if pulse else {}),
+            # NEWS-06: quote-checked, single-source claims about this share (context; citations stay verified-only)
+            **({'checkedClaims': {'note': CHECKED_NOTE, 'claims': checked}} if checked else {})}
 
 
 def argue(llm, side, signal, ctx, opposing=None, contents=None):
@@ -287,7 +328,8 @@ def run(llm, env=os.environ, cache=daily.DAILY, opener=None, headlines_path=HEAD
                                  regime=risk if risk in ('NORMAL', 'CAUTION', 'HIGH', 'SEVERE') else None,
                                  method=mentor.method_of(signal.get('model')))
         pulse = market_pulse.for_share(signal['symbol'], as_of=signal.get('createdAt'))
-        ctx = context(signal, cache, headlines, knowledge, record, news_status, press, reads, calendar, contents, notes, pulse)
+        checked = checked_claims(signal['symbol'], signal.get('createdAt'))
+        ctx = context(signal, cache, headlines, knowledge, record, news_status, press, reads, calendar, contents, notes, pulse, checked)
         # a real debate: the bear argues first and the bull answers the bear's case (same two calls as before)
         bear_case = (argued.get(bots['bear']) or {}).get('argument')
         for side in ('bear', 'bull'):
