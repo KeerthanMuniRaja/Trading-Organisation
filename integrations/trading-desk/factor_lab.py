@@ -250,11 +250,14 @@ def lab(cache=daily.BROAD, symbols=None, through=None):
         raise ValueError('Not enough overlapping history')
     factors, threshold = judge(rows)
     basket = [r['basketPct'] for r in rows]
+    six = round(100 * (math.prod(1 + p / 100 for p in basket[-6:]) - 1), 2) if len(basket) >= 6 else None
     data = hashlib.sha256(json.dumps([[r['month'], r['shares'], round(r['basketPct'], 6)] for r in rows]).encode()).hexdigest()[:16]
     return {'version': VERSION, 'fingerprint': catalogue_fingerprint(), 'dataFingerprint': data, 'universe': 'nifty500',
             'sharesWithData': len(loaded), 'from': rows[0]['month'], 'through': rows[-1]['month'], 'months': len(rows),
             'factorsTried': len(FACTORS), 'bonferroniThreshold': round(threshold, 6), 'oneWayCostPct': ONE_WAY_COST_PCT,
             'basketStats': {**(rc.stats(basket, [0.0] * len(basket)) or {}), 'afterTaxCagrPct': rc.after_tax_cagr(basket)},
+            # the condition the next decisions are made in: the universe's return over the last 6 judged months
+            'now': {'universeSixMonthPct': six, 'afterDeepFall': six is not None and six <= DEEP_FALL_PCT},
             'factors': factors,
             'warning': ('RESEARCH ONLY, never traded. Today\'s NIFTY 500 members over past years: companies that left the index '
                         'are missing (survivorship bias), which flatters momentum and trend most. Re-test any pass on '

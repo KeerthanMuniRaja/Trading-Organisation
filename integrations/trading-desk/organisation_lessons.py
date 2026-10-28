@@ -96,9 +96,18 @@ def from_conditions(report, least=3):
     return [{'id': 'org-after-deep-fall', 'title': f'After a deep market fall, {best} led and {worst} lagged',
              'lesson': (f"In the {n} months that followed a fall of 15% or more in the whole universe over 6 months "
                         f"({report['sharesWithData']} shares, to {report['through']}), against the whole universe: " + '; '.join(map(line, shown)) + '. '
-                        f"Only {n} months: a warning to weigh in a falling market, not a rule."),
+                        f"Only {n} months: a warning to weigh in a falling market, not a rule." + _now(report)),
              'appliesTo': {'regimes': ['HIGH', 'SEVERE'], 'methods': methods},
              'measured': {name: split[name] for name in shown}}]
+
+
+def _now(report):
+    """Whether the condition holds for the coming decisions, so a reader can tell a live warning from background."""
+    now = report.get('now') or {}
+    if now.get('universeSixMonthPct') is None:
+        return ''
+    return (f" Now: the universe moved {now['universeSixMonthPct']:+.1f}% over the 6 months to {report['through']}, so "
+            + ('this condition HOLDS for the coming month.' if now['afterDeepFall'] else 'this is not a deep fall; the condition does not hold now.'))
 
 
 def from_scout(report):

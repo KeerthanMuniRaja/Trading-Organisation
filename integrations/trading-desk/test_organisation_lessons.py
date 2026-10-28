@@ -46,6 +46,11 @@ class OrganisationLessonsTests(unittest.TestCase):
         self.assertIn('Only 4 months', lesson['lesson'])
         self.assertEqual(lesson['appliesTo'], {'regimes': ['HIGH', 'SEVERE'], 'methods': ['momentum', 'reversal', 'trend']})
         self.assertEqual(ol.from_conditions(LAB), [])            # an older report without the split: no lesson
+        self.assertNotIn('Now:', lesson['lesson'])                 # a report without the current condition says nothing about now
+        [held] = ol.from_conditions({**lab, 'now': {'universeSixMonthPct': -18.2, 'afterDeepFall': True}})
+        self.assertIn('Now: the universe moved -18.2% over the 6 months to 2026-09, so this condition HOLDS', held['lesson'])
+        [calm] = ol.from_conditions({**lab, 'now': {'universeSixMonthPct': 4.0, 'afterDeepFall': False}})
+        self.assertIn('the condition does not hold now', calm['lesson'])
 
     def test_the_lessons_are_rebuilt_from_the_newest_reports(self):
         with tempfile.TemporaryDirectory() as tmp:
