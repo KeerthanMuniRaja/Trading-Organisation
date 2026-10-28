@@ -156,10 +156,16 @@ async function log(entry, root = ROOT) {
   await appendFile(join(dir, indiaDay(Date.now()).day + '.jsonl'), JSON.stringify({ at: new Date().toISOString(), ...entry }) + '\n');
 }
 
+/** Only npm needs a shell on Windows. Node itself must not get one: its path ("C:\Program Files\nodejs\node.exe") would
+ *  be split at the space, which broke every news poll on 28 Oct ("'C:\Program' is not recognized"). */
+export function needsShell(step, platform = process.platform) {
+  return platform === 'win32' && !step.background && /(^|[\\/])npm(\.cmd)?$/i.test(step.cmd);
+}
+
 function run(step, env) {
   return new Promise(done => {
-    // npm needs a shell on Windows; the backend itself is started without one, so its pid is the backend's own
-    const child = spawn(step.cmd, step.args, { cwd: ROOT, env, windowsHide: true, shell: process.platform === 'win32' && !step.background,
+    // the backend itself is started without a shell, so its pid is the backend's own
+    const child = spawn(step.cmd, step.args, { cwd: ROOT, env, windowsHide: true, shell: needsShell(step),
       stdio: step.background ? 'ignore' : ['ignore', 'pipe', 'pipe'], detached: !!step.background });
     if (step.background) { child.unref(); done({ code: 0, pid: child.pid }); return; }
     let tail = '';

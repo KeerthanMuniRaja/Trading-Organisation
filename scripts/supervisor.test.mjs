@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { MAX_ATTEMPTS, catchUp, childEnv, commands, heartbeat, history, indiaDay, modelHealthUrl, nextNews, nextRuns, newsMinutes, NEWS_MINUTES } from './supervisor.mjs';
+import { needsShell, MAX_ATTEMPTS, catchUp, childEnv, commands, heartbeat, history, indiaDay, modelHealthUrl, nextNews, nextRuns, newsMinutes, NEWS_MINUTES } from './supervisor.mjs';
 import { enabledFeeds } from './organisation-cycle.mjs';
 
 test('news is polled on the clock every day, weekends and nights included, with the backend up only while it polls', async () => {
@@ -90,6 +90,14 @@ test('each job starts the backend only when it is down, uses the model only when
   assert.deepEqual([start.cmd, start.args[0], start.background], [process.execPath, '--env-file=.env', true]); // its real pid, no shell
   assert.deepEqual(ids('readiness', { backendUp: false, modelUp: false }), ['start-backend', 'readiness', 'stop-backend']);
   assert.throws(() => commands('trade', { backendUp: true }), /Unknown job/);
+});
+
+test('only npm gets a shell on Windows: a node path with a space must not be split', () => {
+  const feed = commands('news', { backendUp: true, feeds: ['feed-wire.json'] })[0];
+  assert.equal(needsShell(feed, 'win32'), false);                                  // 'C:\Program Files\nodejs\node.exe' ran through cmd broke
+  assert.equal(needsShell(commands('cycle', { backendUp: true, modelUp: true })[0], 'win32'), true);   // npm.cmd needs it
+  assert.equal(needsShell({ cmd: 'npm.cmd', background: true }, 'win32'), false);
+  assert.equal(needsShell({ cmd: 'npm' }, 'linux'), false);
 });
 
 test('the model is started for a cycle only when the owner named one, and stopped afterwards; health is the public endpoint', () => {
