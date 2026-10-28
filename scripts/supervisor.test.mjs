@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { needsShell, MAX_ATTEMPTS, catchUp, childEnv, commands, heartbeat, history, indiaDay, modelHealthUrl, nextNews, nextRuns, newsMinutes, NEWS_MINUTES } from './supervisor.mjs';
+import { anotherRunning, watchdogDue, needsShell, MAX_ATTEMPTS, catchUp, childEnv, commands, heartbeat, history, indiaDay, modelHealthUrl, nextNews, nextRuns, newsMinutes, NEWS_MINUTES } from './supervisor.mjs';
 import { enabledFeeds } from './organisation-cycle.mjs';
 
 test('news is polled on the clock every day, weekends and nights included, with the backend up only while it polls', async () => {
@@ -96,6 +96,21 @@ test('each job starts the backend only when it is down, uses the model only when
   assert.deepEqual([start.cmd, start.args[0], start.background], [process.execPath, '--env-file=.env', true]); // its real pid, no shell
   assert.deepEqual(ids('readiness', { backendUp: false, modelUp: false }), ['start-backend', 'readiness', 'stop-backend']);
   assert.throws(() => commands('trade', { backendUp: true }), /Unknown job/);
+});
+
+test('one supervisor at a time, and a stuck one is replaced rather than left lying', () => {
+  const now = Date.parse('2026-10-28T12:00:00Z');
+  const live = { at: '2026-10-28T11:59:30Z', pid: 7, running: null, next: 'news', nextAt: '2026-10-28T12:30:00Z' };
+  const yes = () => true, no = () => false;
+  assert.equal(anotherRunning(live, { now, self: 9, exists: yes }), 7);                                   // healthy: do not start a second
+  assert.equal(anotherRunning(live, { now, self: 7, exists: yes }), null);                                // it is me
+  assert.equal(anotherRunning(live, { now, self: 9, exists: no }), null);                                 // its process is gone
+  assert.equal(anotherRunning({ ...live, at: '2026-10-28T11:40:00Z' }, { now, self: 9, exists: yes }), null);   // stale heartbeat
+  assert.equal(anotherRunning({ ...live, nextAt: '2026-10-28T11:30:00Z' }, { now, self: 9, exists: yes }), null);  // stuck: a replacement may start
+  assert.equal(anotherRunning(null, { now, self: 9, exists: yes }), null);
+  assert.equal(watchdogDue({ running: null, nextAt: '2026-10-28T11:45:00Z' }, now), true);                // 15 minutes overdue, nothing running
+  assert.equal(watchdogDue({ running: null, nextAt: '2026-10-28T11:55:00Z' }, now), false);               // within the grace
+  assert.equal(watchdogDue({ running: 'cycle', nextAt: '2026-10-28T10:00:00Z' }, now), false);           // a long cycle is not stuck
 });
 
 test('only npm gets a shell on Windows: a node path with a space must not be split', () => {

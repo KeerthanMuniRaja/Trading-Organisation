@@ -278,10 +278,34 @@ export function handedOver(root = ROOT, args = []) {
     + 'run "npm run handover" there, pull the data here, then start with: npm run supervisor -- --take-back';
 }
 
+/** OPS-05: a second supervisor must not start while a healthy one runs (two would run every job twice). A stale or
+ *  stuck one does not count, so a replacement can always take over. */
+export function anotherRunning(beat, { now = Date.now(), self = process.pid, exists = pidExists } = {}) {
+  if (!beat || beat.pid === self) return null;
+  const age = now - Date.parse(beat.at);
+  const overdue = !beat.running && beat.nextAt && now - Date.parse(beat.nextAt) > STUCK_AFTER_MS;
+  return age <= HEARTBEAT_STALE_MS && !overdue && exists(beat.pid) ? beat.pid : null;
+}
+
+/** OPS-05 watchdog: true when the scheduling loop should have started a job over STUCK_AFTER_MS ago and nothing runs. */
+export function watchdogDue(state, now = Date.now()) {
+  return !state.running && !!state.nextAt && now - Date.parse(state.nextAt) > STUCK_AFTER_MS;
+}
+
+function pidExists(pid) {
+  try { process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; }
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const refused = handedOver(ROOT, args);
   if (refused) throw new Error(refused);
+  if (!args.includes('--plan') && !args.includes('--once')) {
+    let beat = null;
+    try { beat = JSON.parse(readFileSync(join(ROOT, '.local', 'supervisor', 'heartbeat.json'), 'utf8')); } catch { /* first start */ }
+    const other = anotherRunning(beat);
+    if (other) throw new Error(`Another supervisor is already running (pid ${other}); not starting a second one`);
+  }
   if (args.includes('--take-back')) await rm(join(ROOT, '.local', 'handover.json'), { force: true });
   if (args.includes('--plan')) {
     for (const r of nextRuns(Date.now(), await holidays())) console.log(`${r.id.padEnd(9)} ${new Date(r.at + IST).toISOString().slice(0, 16).replace('T', ' ')} IST`);
@@ -294,7 +318,18 @@ async function main() {
   const beat = () => mkdir(join(ROOT, '.local', 'supervisor'), { recursive: true })
     .then(() => writeFile(join(ROOT, '.local', 'supervisor', 'heartbeat.json'), JSON.stringify({ at: new Date().toISOString(), pid: process.pid, ...state }) + '\n'))
     .catch(() => {});
-  setInterval(beat, 60_000);
+  setInterval(async () => {
+    // the watchdog: alive but not scheduling (28 Oct: news stopped for hours). Under a scheduled task (--managed) exit
+    // and let the task restart it; otherwise start a fresh supervisor first, so the organisation never just stops
+    if (watchdogDue(state)) {
+      await log({ job: 'supervisor', step: 'watchdog', ok: false, note: `${state.next} was due at ${state.nextAt} and did not start: restarting` }).catch(() => {});
+      if (!args.includes('--managed')) {
+        spawn(process.execPath, [fileURLToPath(import.meta.url), ...args], { cwd: ROOT, env: process.env, detached: true, stdio: 'ignore', windowsHide: true }).unref();
+      }
+      process.exit(1);
+    }
+    await beat();
+  }, 60_000);
   // one job failing in an unexpected way is logged; the supervisor itself keeps going
   const guarded = async job => {
     state.running = job; await beat();

@@ -19,7 +19,8 @@ if ($Remove) {
 }
 
 $node = (Get-Command node -ErrorAction Stop).Source
-$arguments = '--env-file-if-exists=.env scripts/supervisor.mjs'
+# --managed: the task restarts the supervisor, so its watchdog only exits (it would otherwise start its own replacement)
+$arguments = '--env-file-if-exists=.env scripts/supervisor.mjs --managed'
 $action = New-ScheduledTaskAction -Execute $node -Argument $arguments -WorkingDirectory $root
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 # restart whenever it stops (up to 999 times), never time it out, start late if the logon was missed, keep one copy only
