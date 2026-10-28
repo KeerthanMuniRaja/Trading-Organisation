@@ -43,6 +43,15 @@
   - **TradingAgents:** it rates its holdings plus 2 rotating shares a week with 3 tool rounds. At 8 rounds the laptop
     needed about 2.5–3 hours for one share.
   - `npm run status` shows the tuning and the decision model.
+- **Late afternoon fixes (live).**
+  - The supervisor's news polls had never run between cycles: node went through the Windows shell, so the space in
+    "Program Files" split the command.
+  - It also stopped scheduling for hours while its heartbeat said alive. Status now shows **STUCK**, and a failing
+    loop exits.
+  - The scenario panel now receives the regime with the note that it is never by itself a reason for a
+    share-against-market call. Scenario exams can be judged correct.
+  - The secret backup (`DO NOT OPEN`) was refreshed (it lacked 4 settings); the handover refreshes it, and the setup
+    restores from it.
 
 ## Live paper testing — from 15 October 2026
 
