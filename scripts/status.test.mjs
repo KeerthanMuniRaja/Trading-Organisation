@@ -39,6 +39,11 @@ test('one screen: health, autonomy, agenda, every member, money, the day and wha
     { name: 'm12', status: 'waiting', monthsJudged: 0, monthsNeeded: 24, firstMonth: '2026-11', waitingForDataFrom: null },
     { name: 'm6', status: 'running', monthsJudged: 3, monthsNeeded: 24, averageExcessPct: 0.41, ahead: 2, icTStat: 0.9, waitingForDataFrom: '2027-02' }] }).join('\n');
   assert.match(forward, /Forward   m12: waiting \(first month 2026-11\)/);
+  const pulse = render({ ...FACTS, pulse: { windowDays: 7, counts: { up: 2, down: 1, bigPlayers: 1, unexplainedDeskMoves: 1 },
+    movers: [{ company: 'KEI Industries Ltd.', direction: 'down', pct: 8 }, { company: 'Welspun Corp Ltd.', direction: 'up', pct: 230, period: 'YTD' },
+      { company: 'Mankind Pharma Ltd.', direction: 'up', pct: 8 }],
+    flows: [{ actors: ['foreign-investors'], action: 'buy', amountCrore: 6500 }] } }).join('\n');
+  assert.match(pulse, /Pulse     7d: 2 up, 1 down in the press \(KEI Industries -8%, Mankind Pharma \+8%\); 1 big-player item\(s\); flows: foreign-investors buy Rs 6,500 cr; 1 UNEXPLAINED desk move\(s\)/);
   assert.match(forward, /Forward   m6: running, 3\/24 months, top fifth \+0.41% a month \(ahead 2\/3\), IC t 0.9; waiting for 2027-02 prices/);
 });
 

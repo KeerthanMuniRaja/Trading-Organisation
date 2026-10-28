@@ -29,6 +29,7 @@ import daily  # noqa: E402
 import eod_trader  # noqa: E402
 import events_calendar  # noqa: E402
 import headline_reader  # noqa: E402
+import market_pulse  # noqa: E402
 import mentor  # noqa: E402
 import signal_scorer as sc  # noqa: E402
 
@@ -126,7 +127,7 @@ def press_dossier(symbol, as_of, index=None):
 
 
 def context(signal, cache, headlines, knowledge=None, record=None, news_status='ok', press='unset', reads=None, calendar=None, evidence=None,
-            mentor_notes=None):
+            mentor_notes=None, pulse=None):
     """What a debater sees. Everything is as of the proposal: no headline published after it was made (so a replay of a
     past day never sees the future), and dataStatus says plainly what is missing (TradingAgents' 'no data' vs
     'unavailable' markers)."""
@@ -162,7 +163,9 @@ def context(signal, cache, headlines, knowledge=None, record=None, news_status='
             # MENTOR-01: the few mentor lessons that fit this decision, each with its check on our data; in the data, not
             # the instructions (an instruction change flipped this model's citations once)
             **({'mentorNotes': {'note': "an experienced mentor's lessons, checked on our data where a check exists: background, never evidence",
-                                'lessons': mentor_notes}} if mentor_notes else {})}
+                                'lessons': mentor_notes}} if mentor_notes else {}),
+            # AWARE-01: what the press reports about this share's moves and big players, and how unusual its last move was
+            **({'marketPulse': pulse} if pulse else {})}
 
 
 def argue(llm, side, signal, ctx, opposing=None, contents=None):
@@ -249,7 +252,8 @@ def run(llm, env=os.environ, cache=daily.DAILY, opener=None, headlines_path=HEAD
         notes = mentor.notes_for(signal['symbol'], events=[e['kind'] for e in calendar['events']],
                                  regime=risk if risk in ('NORMAL', 'CAUTION', 'HIGH', 'SEVERE') else None,
                                  method=mentor.method_of(signal.get('model')))
-        ctx = context(signal, cache, headlines, knowledge, record, news_status, press, reads, calendar, contents, notes)
+        pulse = market_pulse.for_share(signal['symbol'], as_of=signal.get('createdAt'))
+        ctx = context(signal, cache, headlines, knowledge, record, news_status, press, reads, calendar, contents, notes, pulse)
         # a real debate: the bear argues first and the bull answers the bear's case (same two calls as before)
         bear_case = (argued.get(bots['bear']) or {}).get('argument')
         for side in ('bear', 'bull'):

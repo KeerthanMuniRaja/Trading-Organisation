@@ -21,6 +21,15 @@ function localLines(f) {
   if (research) out.push(`Research  ${research.ideasTried} ideas on ${research.from}..${research.through}: ${research.passing.length ? 'passing ' + research.passing.join(', ') : 'none passes'}`
     + `; best ${research.best[0]?.name ?? '?'}${research.lowestRisk ? `; lowest risk ${research.lowestRisk.name} (worst fall ${research.lowestRisk.maxDrawdownPct}%)` : ''}`
     + `${f.knowledge.unknown?.length ? `; ${f.knowledge.unknown.length} unknown cycle problem(s)` : ''}`);
+  const pulse = f.pulse;
+  if (pulse) {
+    const top = [...pulse.movers].sort((a, b) => b.pct - a.pct).filter(m => !m.period).slice(0, 3)
+      .map(m => `${m.company.replace(/ (Ltd\.?|Limited)$/, '')} ${m.direction === 'up' ? '+' : '-'}${m.pct}%`);
+    const flow = pulse.flows[0];
+    out.push(`Pulse     ${pulse.windowDays}d: ${pulse.counts.up} up, ${pulse.counts.down} down in the press${top.length ? ` (${top.join(', ')})` : ''}; `
+      + `${pulse.counts.bigPlayers} big-player item(s)${flow ? `; flows: ${flow.actors.join('/')} ${flow.action}${flow.amountCrore ? ` Rs ${flow.amountCrore.toLocaleString('en-IN')} cr` : ''}` : ''}`
+      + `${pulse.counts.unexplainedDeskMoves ? `; ${pulse.counts.unexplainedDeskMoves} UNEXPLAINED desk move(s)` : ''} (npm run pulse)`);
+  }
   for (const t of f.forward ?? []) out.push(`Forward   ${t.name}: ${t.status}${t.monthsJudged ? `, ${t.monthsJudged}/${t.monthsNeeded} months, `
     + `top fifth ${t.averageExcessPct >= 0 ? '+' : ''}${t.averageExcessPct}% a month (ahead ${t.ahead}/${t.monthsJudged}), IC t ${t.icTStat ?? '?'}`
     : ` (first month ${t.firstMonth})`}${t.waitingForDataFrom ? `; waiting for ${t.waitingForDataFrom} prices` : ''}`);
@@ -106,6 +115,7 @@ export async function gather(env = process.env, { fetchImpl = fetch, root = ROOT
   const screens = existsSync(rnd) ? (await readdir(rnd)).filter(n => /^scout-\d{4}-\d{2}\.json$/.test(n)).sort() : [];
   const scout = screens.length ? await json(join(rnd, screens.at(-1))) : null;
   facts.scout = scout ? { through: scout.through, ideasTried: scout.ideasTried, passing: scout.candidates.filter(c => c.passes).length } : null;
+  facts.pulse = await json(join(root, '.local', 'world', 'market-pulse.json'));  // AWARE-01
   const forward = join(root, '.local', 'trading-desk', 'factor-forward', 'reports');  // RESEARCH-03: pre-registered factor tests
   facts.forward = existsSync(forward) ? (await Promise.all((await readdir(forward)).filter(n => n.endsWith('.json')).sort().map(n => json(join(forward, n))))).filter(Boolean) : [];
   const decisions = join(root, '.local', 'tradingagents', 'decisions');

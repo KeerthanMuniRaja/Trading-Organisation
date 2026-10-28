@@ -74,6 +74,9 @@ class MentorTests(unittest.TestCase):
         self.assertEqual(ctx['mentorNotes']['lessons'], notes)
         self.assertIn('never evidence', ctx['mentorNotes']['note'])
         self.assertNotIn('mentorNotes', debate.context(signal, self.cache, []))
+        pulse = {'reportedMoves': [{'direction': 'down', 'pct': 3.0, 'why': 'Q2 results'}], 'note': 'press reports read by rules: unverified context, never evidence'}
+        self.assertEqual(debate.context(signal, self.cache, [], pulse=pulse)['marketPulse'], pulse)   # AWARE-01
+        self.assertNotIn('marketPulse', debate.context(signal, self.cache, []))
 
 
 if __name__ == '__main__':
