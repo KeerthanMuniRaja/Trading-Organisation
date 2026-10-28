@@ -118,6 +118,8 @@ The commands below are for Windows PowerShell. On Linux, use `/` in paths and `.
 | Command | Why |
 | --- | --- |
 | `npm run status` | One-screen health: backend, supervisor, regime, research and knowledge. Works while the backend is down |
+| `npm run weekly` | The trading week on one page for your weekend review: each day's cycle, money against the basket, the prediction record, news, the model's exams, the forward test, the market. Writes `.local/digests/week-<monday>.md` |
+| `npm run pulse` | Who is moving and why, big players and flows, sectors ([market pulse](docs/market-pulse.md)) |
 | `npm run readiness` | The morning check: is everything ready to trade today? |
 | `npm run autonomy` / `-- set <file> --reason "..."` | Standing approvals: what the agents may do by themselves |
 | `npm run protections` / `-- set <file> --reason "..."` | Loss brakes: pause new buys after losses, and lift by themselves |
