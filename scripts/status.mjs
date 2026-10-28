@@ -21,6 +21,9 @@ function localLines(f) {
   if (research) out.push(`Research  ${research.ideasTried} ideas on ${research.from}..${research.through}: ${research.passing.length ? 'passing ' + research.passing.join(', ') : 'none passes'}`
     + `; best ${research.best[0]?.name ?? '?'}${research.lowestRisk ? `; lowest risk ${research.lowestRisk.name} (worst fall ${research.lowestRisk.maxDrawdownPct}%)` : ''}`
     + `${f.knowledge.unknown?.length ? `; ${f.knowledge.unknown.length} unknown cycle problem(s)` : ''}`);
+  for (const t of f.forward ?? []) out.push(`Forward   ${t.name}: ${t.status}${t.monthsJudged ? `, ${t.monthsJudged}/${t.monthsNeeded} months, `
+    + `top fifth ${t.averageExcessPct >= 0 ? '+' : ''}${t.averageExcessPct}% a month (ahead ${t.ahead}/${t.monthsJudged}), IC t ${t.icTStat ?? '?'}`
+    : ` (first month ${t.firstMonth})`}${t.waitingForDataFrom ? `; waiting for ${t.waitingForDataFrom} prices` : ''}`);
   if (f.intraday) out.push(`Intraday  ${f.intraday.mode} ${f.intraday.day}: basket ${f.intraday.final.basketMovePct}%, positions ${f.intraday.final.lossPct}%; `
     + `events: ${f.intraday.events.map(e => e.rule + ':' + e.subject).join(', ') || 'none'}`);
   if (f.index) out.push(`Knowledge ${f.index.nodes} connected records (${Object.entries(f.index.byKind ?? {}).map(([k, n]) => `${n} ${k}`).join(', ')}), `
@@ -103,6 +106,8 @@ export async function gather(env = process.env, { fetchImpl = fetch, root = ROOT
   const screens = existsSync(rnd) ? (await readdir(rnd)).filter(n => /^scout-\d{4}-\d{2}\.json$/.test(n)).sort() : [];
   const scout = screens.length ? await json(join(rnd, screens.at(-1))) : null;
   facts.scout = scout ? { through: scout.through, ideasTried: scout.ideasTried, passing: scout.candidates.filter(c => c.passes).length } : null;
+  const forward = join(root, '.local', 'trading-desk', 'factor-forward', 'reports');  // RESEARCH-03: pre-registered factor tests
+  facts.forward = existsSync(forward) ? (await Promise.all((await readdir(forward)).filter(n => n.endsWith('.json')).sort().map(n => json(join(forward, n))))).filter(Boolean) : [];
   const decisions = join(root, '.local', 'tradingagents', 'decisions');
   const decided = existsSync(decisions) ? (await readdir(decisions)).filter(n => /^\d{4}-\d{2}-\d{2}\.json$/.test(n)).sort() : [];
   const ta = decided.length ? await json(join(decisions, decided.at(-1))) : null;

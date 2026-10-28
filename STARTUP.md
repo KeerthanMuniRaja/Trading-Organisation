@@ -38,7 +38,8 @@ The commands below are for Windows PowerShell. On Linux, use `/` in paths and `.
    - Copy `.local\data-repo\state\hermes\` to `integrations\hermes\.state\`, and do the same for `ruflo` and `skfolio`.
    - Check that `.local\claims\autolearn.json` exists. Without it, the news is never fact-checked and the headline
      reader has nothing to read. If it is missing, create it with
-     `{ "recipientBotIds": ["debate-bull", "debate-bear", "tradingagents"], "primarySourceIds": [], "holdDays": 7, "maxModelCallsPerCycle": 20 }`
+     `{ "recipientBotIds": ["debate-bull", "debate-bear", "tradingagents"], "primarySourceIds": [], "holdDays": 7, "maxModelCallsPerCycle": 80 }`
+     (80 calls, about 35 minutes on the laptop, covers a day's news from three feeds)
      ([claims](integrations/claims/README.md)).
 3. **Put your secrets back:**
    - `.env` goes in the project folder;

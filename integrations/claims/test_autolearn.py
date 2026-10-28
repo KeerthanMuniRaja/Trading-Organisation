@@ -160,6 +160,17 @@ class AutoLearnTests(unittest.TestCase):
     def decisions(self):
         return autolearn.read(self.state, 'decisions.json', {})
 
+    def test_with_few_model_calls_the_newest_news_is_read_first(self):
+        backend = FakeBackend(['e1', 'e2', 'e3'])
+        autolearn.factcheck_queue(backend.api('evaluator'), self.state)
+        queue = autolearn.read(self.state, 'queue.json', [])
+        for o, day in zip(queue, ('2026-10-01', '2026-10-03', '2026-10-02')):
+            o['publishedAt'] = day + 'T10:00:00+00:00'
+        autolearn.write(self.state, 'queue.json', queue)
+        newest = queue[1]['evidenceId']
+        autolearn.analyst_extract(stub_model, 'stub', self.state, {**CONFIG, 'maxModelCallsPerCycle': 1})
+        self.assertEqual(list(autolearn.read(self.state, 'extracted.json', {})['results']), [newest])
+
     def test_corroborated_news_becomes_verified_knowledge_without_a_human(self):
         backend = FakeBackend(['e1', 'e2', 'e3'])
         first = cycle(backend, self.state)

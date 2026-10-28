@@ -235,6 +235,9 @@ def analyst_extract(llm, model, state, config, api=None, now=None):
 
 def _extract(llm, model, state, config):
     queue = [{k: v for k, v in o.items() if k != 'blockers'} for o in read(state, 'queue.json', []) if not o.get('blockers')]
+    # newest first: with a bounded number of model calls a day, today's news matters most to the desk, and an item
+    # older than holdDays can no longer be corroborated in time anyway
+    queue.sort(key=lambda o: o.get('publishedAt') or '', reverse=True)
     current = read(state, 'extracted.json', None)
     if current and (current.get('model') != model or current.get('contractVersion') != claims.CONTRACT_VERSION):
         # A new model or claim contract starts a fresh extraction file. The old one is kept and still read, so claims

@@ -35,6 +35,11 @@ test('one screen: health, autonomy, agenda, every member, money, the day and wha
   const world = render({ ...FACTS, world: { coverage: { countriesCovered: ['IN', 'US'] }, stories: { windowHours: 48, stories: 30, crossBorder: 3, reachingShares: 9 },
     links: { drivers: 17, carrying: ['crude-oil'] } } }).join('\n');
   assert.match(world, /World     feeds working in IN, US; last 48h: 30 stories, 3 across countries, 9 reach the shares; links carrying information: crude-oil of 17/);
+  const forward = render({ ...FACTS, forward: [
+    { name: 'm12', status: 'waiting', monthsJudged: 0, monthsNeeded: 24, firstMonth: '2026-11', waitingForDataFrom: null },
+    { name: 'm6', status: 'running', monthsJudged: 3, monthsNeeded: 24, averageExcessPct: 0.41, ahead: 2, icTStat: 0.9, waitingForDataFrom: '2027-02' }] }).join('\n');
+  assert.match(forward, /Forward   m12: waiting \(first month 2026-11\)/);
+  assert.match(forward, /Forward   m6: running, 3\/24 months, top fifth \+0.41% a month \(ahead 2\/3\), IC t 0.9; waiting for 2027-02 prices/);
 });
 
 test('it only reads: GET routes, and the digest and release views', async () => {
