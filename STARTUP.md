@@ -33,7 +33,10 @@ orders fill at verified prices; every result is scored and audited. It is paper 
    - checks everything and starts the supervisor (optionally at every logon).
 
    It stops with a plain message when only you can act: a program to install, or your three secret files. Run it
-   again afterwards; finished steps are skipped. Options: `-SkipUpgrade` (no bigger model), `-NoStart`.
+   again afterwards; finished steps are skipped. Options:
+   - `-Check`: first, to preview: it looks only, and changes nothing;
+   - `-SkipUpgrade`: no bigger model;
+   - `-NoStart`.
 
 ## 1. First-time setup (new machine), about an hour
 

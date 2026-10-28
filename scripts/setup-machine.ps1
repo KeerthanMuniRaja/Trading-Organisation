@@ -16,7 +16,8 @@
 #   -SkipUpgrade   no bigger model (saves a 6-9 GB download and about an hour of exams)
 #   -NoStart       set up only; start later with: npm run supervisor
 #   -Refresh       place the data repository's data again even though this machine already has a database
-param([switch]$SkipUpgrade, [switch]$NoStart, [switch]$Refresh)
+#   -Check         look only: report what is ready and what a real run would do; change nothing
+param([switch]$SkipUpgrade, [switch]$NoStart, [switch]$Refresh, [switch]$Check)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
@@ -44,6 +45,7 @@ if (Has git) { Ok (git --version) } else { $missing += 'Git' }
 if (Has gh) { Ok 'GitHub CLI' } else { $missing += 'GitHub CLI (gh)' }
 if ($missing.Count) {
   Note ('Missing: ' + ($missing -join '; '))
+  if ($Check) { Stop-Here ('A real run would offer to install: ' + ($missing -join '; ')) }
   if (Has winget) {
     $answer = Read-Host '    Install them now with winget (Microsoft''s installer)? (y/N)'
     if ($answer -match '^[yY]') {
@@ -68,23 +70,29 @@ Ok 'GitHub CLI signed in'
 Step 'Both repositories'
 if (-not (Test-Path (Join-Path $root '.git'))) { Stop-Here 'Run this from inside the cloned Trading-Organisation folder' }
 $branch = (git rev-parse --abbrev-ref HEAD).Trim()
-if ($branch -ne 'dev') {
-  if (git status --porcelain) { Stop-Here "The code is on branch $branch with local changes; commit them or switch to dev yourself" }
-  Run git @('checkout', 'dev') 'switching to dev'
-}
-Run git @('pull', '--ff-only', 'origin', 'dev') 'updating the code'
-Ok 'code: dev, up to date'
 $dataRepo = Join-Path $root '.local\data-repo'
-if (Test-Path (Join-Path $dataRepo '.git')) { Run git @('-C', $dataRepo, 'pull', '--ff-only') 'updating the data repository' }
-else { New-Item -ItemType Directory -Force (Join-Path $root '.local') | Out-Null; Run gh @('repo', 'clone', 'KeerthanMuniRaja/trading-organisation-data', $dataRepo) 'cloning the data repository' }
-$lastData = (git -C $dataRepo log -1 --format=%s).Trim()
-Ok "data: up to date (last: $lastData)"
+if ($Check) {
+  Ok "code on branch $branch$(if ($branch -ne 'dev') { ' (a real run switches to dev)' })"
+  if (Test-Path (Join-Path $dataRepo '.git')) { Ok "data repository present (last: $((git -C $dataRepo log -1 --format=%s).Trim()))" } else { Note 'data repository missing: a real run clones it' }
+} else {
+  if ($branch -ne 'dev') {
+    if (git status --porcelain) { Stop-Here "The code is on branch $branch with local changes; commit them or switch to dev yourself" }
+    Run git @('checkout', 'dev') 'switching to dev'
+  }
+  Run git @('pull', '--ff-only', 'origin', 'dev') 'updating the code'
+  Ok 'code: dev, up to date'
+  if (Test-Path (Join-Path $dataRepo '.git')) { Run git @('-C', $dataRepo, 'pull', '--ff-only') 'updating the data repository' }
+  else { New-Item -ItemType Directory -Force (Join-Path $root '.local') | Out-Null; Run gh @('repo', 'clone', 'KeerthanMuniRaja/trading-organisation-data', $dataRepo) 'cloning the data repository' }
+}
+$lastData = if (Test-Path (Join-Path $dataRepo '.git')) { (git -C $dataRepo log -1 --format=%s).Trim() } else { '' }
+if (-not $Check) { Ok "data: up to date (last: $lastData)" }
 
 # ---------- 3. data ----------
 Step 'The data (first time only)'
 $database = Join-Path $root '.data\paper'
 $hasDatabase = (Test-Path $database) -and (Get-ChildItem $database -Force -ErrorAction SilentlyContinue | Select-Object -First 1)
 if ($hasDatabase -and -not $Refresh) { Ok 'this machine already has a database: its data is kept (use -Refresh to place the repository''s again)' }
+elseif ($Check) { Note 'no database yet: a real run places the data repository''s data, then restores the newest backup' }
 else {
   robocopy (Join-Path $dataRepo 'local') (Join-Path $root '.local') /E /NFL /NDL /NJH /NJS /NP | Out-Null
   if ($LASTEXITCODE -ge 8) { Stop-Here 'copying the data failed' }
@@ -96,7 +104,8 @@ else {
   Ok 'data placed in .local and the integrations'' state'
 }
 $autolearn = Join-Path $root '.local\claims\autolearn.json'
-if (-not (Test-Path $autolearn)) {
+if ($Check) { if (Test-Path $autolearn) { Ok 'news fact-check configuration present' } else { Note 'news fact-check configuration missing: a real run creates it' } }
+elseif (-not (Test-Path $autolearn)) {
   New-Item -ItemType Directory -Force (Split-Path $autolearn) | Out-Null
   [IO.File]::WriteAllText($autolearn, '{ "recipientBotIds": ["debate-bull", "debate-bear", "tradingagents"], "primarySourceIds": [], "holdDays": 7, "maxModelCallsPerCycle": 80 }' + "`n")
   Ok 'news fact-check configuration created'
@@ -113,6 +122,14 @@ Ok 'all three present (not read or shown)'
 # a database path left from the old machine would point nowhere here
 $envText = [IO.File]::ReadAllText((Join-Path $root '.env'))
 $dbLine = [regex]::Match($envText, '(?m)^DATABASE_PATH=(.*)$')
+if ($Check) {
+  if ($dbLine.Success -and $dbLine.Groups[1].Value.Trim() -ne '.data/paper' -and -not (Test-Path $dbLine.Groups[1].Value.Trim())) { Note 'DATABASE_PATH points at another machine: a real run sets it to .data/paper' }
+  $ram = [math]::Round((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 1)
+  Ok "$ram GB of RAM: $(if ($ram -ge 28) { 'a 14B decision model' } elseif ($ram -ge 15) { 'a 9B/8B decision model' } else { 'the 4B only' }) would be tried"
+  Write-Host ''
+  Write-Host 'Check finished: nothing was changed. A real run continues with install, database, knowledge, model, tuning, upgrade, checks and start.' -ForegroundColor Green
+  exit 0
+}
 if ($dbLine.Success -and $dbLine.Groups[1].Value.Trim() -ne '.data/paper' -and -not (Test-Path $dbLine.Groups[1].Value.Trim())) {
   [IO.File]::WriteAllText((Join-Path $root '.env'), ($envText -replace '(?m)^DATABASE_PATH=.*$', 'DATABASE_PATH=.data/paper'))
   Ok 'DATABASE_PATH pointed at the old machine; now .data/paper'
