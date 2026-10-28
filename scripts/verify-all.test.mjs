@@ -34,3 +34,13 @@ test('test counts are read from both runners', () => {
   // every test file in the repository belongs to some suite
   for (const id of ['integration-tests', 'hermes', 'market-replay', 'skfolio']) assert.ok(suites().some(s => s.id === id), id);
 });
+
+test('every trading-desk test file runs in the gate (three once sat outside it unnoticed)', async () => {
+  const { readdir } = await import('node:fs/promises');
+  const { fileURLToPath } = await import('node:url');
+  const desk = fileURLToPath(new URL('../integrations/trading-desk/', import.meta.url));
+  const files = (await readdir(desk)).filter(n => /^test_.+\.py$/.test(n)).map(n => n.slice(0, -3));
+  const listed = new Set(suites().flatMap(s => s.args ?? []));
+  const missing = files.filter(f => !listed.has(f) && !suites().some(s => (s.args ?? []).includes(f + '.py')));
+  assert.deepEqual(missing, []);
+});
