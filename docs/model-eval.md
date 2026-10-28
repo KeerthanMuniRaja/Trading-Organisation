@@ -161,6 +161,22 @@ it fixed the "verified evidence" mistake and removed two unsupported claims, but
 debate call now takes about 96 s instead of 37 s; debates are few, so this is affordable. The bigger decision model
 (`npm run model:upgrade`) is the next lever for what a 4B model still misses.
 
+**Automatic re-examination** (MODEL-EXAMS-01, from 29 Oct). The daily cycle's `model-exams` step runs
+`model_eval.py --tasks debate,scenario --repeats 1 --if-changed`. It fingerprints everything that shapes an answer:
+- the cases and their judges;
+- the prompt versions;
+- the debate and panel code (their context notes and the second pass);
+- the model.
+
+It re-runs only when that fingerprint moved, so every teaching change is examined on the real model the same day,
+without anyone remembering to. The latest verdict is in `.local/model-eval/auto-last.json` and in the digest.
+
+**More exams, 28 Oct:**
+- `exam-short-term-tax` and `exam-past-winners-mislead` (curriculum v4);
+- `exam-regime-is-not-a-share-call`, the first scenario exam judged for correctness (`directionsIn`,
+  `whyMustNotMention`). It holds the panel's real mistake that day: calling a share down only because the whole market's
+  regime is SEVERE.
+
 ## Training data from our own work (`build_dataset.py`)
 
 **The source.** Every production model call is now recorded locally in `.local/model-calls/<day>.jsonl` by the shared
