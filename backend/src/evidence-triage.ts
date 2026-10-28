@@ -11,12 +11,18 @@ import { Allow } from './security.js';
 
 // scope-v2 adds world drivers (other countries' central banks, energy, China, trade, global risk): news from abroad that
 // can reach the shares through the reviewed impact links (integrations/trading-desk/impact_links.json)
-export const TRIAGE_VERSION = 'scope-v2';
+// scope-v3 (28 Oct 2026): 'SBI Life', 'SBI Mutual Fund', 'ITC Hotels' and 'NTPC Green Energy' are other listed
+// companies, no longer counted as SBI, ITC or NTPC (the claims module's exclusions, plus ITC Hotels)
+export const TRIAGE_VERSION = 'scope-v3';
 /** Names a share is reported under. All-capital terms match case-sensitively (SBI, ITC), others ignore case. */
 export const SHARE_TERMS: Record<string, string[]> = {
   RELIANCE: ['Reliance Industries', 'RIL', 'Reliance Jio', 'Jio Platforms', 'Reliance Retail', 'Mukesh Ambani'],
   HDFCBANK: ['HDFC Bank'], ICICIBANK: ['ICICI Bank'], INFY: ['Infosys'], SBIN: ['State Bank of India', 'SBI'],
   ITC: ['ITC'], AXISBANK: ['Axis Bank'], NTPC: ['NTPC'],
+};
+/** A term followed by one of these words names another company. */
+export const NOT_FOLLOWED_BY: Record<string, string> = {
+  SBI: '\\s+(?:Life|Cards?|Mutual|Funds?|General|MF)\\b', ITC: '\\s+Hotels\\b', NTPC: '\\s+Green\\b',
 };
 /** Drivers that move the whole basket. */
 export const MARKET_TERMS = ['Sensex', 'Nifty', 'BSE', 'NSE', 'RBI', 'Reserve Bank', 'repo rate', 'monetary policy', 'inflation', 'CPI', 'GDP',
@@ -27,8 +33,8 @@ export const WORLD_TERMS = ['Federal Reserve', 'FOMC', 'Treasury yields', 'ECB',
   'PBOC', "People's Bank of China", 'OPEC', 'Brent', 'oil prices', 'Strait of Hormuz', 'Red Sea', 'Wall Street', 'Nasdaq', 'S&P 500',
   'recession', 'trade war', 'tariffs', 'yuan', 'dollar index', 'coal prices', 'emerging markets', 'interest rates', 'rate cut', 'rate hike', 'H-1B'];
 
-const pattern = (term: string) => new RegExp(`(^|[^A-Za-z0-9])${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+')}($|[^A-Za-z0-9])`,
-  /^[A-Z]+$/.test(term) ? '' : 'i');
+const pattern = (term: string) => new RegExp(`(^|[^A-Za-z0-9])${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+')}`
+  + `${NOT_FOLLOWED_BY[term] ? `(?!${NOT_FOLLOWED_BY[term]})` : ''}($|[^A-Za-z0-9])`, /^[A-Z]+$/.test(term) ? '' : 'i');
 const SHARE_PATTERNS = Object.entries(SHARE_TERMS).map(([share, terms]) => [share, terms.map(pattern)] as const);
 const MARKET_PATTERNS = MARKET_TERMS.map(t => [t, pattern(t)] as const);
 const WORLD_PATTERNS = WORLD_TERMS.map(t => [t, pattern(t)] as const);

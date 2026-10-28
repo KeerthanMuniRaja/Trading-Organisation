@@ -12,7 +12,7 @@ Triage applies **fixed, versioned rules in the backend** to every waiting news i
 **Rules of the decision:**
 - **Not a verdict.** An out-of-scope item is **not rejected**: nobody judged it false, and it can still be reviewed normally.
 - **Matching.** Names in capitals (SBI, ITC, RBI) match only in capitals; other names ignore case. Every term must be a whole word.
-- **Record.** Each item is triaged once. The decision is append-only and records the rules version that made it. The current version is `scope-v2`, which adds world drivers such as the Federal Reserve, OPEC, Nasdaq and tariffs, recorded as `world:<term>` ([world news](world-news.md)). Items triaged earlier keep their `scope-v1` decision.
+- **Record.** Each item is triaged once. The decision is append-only and records the rules version that made it. The current version is `scope-v3` (28 Oct 2026). `scope-v2` added world drivers such as the Federal Reserve, OPEC, Nasdaq and tariffs, recorded as `world:<term>` ([world news](world-news.md)). `scope-v3` stops counting other listed companies as ours: "SBI Life", "SBI Mutual Fund" and "SBI Cards" are not SBI, "ITC Hotels" is not ITC, and "NTPC Green Energy" is not NTPC. It found 2 of 47 tagged headlines in the history wrongly tagged. Items triaged earlier keep the version that decided them.
 - **Changing the list.** The term list is in [`backend/src/evidence-triage.ts`](../backend/src/evidence-triage.ts). Changing it should change the version.
 
 `POST /v1/evidence/triage` (evaluator or owner) triages everything waiting, up to 1000 items per run. The organisation cycle runs it as the step `news-triage`, right after the news feeds.

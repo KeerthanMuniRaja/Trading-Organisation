@@ -49,6 +49,7 @@ NOT_FOLLOWED_BY = {
     'Reliance': r'\s+(?:Power|Capital|Infra\w*|Communications|Home|Naval|General|Nippon)',
     'SBI': r'\s+(?:Life|Cards?|Mutual|Funds?|General)',
     'NTPC': r'\s+Green',
+    'ITC': r'\s+Hotels',  # listed separately since the 2025 demerger
 }
 EVENT_TYPES = ['earnings', 'guidance', 'order-or-contract', 'regulatory-or-legal', 'management', 'corporate-action',
                'deal-or-investment', 'rating-or-target', 'macro-or-sector', 'other']

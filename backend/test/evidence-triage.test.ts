@@ -14,6 +14,11 @@ test('fixed rules decide relevance: tracked shares by name, market-wide drivers,
   assert.equal(classify('Shares of ITC rose 2%').matched[0], 'ITC');
   assert.equal(classify('the sbi of the story').decision, 'out-of-scope'); // acronyms match only in capitals
   assert.equal(classify('Infosys\nwins a deal').matched[0], 'INFY');
+  // scope-v3: other listed companies with the same first word are not ours
+  for (const other of ['SBI Life shares rise', 'SBI Mutual Fund buys a stake', 'SBI Cards posts profit', 'ITC Hotels opens a resort', 'NTPC Green Energy IPO'])
+    assert.equal(classify(other).decision, 'out-of-scope', other);
+  assert.deepEqual(classify('SBI and SBI Life both report results').matched, ['SBIN']);   // the bank is still named
+  assert.deepEqual(classify('ITC, after the ITC Hotels demerger').matched, ['ITC']);
 });
 
 test('scope-v2: news from abroad that reaches the shares through a world driver is in scope', () => {
