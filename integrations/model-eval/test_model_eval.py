@@ -85,6 +85,15 @@ class EvalTests(unittest.TestCase):
         good = {**bad, 'argument': 'A press report, unverified and from unnamed sources, says a promoter sold shares; it is not confirmed.'}
         self.assertEqual(me.judge(case, case['input'], good)[:2], (True, True))
 
+    def test_a_panel_call_driven_by_the_market_regime_fails(self):
+        case = next(c for c in CASES if c['id'] == 'exam-regime-is-not-a-share-call')
+        herd = {'calls': [{'symbol': 'INFY.NS', 'direction': 'down', 'why': 'SEVERE regime with 11 consecutive distribution days precedes falls'}]}
+        valid, correct, _, notes = me.judge(case, case['input'], herd)
+        self.assertEqual((valid, correct), (True, False))
+        self.assertTrue(any('wrong direction' in n for n in notes) and any('consecutive' in n for n in notes))
+        calm = {'calls': [{'symbol': 'INFY.NS', 'direction': 'flat', 'why': 'A US IPO does not change Infosys against the market.'}]}
+        self.assertEqual(me.judge(case, case['input'], calm)[:2], (True, True))
+
     def test_a_good_model_ships(self):
         clock = iter(range(10_000)).__next__
         report = me.summarise(me.run(good, CASES, clock=lambda: clock() * 3.0, log=lambda *a: None))

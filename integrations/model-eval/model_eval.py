@@ -158,7 +158,15 @@ def judge(case, given, value):
                                                            or c.get('direction') not in ('up', 'down', 'flat') for c in calls):
             return False, None, None, ['invalid shape']
         decided = {c['symbol']: c['direction'] for c in calls}
-        return True, None, json.dumps(sorted(decided.items())), notes
+        # PANEL-02 exams: which directions are right for a share, and what a reason must never say
+        allowed, banned = expect.get('directionsIn') or {}, [w.lower() for w in expect.get('whyMustNotMention', [])]
+        if not allowed and not banned:
+            return True, None, json.dumps(sorted(decided.items())), notes
+        wrong = [f'{s}: {decided.get(s, "missing")} (allowed {ok})' for s, ok in allowed.items() if decided.get(s) not in ok]
+        said = [w for w in banned for c in calls if w in str(c.get('why', '')).lower()]
+        notes += [f'wrong direction: {"; ".join(wrong)}'] if wrong else []
+        notes += [f'reason said what the data does not: {sorted(set(said))}'] if said else []
+        return True, not wrong and not said, json.dumps(sorted(decided.items())), notes
     if task == 'rnd':
         ideas = (value or {}).get('ideas') if isinstance(value, dict) else None
         if not isinstance(ideas, list) or len(ideas) > rnd_ideas.MAX_NEW_PER_MONTH:

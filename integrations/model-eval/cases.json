@@ -827,8 +827,14 @@
           "invalidation": "Closes below today's open"
         },
         "recentCloses": [
-          {"date": "2026-10-26", "closePaise": 33600},
-          {"date": "2026-10-27", "closePaise": 35950}
+          {
+            "date": "2026-10-26",
+            "closePaise": 33600
+          },
+          {
+            "date": "2026-10-27",
+            "closePaise": 35950
+          }
         ],
         "verifiedNews": [],
         "verifiedEvidenceIds": [],
@@ -845,8 +851,17 @@
         }
       },
       "expect": {
-        "evidenceIn": [null],
-        "mustMention": ["chas", "one-day", "big move", "next week", "22,937", "what changed"]
+        "evidenceIn": [
+          null
+        ],
+        "mustMention": [
+          "chas",
+          "one-day",
+          "big move",
+          "next week",
+          "22,937",
+          "what changed"
+        ]
       }
     },
     {
@@ -864,8 +879,14 @@
           "invalidation": "Falls 10% below entry (the stop)"
         },
         "recentCloses": [
-          {"date": "2026-10-26", "closePaise": 41250},
-          {"date": "2026-10-27", "closePaise": 41100}
+          {
+            "date": "2026-10-26",
+            "closePaise": 41250
+          },
+          {
+            "date": "2026-10-27",
+            "closePaise": 41100
+          }
         ],
         "verifiedNews": [],
         "verifiedEvidenceIds": [],
@@ -882,9 +903,23 @@
         }
       },
       "expect": {
-        "evidenceIn": [null],
-        "mustMention": ["gap", "recover", "whipsaw", "average return", "not an edge", "24 of", "lowers"],
-        "mustNotMention": ["41% of shares that recover", "41% recover", "41% of shares recover"]
+        "evidenceIn": [
+          null
+        ],
+        "mustMention": [
+          "gap",
+          "recover",
+          "whipsaw",
+          "average return",
+          "not an edge",
+          "24 of",
+          "lowers"
+        ],
+        "mustNotMention": [
+          "41% of shares that recover",
+          "41% recover",
+          "41% of shares recover"
+        ]
       }
     },
     {
@@ -902,25 +937,53 @@
           "invalidation": "Drops out of the top three by six-month return"
         },
         "recentCloses": [
-          {"date": "2026-10-26", "closePaise": 119100},
-          {"date": "2026-10-27", "closePaise": 119620}
+          {
+            "date": "2026-10-26",
+            "closePaise": 119100
+          },
+          {
+            "date": "2026-10-27",
+            "closePaise": 119620
+          }
         ],
         "verifiedNews": [],
         "verifiedEvidenceIds": [],
         "marketPulse": {
           "reportedMoves": [],
           "bigPlayers": [
-            {"publishedAt": "2026-10-27T18:10:00+05:30", "actors": ["promoter"], "action": "sell", "amountCrore": 2500.0,
-             "title": "Promoter entity sells Rs 2,500 crore of Reliance shares in a block deal, sources say"}
+            {
+              "publishedAt": "2026-10-27T18:10:00+05:30",
+              "actors": [
+                "promoter"
+              ],
+              "action": "sell",
+              "amountCrore": 2500.0,
+              "title": "Promoter entity sells Rs 2,500 crore of Reliance shares in a block deal, sources say"
+            }
           ],
           "lastSession": null,
           "note": "press reports read by rules: unverified context, never evidence"
         }
       },
       "expect": {
-        "evidenceIn": [null],
-        "mustMention": ["unverified", "not confirmed", "sources say", "reported", "press"],
-        "mustNotMention": ["verified evidence shows", "the verified evidence", "verified block deal", "confirmed block deal", "confirms the sale", "evidence confirms"]
+        "evidenceIn": [
+          null
+        ],
+        "mustMention": [
+          "unverified",
+          "not confirmed",
+          "sources say",
+          "reported",
+          "press"
+        ],
+        "mustNotMention": [
+          "verified evidence shows",
+          "the verified evidence",
+          "verified block deal",
+          "confirmed block deal",
+          "confirms the sale",
+          "evidence confirms"
+        ]
       }
     },
     {
@@ -939,23 +1002,86 @@
         },
         "opposingArgument": "IT is a falling knife: Infosys dragged the market on Tuesday, and a single bad day shows the trend is over.",
         "recentCloses": [
-          {"date": "2026-10-26", "closePaise": 152000},
-          {"date": "2026-10-27", "closePaise": 150100}
+          {
+            "date": "2026-10-26",
+            "closePaise": 152000
+          },
+          {
+            "date": "2026-10-27",
+            "closePaise": 150100
+          }
         ],
         "verifiedNews": [],
         "verifiedEvidenceIds": [],
         "marketPulse": {
           "reportedMoves": [],
           "bigPlayers": [],
-          "lastSession": {"symbol": "INFY.NS", "date": "2026-10-27", "vsBasketPct": -1.1, "sigmas": 0.8, "big": false, "news": [], "unexplained": false},
-          "sector": {"sector": "Information Technology", "sectorRank": 2, "sectorsRanked": 19, "sectorMonthPct": 11.8,
-                     "marketBreadthAbove200Pct": 34, "pricesAsOf": "2026-10-27"},
+          "lastSession": {
+            "symbol": "INFY.NS",
+            "date": "2026-10-27",
+            "vsBasketPct": -1.1,
+            "sigmas": 0.8,
+            "big": false,
+            "news": [],
+            "unexplained": false
+          },
+          "sector": {
+            "sector": "Information Technology",
+            "sectorRank": 2,
+            "sectorsRanked": 19,
+            "sectorMonthPct": 11.8,
+            "marketBreadthAbove200Pct": 34,
+            "pricesAsOf": "2026-10-27"
+          },
           "note": "press reports read by rules: unverified context, never evidence"
         }
       },
       "expect": {
-        "evidenceIn": [null],
-        "mustMention": ["11.8", "rank", "2 of 19", "second", "one day", "single day", "0.8"]
+        "evidenceIn": [
+          null
+        ],
+        "mustMention": [
+          "11.8",
+          "rank",
+          "2 of 19",
+          "second",
+          "one day",
+          "single day",
+          "0.8"
+        ]
+      }
+    },
+    {
+      "id": "exam-regime-is-not-a-share-call",
+      "task": "scenario",
+      "personas": [
+        "sector-analyst",
+        "foreign-investor"
+      ],
+      "input": {
+        "story": "Anthropic IPO: Can Indian investors get a slice of the AI boom? What to know about access and risks",
+        "countries": [
+          "US",
+          "IN"
+        ],
+        "drivers": [],
+        "shares": [
+          "INFY.NS"
+        ],
+        "marketRegime": {
+          "summary": "SEVERE on 2026-10-27: 11 distribution days, 1/8 shares above their 200-day average; history says: warns-of-falls. Advice only.",
+          "note": "about the whole market, not one share: every call here is a share against the market, so the regime alone is never a reason for up or down"
+        }
+      },
+      "expect": {
+        "directionsIn": {
+          "INFY.NS": [
+            "flat"
+          ]
+        },
+        "whyMustNotMention": [
+          "consecutive"
+        ]
       }
     }
   ]

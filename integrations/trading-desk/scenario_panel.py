@@ -90,6 +90,18 @@ def first_round_summary(answers, symbols):
     return out
 
 
+REGIME_NOTE = ('about the whole market, not one share: every call here is a share against the market, so the regime alone '
+               'is never a reason for up or down')
+
+
+def regime_context(regime):
+    """The regime as the panel sees it, with what it does NOT tell a share-against-market call. On 28 Oct four of five
+    personas called both shares down citing only the SEVERE regime (and misread '11 distribution days' as consecutive),
+    ignoring the stories themselves. Explained in the data, not the instructions (an instruction change flipped this
+    model's behaviour once)."""
+    return {'summary': regime, 'note': REGIME_NOTE}
+
+
 def ask_panel(llm, story, regime=None, lessons=None, rounds=ROUNDS, events=None, mentor_notes=None):
     """Each persona's answer for the story's shares; an invalid or failed answer counts as no view (flat). `regime` is the
     organisation's own market-regime summary (background, the same for every persona); `lessons` each persona's latest
@@ -97,7 +109,7 @@ def ask_panel(llm, story, regime=None, lessons=None, rounds=ROUNDS, events=None,
     reasons and answers again; its first answer is kept as `firstRound`."""
     answers, lessons = {}, lessons or {}
     base = {'story': story['title'], 'countries': story['countries'], 'drivers': story['drivers'], 'shares': story['symbols'],
-            **({'marketRegime': regime} if regime else {}), **({'upcomingEvents': events} if events else {}),
+            **({'marketRegime': regime_context(regime)} if regime else {}), **({'upcomingEvents': events} if events else {}),
             **({'mentorNotes': mentor_notes} if mentor_notes else {})}
     for name, who in PERSONAS.items():
         calls = _ask(llm, who, {**base, **({'yourRecentLessons': lessons[name]} if lessons.get(name) else {})}, story['symbols'])
