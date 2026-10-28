@@ -116,6 +116,9 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
           requires: join(root, '.local', 'trading-desk', 'datasets', 'ind_nifty500list.csv') },
     { id: 'factor-lab', cmd: PY, args: [desk('factor_lab.py'), '--monthly'], timeoutMs: 600_000,
       requires: join(root, '.local', 'trading-desk', 'daily-nifty500') },
+    // RESEARCH-03: a factor that passed is tested forward on months after its registration, verdict at a fixed horizon
+    { id: 'factor-forward', cmd: PY, args: [desk('factor_lab.py'), '--forward'], timeoutMs: 600_000,
+      requires: join(root, '.local', 'trading-desk', 'factor-forward') },
     { id: 'organisation-lessons', cmd: PY, args: [desk('organisation_lessons.py')], timeoutMs: 120_000 },
     // the model-free rule bot proposes once a month, before the end-of-day trader reviews; it runs only once the owner
     // has created and qualified it and named it here (RULE_BOT_ID), with a trader credential bound to it

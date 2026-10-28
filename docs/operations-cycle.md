@@ -24,6 +24,7 @@ Three pieces that make the organisation run on its own and stay auditable. They 
 | `mentor-refresh` | Re-checks the mentor's lessons on our own price data ([mentor](mentor.md)) | daily data |
 | `broad-data` | Keeps the NIFTY 500 research files (never traded) at most 28 days old: at most 40 downloads a run, 1 s apart, from the approved price source; the rest wait for the next day ([factor lab](factor-lab.md)) | the constituent list `.local/trading-desk/datasets/ind_nifty500list.csv`; skipped in a replay |
 | `factor-lab` | Judges each month once it has closed (reruns only until last month has a report) ([factor lab](factor-lab.md)) | `.local/trading-desk/daily-nifty500` |
+| `factor-forward` | Scores every pre-registered factor forward test on the months since its registration; a month counts only once 90% of its shares have prices for it, and the verdict comes only at the fixed horizon ([factor lab](factor-lab.md#the-forward-test)) | `.local/trading-desk/factor-forward` (a registered test) |
 | `organisation-lessons` | Turns the newest factor-lab and scout reports into the organisation's own lessons, read by the debate beside the mentor's ([mentor](mentor.md)) | none (no reports: no lessons) |
 | `outcome-labels` | Labels each logged debate argument by what really happened to the call it argued, for a later fine-tune ([mentor](mentor.md#training-on-reality)) | scored proposals |
 | `score-signals` | Scores proposals whose horizon has passed | backend, daily data |

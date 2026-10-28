@@ -696,6 +696,58 @@
           "unproven"
         ]
       }
+    },
+    {
+      "id": "exam-momentum-after-deep-fall",
+      "task": "debate",
+      "side": "bear",
+      "input": {
+        "proposal": {
+          "symbol": "NTPC",
+          "action": "enter-long",
+          "conviction": "medium",
+          "horizonDays": 20,
+          "targetWeightPct": 33,
+          "thesis": "NTPC has the strongest 6-month return of the eight after the market's fall, so the monthly momentum rule buys it.",
+          "invalidation": "Drops out of the top three by six-month return"
+        },
+        "recentCloses": [
+          {
+            "date": "2026-10-23",
+            "closePaise": 36200
+          },
+          {
+            "date": "2026-10-26",
+            "closePaise": 35950
+          }
+        ],
+        "verifiedNews": [],
+        "verifiedEvidenceIds": [],
+        "mentorNotes": {
+          "note": "an experienced mentor's lessons, checked on our data where a check exists: background, never evidence",
+          "lessons": [
+            {
+              "title": "After a deep market fall, reversal-1m led and near-52w-high lagged",
+              "status": "checked",
+              "lesson": "In the 4 months that followed a fall of 15% or more in the whole universe over 6 months (484 shares, to 2026-09), against the whole universe: reversal-1m +3.1% a month (ahead 4/4), -0.4% otherwise; momentum-12-1 -1.6% a month (ahead 1/4), +0.7% otherwise; momentum-6m -1.7% a month (ahead 1/4), +0.9% otherwise. Only 4 months: a warning to weigh in a falling market, not a rule.",
+              "evidence": "our factor lab, through 2026-09"
+            }
+          ]
+        }
+      },
+      "expect": {
+        "evidenceIn": [
+          null
+        ],
+        "mustMention": [
+          "deep fall",
+          "after a fall",
+          "rebound",
+          "revers",
+          "losers",
+          "lag"
+        ]
+      }
     }
   ]
 }

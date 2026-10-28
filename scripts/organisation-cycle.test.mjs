@@ -104,7 +104,8 @@ test('the broad research data is refreshed a little each day, never in a replay,
     delete process.env.REPLAY_PRICES;
     const plan = await planSteps({ root: '/nowhere' });
     const ids = plan.map(s => s.id);
-    assert.ok(ids.indexOf('broad-data') < ids.indexOf('factor-lab') && ids.indexOf('factor-lab') < ids.indexOf('organisation-lessons'));
+    assert.ok(ids.indexOf('broad-data') < ids.indexOf('factor-lab') && ids.indexOf('factor-lab') < ids.indexOf('factor-forward')
+      && ids.indexOf('factor-forward') < ids.indexOf('organisation-lessons'));
     const broad = plan.find(s => s.id === 'broad-data');
     assert.ok(broad.args.includes('--max-age-days') && broad.args.includes('--limit') && broad.requires);
     assert.ok(plan.find(s => s.id === 'factor-lab').args.includes('--monthly'));

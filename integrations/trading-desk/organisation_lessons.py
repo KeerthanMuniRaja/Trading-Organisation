@@ -76,6 +76,31 @@ def from_factor_lab(report):
     return out
 
 
+def from_conditions(report, least=3):
+    """When the factors work: the months after a deep fall of the whole universe, against the rest. Few such months, so
+    it is stated as a warning to weigh, and it reaches decisions in a falling market (HIGH, SEVERE) and the methods it names."""
+    if not report:
+        return []
+    split = {f['name']: f['byCondition'] for f in report['factors'] if (f.get('byCondition') or {}).get('afterDeepFall', {}).get('months', 0) >= least}
+    if len(split) < 2:
+        return []
+    order = sorted(split, key=lambda n: split[n]['afterDeepFall']['averageExcessPct'])
+    worst, best = order[0], order[-1]
+    n = split[best]['afterDeepFall']['months']
+
+    def line(name):
+        a, o = split[name]['afterDeepFall'], split[name]['otherwise']
+        return f"{name} {a['averageExcessPct']:+.1f}% a month (ahead {a['ahead']}/{a['months']}), {o['averageExcessPct']:+.1f}% otherwise"
+    shown = [best] + [m for m in ('momentum-12-1', 'momentum-6m') if m in split and m not in (best, worst)] + [worst]
+    methods = sorted({m for m in map(_method, shown) if m})
+    return [{'id': 'org-after-deep-fall', 'title': f'After a deep market fall, {best} led and {worst} lagged',
+             'lesson': (f"In the {n} months that followed a fall of 15% or more in the whole universe over 6 months "
+                        f"({report['sharesWithData']} shares, to {report['through']}), against the whole universe: " + '; '.join(map(line, shown)) + '. '
+                        f"Only {n} months: a warning to weigh in a falling market, not a rule."),
+             'appliesTo': {'regimes': ['HIGH', 'SEVERE'], 'methods': methods},
+             'measured': {name: split[name] for name in shown}}]
+
+
 def from_scout(report):
     if not report or not report.get('candidates'):
         return []
@@ -97,7 +122,7 @@ def build(rnd=RND, out=OUT, now=None):
     lab = _latest('factor-lab-*.json', rnd)
     scout = _latest('scout-2*.json', rnd)  # the desk scout (scout-<month>), not the NIFTY 50 one (scout-nifty50-<month>)
     # the numbers are in the lesson itself; the evidence names the report they come from (the model reads every word)
-    lessons = [{**l, 'status': 'checked', 'author': 'organisation', 'evidence': f"our factor lab, through {lab['through']}"} for l in from_factor_lab(lab)] \
+    lessons = [{**l, 'status': 'checked', 'author': 'organisation', 'evidence': f"our factor lab, through {lab['through']}"} for l in from_factor_lab(lab) + from_conditions(lab)] \
         + [{**l, 'status': 'checked', 'author': 'organisation', 'evidence': f"our R&D scout, through {scout['through']}"} for l in from_scout(scout)]
     report = {'version': 1, 'generatedAt': (now or datetime.now(timezone.utc)).isoformat(),
               'sources': {'factorLab': lab and {'through': lab['through'], 'fingerprint': lab['fingerprint']},

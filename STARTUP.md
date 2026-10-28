@@ -36,6 +36,10 @@ The commands below are for Windows PowerShell. On Linux, use `/` in paths and `.
 2. **Put the data in place.**
    - Copy everything inside `.local\data-repo\local\` into `.local\`.
    - Copy `.local\data-repo\state\hermes\` to `integrations\hermes\.state\`, and do the same for `ruflo` and `skfolio`.
+   - Check that `.local\claims\autolearn.json` exists. Without it, the news is never fact-checked and the headline
+     reader has nothing to read. If it is missing, create it with
+     `{ "recipientBotIds": ["debate-bull", "debate-bear", "tradingagents"], "primarySourceIds": [], "holdDays": 7, "maxModelCallsPerCycle": 20 }`
+     ([claims](integrations/claims/README.md)).
 3. **Put your secrets back:**
    - `.env` goes in the project folder;
    - `credentials.json` and `owner-signing-key.pem` go in `.local\`.

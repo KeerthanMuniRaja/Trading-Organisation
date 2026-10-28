@@ -36,6 +36,17 @@ class OrganisationLessonsTests(unittest.TestCase):
         self.assertIn('reversal-1m-bottom3', scout['lesson'])  # the best after tax, against the basket
         self.assertEqual((ol.from_factor_lab(None), ol.from_scout(None)), ([], []))
 
+    def test_when_the_factors_work_after_a_deep_fall(self):
+        side = lambda after, other: {'afterDeepFall': {'months': 4, 'averageExcessPct': after, 'ahead': int(after > 0) * 4, 'behind': int(after < 0) * 4},  # noqa: E731
+                                     'otherwise': {'months': 100, 'averageExcessPct': other, 'ahead': 60, 'behind': 40}}
+        lab = {**LAB, 'factors': [{**f, 'byCondition': side(a, o)} for f, (a, o) in zip(LAB['factors'], ((-1.7, 0.9), (-1.5, 0.7), (-2.3, -0.7), (3.1, -0.4), (-4.2, 0.2)))]}
+        [lesson] = ol.from_conditions(lab)
+        self.assertEqual(lesson['title'], 'After a deep market fall, reversal-1m led and near-52w-high lagged')
+        self.assertIn('momentum-12-1 -1.5% a month', lesson['lesson'])
+        self.assertIn('Only 4 months', lesson['lesson'])
+        self.assertEqual(lesson['appliesTo'], {'regimes': ['HIGH', 'SEVERE'], 'methods': ['momentum', 'reversal', 'trend']})
+        self.assertEqual(ol.from_conditions(LAB), [])            # an older report without the split: no lesson
+
     def test_the_lessons_are_rebuilt_from_the_newest_reports(self):
         with tempfile.TemporaryDirectory() as tmp:
             rnd = Path(tmp)
