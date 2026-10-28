@@ -3,7 +3,15 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { arithmeticProblems, pulseLines, render, run, trustCheck, upcomingEvents } from './daily-digest.mjs';
+import { arithmeticProblems, modelLines, pulseLines, render, run, trustCheck, upcomingEvents } from './daily-digest.mjs';
+
+test('the models section: measured settings and the decision model, or nothing', () => {
+  assert.deepEqual(modelLines(null, null), []);
+  const text = modelLines({ measuredAt: '2026-10-28T20:00:00Z', runtime: 'vulkan', threads: 4, threadsBatch: 8, secondsPerCall: 22.5 },
+    { decision: { alias: 'Qwen3.5-9B-Q4_K_M', examOverall: 'SHIP', decidedAt: '2026-10-28T21:00:00Z' } }).join('\n');
+  assert.match(text, /## Models\n- Measured 2026-10-28: graphics \(Vulkan\), 4 threads \(8 for prompts\), about 22.5s a typical call\n- Decisions \(debate, TradingAgents\): Qwen3.5-9B-Q4_K_M, exams SHIP on 2026-10-28/);
+  assert.match(modelLines(null, null).join('') + modelLines({ measuredAt: 'x', runtime: 'cpu', threads: 6, threadsBatch: 6, secondsPerCall: 30 }, null).join('\n'), /the same model as the bulk work/);
+});
 
 test('the market pulse section: movers with reasons, flows, sectors, the week and unexplained desk moves', () => {
   assert.deepEqual(pulseLines(null), []);
