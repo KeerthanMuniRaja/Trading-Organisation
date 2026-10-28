@@ -46,6 +46,22 @@ so they reason better. The design keeps three rules:
 **The contradicted lesson is the point of the design.** General market wisdom (the "momentum crash") didn't hold on
 our 8 large caps in the few months we have. The organisation trusts its own evidence over any mentor.
 
+## Curriculum v3: trading tips tested on ~480 shares (28 Oct 2026, MENTOR-03)
+
+Eight shares are too few to judge a tip about how shares behave. These four run on the research universe
+(`mentor_broad.py`, the NIFTY 500 files, 10 years). Every return is against the market average that day, and a claim
+must stand out from noise (a t-statistic of at least 2), not just be larger.
+
+| Lesson | Status | Our data says |
+| --- | --- | --- |
+| A big one-day move says little about the next week | **checked** | After 22,937 jumps of 5%+ against the market, the next 5 sessions averaged +0.01%. After 9,961 drops of 5%+: −0.23%. A big drop is not a bargain by itself |
+| Buying near a 52-week low showed no edge | **checked** | Near the low: −0.21% against the market over the next month (3,031 cases), others −0.02% (t 1.0: no clear difference). Survivorship flatters the lows |
+| Much of the gain came around the turn of the month | **checked** | The last session of a month and the first three of the next: +0.253% a day against +0.055% (t 3.4). 19% of the days, 53% of the gain |
+| A fixed 10% stop cuts the worst losses but costs return | **checked** | 45,524 three-month holdings: the worst 5% lost 13.3% with the stop against 22.9% held, but the average fell from +7.16% to +5.64%. 41% were stopped out, and 58% of those were higher three months later |
+
+The first wording of the 52-week-low lesson ("shares kept lagging") was not supported once noise was tested, so it
+now claims only what the data shows: no edge in buying there.
+
 ## Training on reality
 
 The organisation's model learns from its own answers, marked by what really happened (MODEL-DATA-02):

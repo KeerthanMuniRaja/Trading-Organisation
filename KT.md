@@ -1,5 +1,36 @@
 # Knowledge transfer: continue the trading organisation
 
+### Added on 28 October 2026 (read this first; [project log](docs/project-log/2026-10-28.md))
+
+- **Working arrangement.** On weekdays the agents develop alone. Anything only the owner can do is queued in
+  [founderReview.md](founderReview.md) under "This weekend" (W1…), each with a recommendation and command; the owner
+  works through it on Saturday and Sunday.
+- **Running by itself.** The supervisor (`npm run supervisor`, a minimized window) runs readiness at 09:00, news through
+  the day, the cycle with the model at 16:05 and the Friday backup. It does not survive a reboot yet (W6).
+- **News is now read.** `.local/claims/autolearn.json` was missing since the move, so the fact-checker, the headline
+  reader and the chain links never ran. It is restored: 80 model calls a cycle, newest news first. STARTUP checks
+  for it.
+- **Market pulse** (`npm run pulse`, [market pulse](docs/market-pulse.md)):
+  - movers and the press's reasons, big players and FII/DII flows, read by rules from every headline;
+  - sectors, breadth and the week's movers from the NIFTY 500 prices;
+  - unexplained desk moves are flagged.
+
+  The debate, the digest and the status screen show it.
+- **Teaching:**
+  - **organisation lessons** come from our own research, including "after a deep fall" with whether it holds now;
+  - **curriculum v3** adds four tips tested on 484 shares with a noise test;
+  - **exams** cover the lessons and the sector context.
+- **Research:** momentum-12-1 passed the factor lab on 484 shares (a candidate only). Its pre-registered forward test
+  `momentum-12-1-from-2026-11` counts from November, with the verdict at 24 months.
+- **Fixes:**
+  - the claims `.env` reader stripped no quotes;
+  - Windows file locks stopped atomic writes (every replace now retries);
+  - a model timeout failed the whole R&D step;
+  - a day when every scenario voice failed was filed as empty calls;
+  - triage `scope-v3` stops counting SBI Life, SBI Mutual Fund, ITC Hotels and NTPC Green as ours;
+  - three trading-desk test files were outside the gate, and a test now catches that.
+- **The old name "Nexus" is gone** from the repository; never use it.
+
 ## Live paper testing — from 15 October 2026
 
 Daily operation is in the [live testing runbook](docs/live-testing.md).
@@ -281,7 +312,7 @@ v0.1.28 adds [publisher feed intake](docs/publisher-feeds.md) (`sources:feed`), 
 
 Still unset: the owner's first publisher, the model endpoint (Qwen3.5-9B is only provisional) and the first market. Docker testing stays deferred.
 
-Git requires `-c safe.directory=...` in this folder (the repo is owned by another Windows identity). The work from v0.1.23 onward is uncommitted. The folder is now `Nexus`; older docs still say `trading-organisation`.
+Git requires `-c safe.directory=...` in this folder (the repo is owned by another Windows identity). The work from v0.1.23 onward is uncommitted. The project folder is now `Trading-Organisation`.
 
 ## Previous continuation — v0.1.22
 

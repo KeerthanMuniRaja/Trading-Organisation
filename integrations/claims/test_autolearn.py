@@ -160,6 +160,17 @@ class AutoLearnTests(unittest.TestCase):
     def decisions(self):
         return autolearn.read(self.state, 'decisions.json', {})
 
+    def test_with_few_model_calls_the_newest_news_is_read_first(self):
+        backend = FakeBackend(['e1', 'e2', 'e3'])
+        autolearn.factcheck_queue(backend.api('evaluator'), self.state)
+        queue = autolearn.read(self.state, 'queue.json', [])
+        for o, day in zip(queue, ('2026-10-01', '2026-10-03', '2026-10-02')):
+            o['publishedAt'] = day + 'T10:00:00+00:00'
+        autolearn.write(self.state, 'queue.json', queue)
+        newest = queue[1]['evidenceId']
+        autolearn.analyst_extract(stub_model, 'stub', self.state, {**CONFIG, 'maxModelCallsPerCycle': 1})
+        self.assertEqual(list(autolearn.read(self.state, 'extracted.json', {})['results']), [newest])
+
     def test_corroborated_news_becomes_verified_knowledge_without_a_human(self):
         backend = FakeBackend(['e1', 'e2', 'e3'])
         first = cycle(backend, self.state)
@@ -325,6 +336,15 @@ class OrchestrationTests(unittest.TestCase):
     PARENT = {'PATH': 'C:\\Windows', 'API_URL': 'http://127.0.0.1:3000', 'HERMES_MODEL': 'm', 'HERMES_MODEL_BASE_URL': 'http://127.0.0.1:8080/v1',
               'HERMES_MODEL_API_KEY': 'model-key', 'PRINCIPALS_JSON': json.dumps([
                   {'role': 'researcher', 'token': 'r-token'}, {'role': 'evaluator', 'token': 'e-token'}, {'role': 'owner', 'token': 'o-token'}])}
+
+    def test_the_env_file_is_read_as_node_reads_it_quotes_included(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / '.env'
+            path.write_text("# a comment\nPRINCIPALS_JSON='[{\"role\": \"evaluator\"}]'\nAPI_URL=\"http://127.0.0.1:3000\"\nPLAIN=a=b\nONE='\n",
+                            encoding='utf-8')
+            values = autolearn.env_file(path)
+        self.assertEqual(json.loads(values['PRINCIPALS_JSON']), [{'role': 'evaluator'}])   # single quotes no longer break JSON
+        self.assertEqual((values['API_URL'], values['PLAIN'], values['ONE']), ('http://127.0.0.1:3000', 'a=b', "'"))
 
     def test_each_step_gets_only_its_own_credential_and_only_extraction_gets_the_model(self):
         checker = autolearn.child_env('factcheck-lessons', {**self.PARENT,

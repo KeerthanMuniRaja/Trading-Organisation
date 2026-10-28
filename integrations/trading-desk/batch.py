@@ -30,12 +30,17 @@ def dataset_key(dataset):
 
 def save(path, value, attempts=20):
     """Atomic write. On Windows a scanner or indexer can briefly lock the file; retry instead of losing the run."""
-    import time
     temporary = path.with_suffix('.tmp')
     temporary.write_text(json.dumps(value, indent=2), encoding='utf-8')
+    replace(temporary, path, attempts)
+
+
+def replace(source, target, attempts=20):
+    """os.replace, retried while Windows briefly locks either file (a scanner, an indexer, an open editor)."""
+    import time
     for attempt in range(attempts):
         try:
-            os.replace(temporary, path)
+            os.replace(source, target)
             return
         except PermissionError:
             if attempt == attempts - 1:

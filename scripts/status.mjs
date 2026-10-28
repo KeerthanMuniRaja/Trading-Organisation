@@ -21,6 +21,24 @@ function localLines(f) {
   if (research) out.push(`Research  ${research.ideasTried} ideas on ${research.from}..${research.through}: ${research.passing.length ? 'passing ' + research.passing.join(', ') : 'none passes'}`
     + `; best ${research.best[0]?.name ?? '?'}${research.lowestRisk ? `; lowest risk ${research.lowestRisk.name} (worst fall ${research.lowestRisk.maxDrawdownPct}%)` : ''}`
     + `${f.knowledge.unknown?.length ? `; ${f.knowledge.unknown.length} unknown cycle problem(s)` : ''}`);
+  const pulse = f.pulse;
+  if (pulse) {
+    const top = [...pulse.movers].sort((a, b) => b.pct - a.pct).filter(m => !m.period).slice(0, 3)
+      .map(m => `${m.company.replace(/ (Ltd\.?|Limited)$/, '')} ${m.direction === 'up' ? '+' : '-'}${m.pct}%`);
+    const flow = pulse.flows[0];
+    out.push(`Pulse     ${pulse.windowDays}d: ${pulse.counts.up} up, ${pulse.counts.down} down in the press${top.length ? ` (${top.join(', ')})` : ''}; `
+      + `${pulse.counts.bigPlayers} big-player item(s)${flow ? `; flows: ${flow.actors.join('/')} ${flow.action}${flow.amountCrore ? ` Rs ${flow.amountCrore.toLocaleString('en-IN')} cr` : ''}` : ''}`
+      + `${pulse.counts.unexplainedDeskMoves ? `; ${pulse.counts.unexplainedDeskMoves} UNEXPLAINED desk move(s)` : ''} (npm run pulse)`);
+    const m = pulse.market;
+    if (m?.sectors?.length) {
+      const fmt = t => `${t.sector} ${t.monthPct >= 0 ? '+' : ''}${t.monthPct}%`;
+      out.push(`Sectors   1 month to ${m.asOf}: best ${m.sectors.slice(0, 2).map(fmt).join(', ')}; worst ${m.sectors.slice(-2).map(fmt).join(', ')}; `
+        + `${m.breadthAbove200Pct}% of ${m.freshShares} NIFTY 500 shares above their 200-day average`);
+    }
+  }
+  for (const t of f.forward ?? []) out.push(`Forward   ${t.name}: ${t.status}${t.monthsJudged ? `, ${t.monthsJudged}/${t.monthsNeeded} months, `
+    + `top fifth ${t.averageExcessPct >= 0 ? '+' : ''}${t.averageExcessPct}% a month (ahead ${t.ahead}/${t.monthsJudged}), IC t ${t.icTStat ?? '?'}`
+    : ` (first month ${t.firstMonth})`}${t.waitingForDataFrom ? `; waiting for ${t.waitingForDataFrom} prices` : ''}`);
   if (f.intraday) out.push(`Intraday  ${f.intraday.mode} ${f.intraday.day}: basket ${f.intraday.final.basketMovePct}%, positions ${f.intraday.final.lossPct}%; `
     + `events: ${f.intraday.events.map(e => e.rule + ':' + e.subject).join(', ') || 'none'}`);
   if (f.index) out.push(`Knowledge ${f.index.nodes} connected records (${Object.entries(f.index.byKind ?? {}).map(([k, n]) => `${n} ${k}`).join(', ')}), `
@@ -37,7 +55,7 @@ function localLines(f) {
 
 /** Pure: facts in, the overview lines out. */
 export function render(f) {
-  const out = [`Nexus organisation, ${f.at.slice(0, 16).replace('T', ' ')} UTC (paper only)`, ''];
+  const out = [`Trading organisation, ${f.at.slice(0, 16).replace('T', ' ')} UTC (paper only)`, ''];
   out.push(`Backend   ${f.backend ? 'up' : 'DOWN (npm start)'}${f.digest?.halted ? '; NEW RISK HALTED' : ''}    Model ${f.model === null ? 'not configured' : f.model ? 'up' : 'down'}`);
   if (!f.backend) return [...out, '', 'Nothing more can be read from the backend while it is down.', ...localLines(f)];
   const p = f.autonomy?.policy;
@@ -103,6 +121,9 @@ export async function gather(env = process.env, { fetchImpl = fetch, root = ROOT
   const screens = existsSync(rnd) ? (await readdir(rnd)).filter(n => /^scout-\d{4}-\d{2}\.json$/.test(n)).sort() : [];
   const scout = screens.length ? await json(join(rnd, screens.at(-1))) : null;
   facts.scout = scout ? { through: scout.through, ideasTried: scout.ideasTried, passing: scout.candidates.filter(c => c.passes).length } : null;
+  facts.pulse = await json(join(root, '.local', 'world', 'market-pulse.json'));  // AWARE-01
+  const forward = join(root, '.local', 'trading-desk', 'factor-forward', 'reports');  // RESEARCH-03: pre-registered factor tests
+  facts.forward = existsSync(forward) ? (await Promise.all((await readdir(forward)).filter(n => n.endsWith('.json')).sort().map(n => json(join(forward, n))))).filter(Boolean) : [];
   const decisions = join(root, '.local', 'tradingagents', 'decisions');
   const decided = existsSync(decisions) ? (await readdir(decisions)).filter(n => /^\d{4}-\d{2}-\d{2}\.json$/.test(n)).sort() : [];
   const ta = decided.length ? await json(join(decisions, decided.at(-1))) : null;

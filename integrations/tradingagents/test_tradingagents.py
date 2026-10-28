@@ -61,6 +61,17 @@ class Backend:
 
 
 class DecideTests(unittest.TestCase):
+    def test_the_local_model_key_reaches_the_openai_compatible_provider(self):
+        environ = {}
+        ta_decide.provide_key({'HERMES_MODEL_API_KEY': 'local-key'}, environ)
+        self.assertEqual(environ, {'OPENAI_COMPATIBLE_API_KEY': 'local-key'})       # a 401 on every call otherwise
+        kept = {'OPENAI_COMPATIBLE_API_KEY': 'set-by-owner'}
+        ta_decide.provide_key({'HERMES_MODEL_API_KEY': 'local-key'}, kept)
+        self.assertEqual(kept['OPENAI_COMPATIBLE_API_KEY'], 'set-by-owner')         # an explicit setting is never replaced
+        empty = {}
+        ta_decide.provide_key({}, empty)
+        self.assertEqual(empty, {})
+
     def test_ratings_are_read_strictly_and_failures_are_recorded_not_guessed(self):
         self.assertEqual([ta_decide.rating_of(x) for x in ('BUY', 'Overweight', {'rating': 'SELL'}, 'Buy or Sell', 'no view')],
                          ['BUY', 'OVERWEIGHT', 'SELL', None, None])

@@ -501,7 +501,13 @@ def main(argv=None):
                           'best': [{k: c[k] for k in ('name', 'ahead', 'behind', 'averageExcessPct', 'pValue', 'beatsRandomPct')} for c in report['candidates'][:5]],
                           'walkForward': {k: report['walkForward'][k] for k in ('outOfSampleMonths', 'ahead', 'behind', 'averageExcessPct', 'pValue')}}, indent=2))
         return
-    invented = invent(args.invent, args.through) if args.invent else None
+    try:
+        invented = invent(args.invent, args.through) if args.invent else None
+    except Exception as error:  # noqa: BLE001
+        if type(error).__name__ != 'EndpointError':
+            raise
+        # the model is slow or down: its new ideas wait for another day, the catalogue is still screened today
+        invented = [{'outcome': 'model-failed', 'reason': str(error)}]
     report = scout(args.through)
     OUT.mkdir(parents=True, exist_ok=True)
     batch.save(OUT / f"scout-{report['through']}.json", report)

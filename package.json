@@ -46,6 +46,7 @@
     "intraday": "node --env-file-if-exists=.env scripts/intraday-monitor.mjs",
     "preflight": "node --env-file-if-exists=.env scripts/preflight.mjs",
     "knowledge": ".local\\replay-venv\\Scripts\\python.exe integrations/trading-desk/knowledge_index.py",
+    "pulse": ".local\\replay-venv\\Scripts\\python.exe integrations/trading-desk/market_pulse.py",
     "test:cycle": "node --test scripts/organisation-cycle.test.mjs",
     "test:secrets": "node --test scripts/secret-scan.test.mjs",
     "build": "tsc -p backend/tsconfig.json",

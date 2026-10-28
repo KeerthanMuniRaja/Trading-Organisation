@@ -29,6 +29,30 @@ export function worldLines(world) {
       + ` (${world.scenario.panel.verdict}); ${world.scenario.waiting} call(s) waiting`] : []), ''];
 }
 
+/** AWARE-01: the market pulse (press read by rules, NIFTY 500 prices): movers and why, big players, flows, sectors. */
+export function pulseLines(p) {
+  if (!p) return [];
+  const pct = x => `${x >= 0 ? '+' : ''}${x}%`;
+  const name = c => String(c).replace(/ (Ltd\.?|Limited)$/, '');
+  const moves = p.movers.filter(m => !m.period).slice(0, 5)
+    .map(m => `${name(m.company)} ${m.direction === 'up' ? '+' : '-'}${m.pct}%${m.why ? ` (${m.why.slice(0, 80)})` : ''}`);
+  const players = p.bigPlayers.slice(0, 3).map(b => `${b.actors.join('/')} ${b.action}${b.companies.length ? ' ' + b.companies.map(name).join(', ') : ''}`
+    + `${b.amountCrore ? ` Rs ${b.amountCrore.toLocaleString('en-IN')} cr` : ''}`);
+  const flows = p.flows.slice(0, 3).map(f => `${f.actors.join('/')} ${f.action}${f.amountCrore ? ` Rs ${f.amountCrore.toLocaleString('en-IN')} cr` : ''}`);
+  const m = p.market;
+  const why = r => `${name(r.company)} ${pct(r.weekPct)}${r.why ? ` (${r.why.slice(0, 60)})` : ' (no news)'}`;
+  return [`## Market pulse (press read by rules over ${p.windowDays} days${m ? `; NIFTY 500 prices to ${m.asOf}` : ''})`,
+    `- In the press: ${p.counts.up} shares reported up, ${p.counts.down} down${moves.length ? ': ' + moves.join('; ') : ''}`,
+    ...(players.length ? [`- Big players: ${players.join('; ')}`] : []),
+    ...(flows.length ? [`- Flows: ${flows.join('; ')}`] : []),
+    ...(m ? [`- Sectors this month: best ${m.sectors.slice(0, 3).map(t => `${t.sector} ${pct(t.monthPct)}`).join(', ')}; `
+      + `worst ${m.sectors.slice(-3).map(t => `${t.sector} ${pct(t.monthPct)}`).join(', ')}; ${m.breadthAbove200Pct}% of shares above their 200-day average`,
+    `- The week's risers: ${m.risers.slice(0, 3).map(why).join('; ')}`,
+    `- The week's fallers: ${m.fallers.slice(0, 3).map(why).join('; ')}`] : []),
+    ...p.deskMoves.filter(d => d.unexplained).map(d => `- UNEXPLAINED: ${d.symbol} ${pct(d.vsBasketPct)} against the basket on ${d.date} (${d.sigmas} of its usual swings), no news`),
+    ''];
+}
+
 /** REGIME-01: the latest market regime and its study, from the desk's files; null when the cycle has not made them. */
 export async function marketRegime(root = join(dirname(fileURLToPath(import.meta.url)), '..')) {
   const read = async name => { try { return JSON.parse(await readFile(join(root, '.local', 'trading-desk', 'regime', name), 'utf8')); } catch { return null; } };
@@ -51,8 +75,10 @@ export async function knowledgeSummary(root = join(dirname(fileURLToPath(import.
   let drafts = 0, review = null;
   try { drafts = JSON.parse(await readFile(join(root, '.local', 'trading-desk', 'knowledge', 'playbook-drafts.json'), 'utf8')).drafts.length; } catch { /* none */ }
   try { review = JSON.parse(await readFile(join(root, '.local', 'trading-desk', 'review-scorecard.json'), 'utf8')); } catch { /* not made yet */ }
+  let pulse = null;
+  try { pulse = JSON.parse(await readFile(join(root, '.local', 'world', 'market-pulse.json'), 'utf8')); } catch { /* not made yet */ }
   const events = await upcomingEvents(root, now);
-  return live || unknown.length || drafts || review || events ? { live, unknown, drafts, review, events } : null;
+  return live || unknown.length || drafts || review || events || pulse ? { live, unknown, drafts, review, events, pulse } : null;
 }
 
 /** NEWS-05: the owner's events calendar (.local/events.json), the next `days` days; null when there is no calendar. */
@@ -246,6 +272,7 @@ export function render(d, world = null, regime = null, known = null, trust = nul
     `- ${k.received} items received, ${k.verified} verified, ${k.rejected} rejected; ${k.backlog} waiting for review`
       + (k.setAside ? ` (${k.setAside} more set aside as out of scope)` : ''), '',
     ...worldLines(world),
+    ...pulseLines(known?.pulse),
     ...researchLines(known),
     '## Bots (90-day scored accuracy, 5+ calls)',
     ...(d.bots.best.length ? d.bots.best.map(b => `- best: ${b.botId} ${Math.round(b.accuracy * 100)}% of ${b.scored}`) : ['- No bot has 5 scored calls yet.']),

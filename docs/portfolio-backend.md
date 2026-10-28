@@ -9,7 +9,7 @@ Version 0.1.3 introduced the Python-to-NestJS connection. Later isolated HTTP an
 Dependencies and development credentials already exist here. From PowerShell:
 
 ```cmd
-cd /d "C:\Users\KeerthanMuniRajaT\Documents\Codex\2026-10-03\i-x20\Nexus"
+cd /d "C:\Keerthan\Project\Trading-Organisation"
 npm run build && npm start
 ```
 

@@ -16,6 +16,10 @@ candidate for a pre-registered live test, never proof. The NIFTY 500 files hold 
 pass here must be re-tested on point-in-time membership (founder review B14) before anyone relies on it.
 Research only: no orders, no wallets, no network.
   .local\\replay-venv\\Scripts\\python.exe integrations\\trading-desk\\factor_lab.py [--through YYYY-MM]
+A factor that passes goes to a pre-registered forward test (RESEARCH-03): its rule and today's share list are frozen,
+and only months after registration count, with the verdict at a horizon fixed in advance:
+  ... factor_lab.py --register-forward momentum-12-1-from-2026-11 --factor momentum-12-1
+  ... factor_lab.py --forward                (every registered test; the daily cycle's `factor-forward` step)
 """
 from __future__ import annotations
 
@@ -25,6 +29,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
 import statistics
 import sys
 
@@ -169,12 +174,31 @@ def panel(all_bars, through=None, factors=FACTORS):
     return rows
 
 
+DEEP_FALL_PCT = -15.0    # the equal-weight universe down this much over the 6 judged months before: "after a deep fall"
+
+
+def after_deep_fall(rows):
+    """The months that follow a deep fall of the whole universe (its return over the previous 6 judged months)."""
+    out, growth = set(), []
+    for r in rows:
+        if len(growth) >= 6 and 100 * (math.prod(growth[-6:]) - 1) <= DEEP_FALL_PCT:
+            out.add(r['month'])
+        growth.append(1 + r['basketPct'] / 100)
+    return out
+
+
+def _side(excess):
+    return {'months': len(excess), 'averageExcessPct': round(statistics.fmean(excess), 3) if excess else None,
+            'ahead': sum(e > 0 for e in excess), 'behind': sum(e < 0 for e in excess)}
+
+
 def judge(rows, factors=FACTORS):
     """Each factor's record over the months it was judged, against a Bonferroni bar over the whole catalogue."""
     threshold = ALPHA / len(factors)
     out = []
     series = {n: [r['factors'][n]['topPct'] - r['basketPct'] for r in rows if n in r['factors']] for n in factors}
     srs = [rc.per_period_sharpe(xs) for xs in series.values() if len(xs) >= 3]  # for the deflated Sharpe: every factor tried
+    deep = after_deep_fall(rows)
     for name, (description, need, _) in factors.items():
         mine = [r for r in rows if name in r['factors']]
         if len(mine) < MIN_MONTHS:
@@ -207,6 +231,9 @@ def judge(rows, factors=FACTORS):
                                     'afterTaxCagrPct': rc.after_tax_cagr(top_pct, [0.0] + [r['factors'][name]['turnover'] for r in mine[1:]])},
                     'spread': {'averagePct': round(statistics.fmean(spread), 3), 'tStat': round(t_stat(spread), 2) if t_stat(spread) is not None else None},
                     'robustness': robust, 'deflatedSharpe': rc.deflated_sharpe(excess, srs),
+                    # when it works: descriptive only (few deep-fall months; not part of the pass)
+                    'byCondition': {'afterDeepFall': _side([e for m, e in zip(months, excess) if m in deep]),
+                                    'otherwise': _side([e for m, e in zip(months, excess) if m not in deep])},
                     'passes': not reasons, 'reasons': reasons})
     out.sort(key=lambda f: (f.get('ic', {}).get('pValue') if f.get('ic', {}).get('pValue') is not None else 2, f['name']))
     return out, threshold
@@ -223,16 +250,120 @@ def lab(cache=daily.BROAD, symbols=None, through=None):
         raise ValueError('Not enough overlapping history')
     factors, threshold = judge(rows)
     basket = [r['basketPct'] for r in rows]
+    six = round(100 * (math.prod(1 + p / 100 for p in basket[-6:]) - 1), 2) if len(basket) >= 6 else None
     data = hashlib.sha256(json.dumps([[r['month'], r['shares'], round(r['basketPct'], 6)] for r in rows]).encode()).hexdigest()[:16]
     return {'version': VERSION, 'fingerprint': catalogue_fingerprint(), 'dataFingerprint': data, 'universe': 'nifty500',
             'sharesWithData': len(loaded), 'from': rows[0]['month'], 'through': rows[-1]['month'], 'months': len(rows),
             'factorsTried': len(FACTORS), 'bonferroniThreshold': round(threshold, 6), 'oneWayCostPct': ONE_WAY_COST_PCT,
             'basketStats': {**(rc.stats(basket, [0.0] * len(basket)) or {}), 'afterTaxCagrPct': rc.after_tax_cagr(basket)},
+            # the condition the next decisions are made in: the universe's return over the last 6 judged months
+            'now': {'universeSixMonthPct': six, 'afterDeepFall': six is not None and six <= DEEP_FALL_PCT},
             'factors': factors,
             'warning': ('RESEARCH ONLY, never traded. Today\'s NIFTY 500 members over past years: companies that left the index '
                         'are missing (survivorship bias), which flatters momentum and trend most. Re-test any pass on '
                         'point-in-time membership (founder review B14) before relying on it.'),
             'at': datetime.now(timezone.utc).isoformat()}
+
+
+# ---------- pre-registered forward tests (RESEARCH-03) ----------
+FORWARD = daily.ROOT / '.local' / 'trading-desk' / 'factor-forward'
+FORWARD_MONTHS = 24      # the verdict comes at this many judged months, fixed at registration
+FORWARD_T = 1.645        # one pre-registered test, one-sided 5%: no Bonferroni (the lab's search is over)
+FULL_MONTH = 0.9         # a month counts once 90% of the registration's shares have its prices (refreshes are spread)
+
+
+def forward_fingerprint(factor):
+    """The exact rule under test: the catalogue, the monthly panel and the costs. Changing any of it ends the test."""
+    import inspect
+    parts = [catalogue_fingerprint(), inspect.getsource(panel), factor, str(LOOKBACK), str(FORWARD_MONTHS), str(FORWARD_T)]
+    return hashlib.sha256('\n'.join(parts).encode()).hexdigest()[:16]
+
+
+def register_forward(name, factor, cache=daily.BROAD, symbols=None, root=FORWARD, now=None):
+    """Freezes a factor, its rule and today's share list. Only months that start after today count, so nothing in the
+    test could have been fitted to, and the list was fixed before any outcome (no survivorship bias going forward)."""
+    import datasets
+    if factor not in FACTORS:
+        raise ValueError(f'Unknown factor {factor}; one of {sorted(FACTORS)}')
+    path = root / f'{name}.json'
+    if path.exists():
+        raise ValueError('A forward test with this name exists; choose a new name')
+    loaded = daily.load(sorted(symbols or datasets.nifty500()), cache)
+    rows = [r for r in panel(loaded, factors={factor: FACTORS[factor]}) if factor in r['factors']]
+    if len(loaded) < MIN_SHARES or not rows:
+        raise ValueError('Not enough data to register; fetch the universe first')
+    now = now or datetime.now(timezone.utc)
+    record = {'name': name, 'factor': factor, 'description': FACTORS[factor][0], 'registeredAt': now.isoformat(),
+              'firstMonth': f'{now.year + (now.month == 12)}-{now.month % 12 + 1:02d}', 'rules': forward_fingerprint(factor),
+              'symbols': sorted(loaded), 'fullMonthShares': rows[-1]['shares'], 'lastLabMonth': rows[-1]['month'],
+              'criterion': {'months': FORWARD_MONTHS, 'icTStatAtLeast': FORWARD_T, 'averageExcessPctAbove': 0},
+              'note': (f'Pre-registered: from firstMonth, the top fifth by {factor} against the equal-weight list, net of costs. '
+                       f'After {FORWARD_MONTHS} judged months it passes only if the IC t-statistic is at least {FORWARD_T} '
+                       'and the top fifth is ahead of the list on average. The list never changes; a share with no prices '
+                       'for a month (suspended, delisted) is left out of that month, so a collapse just before delisting is missed.')}
+    root.mkdir(parents=True, exist_ok=True)
+    batch.save(path, record)
+    return record
+
+
+def forward(name, root=FORWARD, cache=daily.BROAD):
+    """Scores a registered factor on the months since registration; the verdict only at the pre-registered horizon."""
+    record = json.loads((root / f'{name}.json').read_text(encoding='utf-8'))
+    factor = record['factor']
+    if forward_fingerprint(factor) != record['rules']:
+        return {'name': name, 'status': 'ended', 'reason': 'the rule changed after registration; register a new test'}
+    loaded = daily.load(record['symbols'], cache)
+    rows = panel(loaded, factors={factor: FACTORS[factor]})
+    sessions = sorted({b['date'] for bars in loaded.values() for b in bars})
+    months = sorted({d[:7] for d in sessions})
+    # a month closes at the second session of the next one (the scout's exit); the freshest file says how far data goes
+    closed = (months[-2] if sum(d[:7] == months[-1] for d in sessions) >= 2 else months[-3]) if len(months) >= 3 else ''
+    judged, pending, expected = [], None, record['firstMonth']
+    for r in rows:
+        if r['month'] < record['firstMonth']:
+            continue
+        # some files are not refreshed past this month yet (or it has too few shares to be in the panel at all):
+        # wait, never judge a partial month, and never skip one
+        if r['month'] != expected or factor not in r['factors'] or r['shares'] < FULL_MONTH * record['fullMonthShares']:
+            pending = expected if r['month'] != expected else r['month']
+            break
+        judged.append(r)
+        y, m = int(expected[:4]), int(expected[5:])
+        expected = f'{y + (m == 12)}-{m % 12 + 1:02d}'
+    if pending is None and expected <= closed:
+        pending = expected  # the month has closed in the freshest files but is missing from the panel: still waited for
+    judged = judged[:record['criterion']['months']]
+    months = []
+    for k, r in enumerate(judged):
+        f = r['factors'][factor]
+        top = f['topPct'] + (ONE_WAY_COST_PCT * (f['turnover'] - 1) if k == 0 else 0)  # the first month buys from cash
+        months.append({'month': r['month'], 'shares': r['shares'], 'excessPct': round(top - r['basketPct'], 3),
+                       'ic': None if f['ic'] is None else round(f['ic'], 4)})
+    out = {'name': name, 'factor': factor, 'firstMonth': record['firstMonth'], 'monthsJudged': len(months),
+           'monthsNeeded': record['criterion']['months'], 'waitingForDataFrom': pending, 'months': months}
+    if not months:
+        return {**out, 'status': 'waiting', 'note': f"No month from {record['firstMonth']} has closed with fresh prices yet."}
+    excess, ics = [m['excessPct'] for m in months], [m['ic'] for m in months if m['ic'] is not None]
+    ic_t = t_stat(ics)
+    out.update({'averageExcessPct': round(statistics.fmean(excess), 3), 'ahead': sum(e > 0 for e in excess),
+                'behind': sum(e < 0 for e in excess), 'icMean': round(statistics.fmean(ics), 4) if ics else None,
+                'icTStat': None if ic_t is None else round(ic_t, 2)})
+    if len(months) < record['criterion']['months']:
+        return {**out, 'status': 'running', 'note': 'Descriptive until the pre-registered horizon; a few months prove nothing.'}
+    passes = ic_t is not None and ic_t >= record['criterion']['icTStatAtLeast'] and out['averageExcessPct'] > 0
+    return {**out, 'status': 'passed' if passes else 'failed',
+            'note': 'The pre-registered verdict. A pass makes the factor eligible for a bot proposal to the owner, never a trade by itself.'}
+
+
+def forward_all(root=FORWARD, cache=daily.BROAD):
+    """Every registered forward test, each report saved beside the registrations (for the digest and the status)."""
+    reports = []
+    (root / 'reports').mkdir(parents=True, exist_ok=True)
+    for path in sorted(root.glob('*.json')):
+        report = forward(path.stem, root, cache)
+        batch.save(root / 'reports' / path.name, {**report, 'at': datetime.now(timezone.utc).isoformat()})
+        reports.append({k: report.get(k) for k in ('name', 'status', 'monthsJudged', 'monthsNeeded', 'averageExcessPct', 'icTStat', 'waitingForDataFrom')})
+    return reports
 
 
 def up_to_date(out, today=None):
@@ -247,7 +378,18 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--through', help='last month to judge (YYYY-MM)')
     parser.add_argument('--monthly', action='store_true', help='for the daily cycle: skip once last month has a report')
+    parser.add_argument('--register-forward', metavar='NAME', help='pre-register a forward test of --factor under NAME')
+    parser.add_argument('--factor', choices=sorted(FACTORS))
+    parser.add_argument('--forward', action='store_true', help='score every registered forward test')
     args = parser.parse_args(argv)
+    if args.register_forward:
+        if not (args.factor and re.fullmatch(r'[A-Za-z0-9_-]{1,60}', args.register_forward)):
+            raise SystemExit('--register-forward NAME (letters, digits, _ or -) needs --factor')
+        print(json.dumps({k: v for k, v in register_forward(args.register_forward, args.factor).items() if k != 'symbols'}, indent=2))
+        return
+    if args.forward:
+        print(json.dumps(forward_all(), indent=2))
+        return
     if args.monthly and up_to_date(OUT):
         print(json.dumps({'skipped': 'last month already judged', 'report': up_to_date(OUT).name}))
         return

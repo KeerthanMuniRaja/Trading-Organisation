@@ -40,10 +40,18 @@ def locked(path):
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
-def save(path, record):
+def save(path, record, attempts=20):
+    import time
     temporary = path.with_suffix('.tmp')
     temporary.write_text(json.dumps(record, allow_nan=False), encoding='utf-8')
-    os.replace(temporary, path)
+    for attempt in range(attempts):  # Windows can briefly lock the file (a scanner, an indexer): retry, never lose the record
+        try:
+            os.replace(temporary, path)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(0.05 * (attempt + 1))
 
 
 def run_once(client, settings, dataset_id, method, request_key, directory, proposer=propose_capability):

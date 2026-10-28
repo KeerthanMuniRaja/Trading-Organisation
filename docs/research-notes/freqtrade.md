@@ -1,6 +1,6 @@
 # Research note: freqtrade (source-code study)
 
-Studied 21 October 2026 for the Nexus paper-trading organisation. We copy no code. freqtrade is GPL-3.0, so this note
+Studied 21 October 2026 for the paper-trading organisation. We copy no code. freqtrade is GPL-3.0, so this note
 describes its mechanisms in our own words. Short identifiers and file paths are given only so a reader can find them.
 
 **How it was read.** The files were read-only web fetches of `raw.githubusercontent.com/freqtrade/freqtrade/develop/...`

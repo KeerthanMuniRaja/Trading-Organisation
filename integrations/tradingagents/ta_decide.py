@@ -76,12 +76,20 @@ def book(path=HOLDINGS):
     return Book(json.loads(path.read_text(encoding='utf-8'))) if path.exists() else None
 
 
+def provide_key(env, environ=os.environ):
+    """TradingAgents' openai_compatible provider reads OPENAI_COMPATIBLE_API_KEY; without it our llama.cpp server answers
+    401 to every call (found by the first trial, 28 Oct). Only this process, only our local server's key."""
+    if env.get('HERMES_MODEL_API_KEY') and not environ.get('OPENAI_COMPATIBLE_API_KEY'):
+        environ['OPENAI_COMPATIBLE_API_KEY'] = env['HERMES_MODEL_API_KEY']
+
+
 def default_graph(env):
     from tradingagents.default_config import DEFAULT_CONFIG
     from tradingagents.graph.trading_graph import TradingAgentsGraph
     import tradingagents
     config = DEFAULT_CONFIG.copy()
     model = env.get('HERMES_MODEL') or 'local-model'
+    provide_key(env)
     config.update(SETTINGS, llm_provider='openai_compatible', backend_url=env.get('HERMES_MODEL_BASE_URL') or 'http://127.0.0.1:8080/v1',
                   quick_think_llm=model, deep_think_llm=model,
                   results_dir=str(ROOT / '.local' / 'tradingagents' / 'logs'), data_cache_dir=str(ROOT / '.local' / 'tradingagents' / 'cache'),
@@ -121,8 +129,22 @@ def decide(day, symbols=SYMBOLS, graph=None, meta=None, env=os.environ, out=OUT,
         record['readability'] = readability([record])
         tmp = path.with_suffix('.tmp')
         tmp.write_text(json.dumps(record, indent=2), encoding='utf-8')
-        os.replace(tmp, path)
+        _replace(tmp, path)
     return record
+
+
+def _replace(source, target, attempts=20):
+    """os.replace, retried while Windows briefly locks the file (this runs in TradingAgents' own environment, apart
+    from the trading desk's batch.replace)."""
+    import time
+    for attempt in range(attempts):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(0.05 * (attempt + 1))
 
 
 def readability(records):

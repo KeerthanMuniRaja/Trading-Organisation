@@ -36,6 +36,24 @@ class Stub:
         return self.reply, {'promptTokens': 100, 'completionTokens': 50}
 
 
+class SaveTests(unittest.TestCase):
+    def test_a_briefly_locked_file_is_retried_not_lost(self):
+        from unittest import mock
+        real, calls = claims.os.replace, []
+
+        def locked_twice(src, dst):
+            calls.append(dst)
+            if len(calls) <= 2:
+                raise PermissionError(5, 'Access is denied')
+            real(src, dst)
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(claims.os, 'replace', locked_twice):
+            path = Path(tmp) / 'decisions.json'
+            claims.save(path, {'a': 1}, sleep=lambda s: None)
+            self.assertEqual((json.loads(path.read_text(encoding='utf-8')), len(calls)), ({'a': 1}, 3))
+            with mock.patch.object(claims.os, 'replace', side_effect=PermissionError(5, 'Access is denied')), self.assertRaises(PermissionError):
+                claims.save(path, {'a': 2}, attempts=3, sleep=lambda s: None)   # a lasting lock still fails loudly
+
+
 class MentionTests(unittest.TestCase):
     def test_company_names_map_to_symbols_without_look_alike_companies(self):
         self.assertEqual(claims.mentions('Reliance Industries posts profit'), {'RELIANCE.NS'})

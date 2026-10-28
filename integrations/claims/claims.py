@@ -49,6 +49,7 @@ NOT_FOLLOWED_BY = {
     'Reliance': r'\s+(?:Power|Capital|Infra\w*|Communications|Home|Naval|General|Nippon)',
     'SBI': r'\s+(?:Life|Cards?|Mutual|Funds?|General)',
     'NTPC': r'\s+Green',
+    'ITC': r'\s+Hotels',  # listed separately since the 2025 demerger
 }
 EVENT_TYPES = ['earnings', 'guidance', 'order-or-contract', 'regulatory-or-legal', 'management', 'corporate-action',
                'deal-or-investment', 'rating-or-target', 'macro-or-sector', 'other']
@@ -336,10 +337,25 @@ def headlines(claims, clusters, minimum='single-source'):
 
 
 # ---------- runs ----------
-def save(path, value):
+def save(path, value, attempts=20, sleep=None):
+    """Atomic write. On Windows a scanner or indexer can briefly lock the file; retry instead of losing the run
+    (as the trading desk's batch.save does)."""
     temporary = path.with_suffix('.tmp')
     temporary.write_text(json.dumps(value, indent=2, ensure_ascii=False), encoding='utf-8')
-    os.replace(temporary, path)
+    replace(temporary, path, attempts, sleep)
+
+
+def replace(source, target, attempts=20, sleep=None):
+    """os.replace, retried while Windows briefly locks either file (a scanner, an indexer, an open editor)."""
+    import time
+    for attempt in range(attempts):
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            (sleep or time.sleep)(0.05 * (attempt + 1))
 
 
 def load_observations(path):

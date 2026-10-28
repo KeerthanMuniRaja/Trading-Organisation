@@ -86,6 +86,25 @@ class ScoutTests(unittest.TestCase):
         rs.BOOTSTRAP_SAMPLES = cls.real_samples
         cls.tmp.cleanup()
 
+    def test_a_slow_model_never_stops_the_screen(self):
+        import io
+        from contextlib import redirect_stdout
+        from unittest import mock
+
+        class EndpointError(RuntimeError):
+            pass
+
+        def timeout(*a, **k):
+            raise EndpointError('ENDPOINT_TIMEOUT')
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(rs, 'invent', timeout), \
+                mock.patch.object(rs, 'scout', lambda *a, **k: self.report), mock.patch.object(rs, 'OUT', Path(tmp)), \
+                redirect_stdout(io.StringIO()) as out:
+            rs.main(['--invent', 'model'])
+            self.assertTrue((Path(tmp) / f"scout-{self.report['through']}.json").exists())   # the catalogue was still screened
+        self.assertEqual(json.loads(out.getvalue())['invented'], [{'outcome': 'model-failed', 'reason': 'ENDPOINT_TIMEOUT'}])
+        with mock.patch.object(rs, 'invent', lambda *a, **k: 1 / 0), self.assertRaises(ZeroDivisionError):
+            rs.main(['--invent', 'model'])                                                   # a real bug still fails loudly
+
     def test_invented_ideas_are_tested_too_and_raise_the_bar_for_every_idea(self):
         with tempfile.TemporaryDirectory() as tmp:
             ledger = Path(tmp) / 'ideas.jsonl'

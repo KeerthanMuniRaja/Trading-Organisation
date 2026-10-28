@@ -235,11 +235,14 @@ def analyst_extract(llm, model, state, config, api=None, now=None):
 
 def _extract(llm, model, state, config):
     queue = [{k: v for k, v in o.items() if k != 'blockers'} for o in read(state, 'queue.json', []) if not o.get('blockers')]
+    # newest first: with a bounded number of model calls a day, today's news matters most to the desk, and an item
+    # older than holdDays can no longer be corroborated in time anyway
+    queue.sort(key=lambda o: o.get('publishedAt') or '', reverse=True)
     current = read(state, 'extracted.json', None)
     if current and (current.get('model') != model or current.get('contractVersion') != claims.CONTRACT_VERSION):
         # A new model or claim contract starts a fresh extraction file. The old one is kept and still read, so claims
         # behind evidence already decided stay checkable (they simply carry no fact key if the old contract had none).
-        os.replace(state / 'extracted.json', state / f'extracted-archive-{len(archives(state)) + 1}.json')
+        claims.replace(state / 'extracted.json', state / f'extracted-archive-{len(archives(state)) + 1}.json')
     return claims.run_extract(queue, llm, state, model, config['maxModelCallsPerCycle'])
 
 
@@ -445,13 +448,16 @@ def export_headlines(api, state, config):
 
 
 # ---------- orchestration: one child process per step, each with only its own credential ----------
-def env_file():
-    values, path = {}, claims.ROOT / '.env'
+def env_file(path=None):
+    values, path = {}, Path(path or claims.ROOT / '.env')
     if path.exists():
         for line in path.read_text(encoding='utf-8').splitlines():
             key, _, value = line.partition('=')
             if key.strip() and not key.startswith('#'):
-                values[key.strip()] = value.strip()
+                value = value.strip()
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in '\'"`':
+                    value = value[1:-1]  # quoted, as node --env-file reads it (the cycle's own .env loader)
+                values[key.strip()] = value
     return values
 
 

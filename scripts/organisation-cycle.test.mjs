@@ -104,10 +104,13 @@ test('the broad research data is refreshed a little each day, never in a replay,
     delete process.env.REPLAY_PRICES;
     const plan = await planSteps({ root: '/nowhere' });
     const ids = plan.map(s => s.id);
-    assert.ok(ids.indexOf('broad-data') < ids.indexOf('factor-lab') && ids.indexOf('factor-lab') < ids.indexOf('organisation-lessons'));
+    assert.ok(ids.indexOf('broad-data') < ids.indexOf('factor-lab') && ids.indexOf('factor-lab') < ids.indexOf('factor-forward')
+      && ids.indexOf('factor-forward') < ids.indexOf('organisation-lessons'));
     const broad = plan.find(s => s.id === 'broad-data');
     assert.ok(broad.args.includes('--max-age-days') && broad.args.includes('--limit') && broad.requires);
     assert.ok(plan.find(s => s.id === 'factor-lab').args.includes('--monthly'));
+    assert.ok(ids.indexOf('world-stories') < ids.indexOf('market-pulse') && ids.indexOf('market-pulse') < ids.indexOf('debate'));
+    assert.ok(ids.indexOf('market-pulse') < ids.indexOf('reaction-study') && ids.indexOf('reaction-study') < ids.indexOf('organisation-lessons'));
     process.env.REPLAY_PRICES = 'x';
     assert.ok((await planSteps({ root: '/nowhere' })).find(s => s.id === 'broad-data').skip);
   } finally { if (before === undefined) delete process.env.REPLAY_PRICES; else process.env.REPLAY_PRICES = before; }

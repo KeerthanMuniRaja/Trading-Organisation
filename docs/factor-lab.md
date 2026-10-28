@@ -68,5 +68,51 @@ momentum-12-1 is the first factor to pass. **It is a candidate, not proof.**
 - It passed only once the volatile shares were back. A result that rests on which shares were kept is fragile.
 - The universe is today's members: survivorship bias flatters momentum most.
 
-Next, under founder review B14: re-test it on point-in-time membership, then run a pre-registered forward test before any
-bot uses it. Trend-200d (IC t 1.92) and near-52w-high (1.84) point the same way but fail the bar.
+Two checks remain before any bot uses it:
+- a re-test on point-in-time membership (founder review B14);
+- the pre-registered forward test below.
+
+Trend-200d (IC t 1.92) and near-52w-high (1.84) point the same way but fail the bar.
+
+### When the factors work: after a deep fall
+
+Each factor's record is also split by market condition (`byCondition`, descriptive, not part of the pass). One group
+is the months after the whole universe fell 15% or more over the previous 6 judged months (`DEEP_FALL_PCT`); the other
+is every other month:
+
+| Factor | After a deep fall (4 months) | Other months |
+| --- | --- | --- |
+| reversal-1m (last month's losers) | **+3.1% a month, ahead 4/4** | −0.4% |
+| momentum-12-1 | **−1.6%, ahead 1/4** | +0.7% |
+| momentum-6m | −1.7%, ahead 1/4 | +0.9% |
+| near-52w-high | −4.2%, ahead 0/4 | +0.2% |
+
+This is the well-known "momentum crash": in a rebound, last month's losers bounce hardest. On our 8 shares the mentor's
+lesson that momentum fails in a rebound looked contradicted; on 484 shares it shows. There are only 4 such months, so
+it is a warning, not a rule.
+
+The organisation lesson `org-after-deep-fall` carries it to decisions in a HIGH or SEVERE market and to momentum,
+reversal and trend members. The model exam `exam-momentum-after-deep-fall` checks that a bear uses it.
+
+## The forward test
+
+`momentum-12-1-from-2026-11` was registered on 28 Oct 2026 (RESEARCH-03,
+`.local/trading-desk/factor-forward/`). Everything was frozen at registration:
+
+| What | Fixed at |
+| --- | --- |
+| The rule | Fingerprint `4e5f6c41de7f6393`: the factor, the monthly panel and the costs. Changing any of it ends the test |
+| The shares | The 484 shares that had data. The list never changes, so there is no survivorship bias going forward |
+| What counts | Months from **November 2026** only. A month counts once 90% of the shares have its prices, and none is ever skipped |
+| The verdict | After **24 months** (about end of 2028), it passes only if the IC t-statistic is at least 1.645 (one test, one-sided 5%) and the top fifth is ahead of the list on average after costs. Before then, the reports are descriptive |
+
+The cycle's `factor-forward` step scores it every day and writes the result to `factor-forward/reports/`. The first
+month is judged once December's prices arrive. A share with no prices for a month (suspended, delisted) is left out of
+that month. So a collapse just before a delisting is missed, a small bias in the factor's favour.
+
+A pass makes momentum-12-1 eligible for a bot proposal to the owner. It never trades by itself.
+
+```
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\factor_lab.py --register-forward <name> --factor <factor>
+.local\replay-venv\Scripts\python.exe integrations\trading-desk\factor_lab.py --forward
+```

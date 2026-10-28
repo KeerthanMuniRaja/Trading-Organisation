@@ -56,6 +56,11 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
     // a driver's news? (direction-free; a link that shows nothing stays labelled until the owner edits the links)
     { id: 'link-study', cmd: PY, args: [desk('chains.py'), 'study', '--headlines', join('.local', 'world', 'headline-history.json')],
       timeoutMs: 300_000, requires: join(root, '.local', 'world', 'headline-history.json') },
+    // AWARE-01: who is moving and why, big players and FII/DII flows, read from every collected headline across the
+    // NIFTY 500 names (no model, no network), and how unusual each desk share's last move was
+    { id: 'market-pulse', cmd: PY, args: [desk('market_pulse.py')], timeoutMs: 120_000, requires: join(root, '.local', 'world', 'headline-history.json') },
+    // AWARE-02: every reported move is kept, and measured against the market over the next week once prices exist
+    { id: 'reaction-study', cmd: PY, args: [desk('news_reactions.py')], timeoutMs: 120_000, requires: join(root, '.local', 'world', 'market-pulse.json') },
     // KNOW-06: everything collected, connected and searchable, point-in-time (items, stories, drivers, regimes, ideas, calls)
     { id: 'knowledge-index', cmd: PY, args: [desk('knowledge_index.py'), 'build'], timeoutMs: 300_000 },
     // SCENARIO-01: five personas rehearse the day's two biggest linked world stories (model needed; shadow only), and
@@ -116,6 +121,9 @@ export async function planSteps({ withModel = false, root = ROOT } = {}) {
           requires: join(root, '.local', 'trading-desk', 'datasets', 'ind_nifty500list.csv') },
     { id: 'factor-lab', cmd: PY, args: [desk('factor_lab.py'), '--monthly'], timeoutMs: 600_000,
       requires: join(root, '.local', 'trading-desk', 'daily-nifty500') },
+    // RESEARCH-03: a factor that passed is tested forward on months after its registration, verdict at a fixed horizon
+    { id: 'factor-forward', cmd: PY, args: [desk('factor_lab.py'), '--forward'], timeoutMs: 600_000,
+      requires: join(root, '.local', 'trading-desk', 'factor-forward') },
     { id: 'organisation-lessons', cmd: PY, args: [desk('organisation_lessons.py')], timeoutMs: 120_000 },
     // the model-free rule bot proposes once a month, before the end-of-day trader reviews; it runs only once the owner
     // has created and qualified it and named it here (RULE_BOT_ID), with a trader credential bound to it

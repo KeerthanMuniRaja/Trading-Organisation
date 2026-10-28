@@ -4,7 +4,7 @@ The Vibe-Trading-inspired practice prompt must be evaluated before claiming impr
 
 ## Prepare without inference
 
-From the Nexus directory in Command Prompt:
+From the project directory in Command Prompt:
 
 ```bat
 npm run model:practice

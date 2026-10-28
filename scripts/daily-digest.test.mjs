@@ -3,7 +3,26 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { arithmeticProblems, render, run, trustCheck, upcomingEvents } from './daily-digest.mjs';
+import { arithmeticProblems, pulseLines, render, run, trustCheck, upcomingEvents } from './daily-digest.mjs';
+
+test('the market pulse section: movers with reasons, flows, sectors, the week and unexplained desk moves', () => {
+  assert.deepEqual(pulseLines(null), []);
+  const text = pulseLines({ windowDays: 7, counts: { up: 1, down: 1 },
+    movers: [{ company: 'KEI Industries Ltd.', direction: 'down', pct: 8, why: 'Q2 profit rising 29%' }, { company: 'Welspun Corp Ltd.', direction: 'up', pct: 230, period: 'YTD' }],
+    bigPlayers: [{ actors: ['promoter'], action: 'sell', companies: ['Bandhan Bank Ltd.'], amountCrore: 1200 }],
+    flows: [{ actors: ['foreign-investors'], action: 'buy', amountCrore: 6500 }],
+    market: { asOf: '2026-10-27', breadthAbove200Pct: 34, sectors: [{ sector: 'IT', monthPct: 11.8 }, { sector: 'Media', monthPct: 6 }, { sector: 'FMCG', monthPct: 1 },
+      { sector: 'Realty', monthPct: -8.9 }], risers: [{ company: 'Acutaas Chemicals Ltd.', weekPct: 16.6, why: 'Q2 results' }],
+      fallers: [{ company: 'Jindal Saw Ltd.', weekPct: -17.2, why: null }] },
+    deskMoves: [{ symbol: 'SBIN.NS', vsBasketPct: -3.1, sigmas: 2.6, date: '2026-10-27', unexplained: true }] }).join('\n');
+  assert.match(text, /## Market pulse \(press read by rules over 7 days; NIFTY 500 prices to 2026-10-27\)/);
+  assert.match(text, /- In the press: 1 shares reported up, 1 down: KEI Industries -8% \(Q2 profit rising 29%\)\n/);   // the YTD move is not today's news
+  assert.match(text, /- Big players: promoter sell Bandhan Bank Rs 1,200 cr/);
+  assert.match(text, /- Flows: foreign-investors buy Rs 6,500 cr/);
+  assert.match(text, /- Sectors this month: best IT \+11.8%, Media \+6%, FMCG \+1%; worst Media \+6%, FMCG \+1%, Realty -8.9%; 34% of shares above/);
+  assert.match(text, /- The week's fallers: Jindal Saw -17.2% \(no news\)/);
+  assert.match(text, /- UNEXPLAINED: SBIN.NS -3.1% against the basket on 2026-10-27 \(2.6 of its usual swings\), no news/);
+});
 
 const digest = { windowHours: 24, generatedAt: '2026-10-14T18:00:00.000Z', mode: 'paper', halted: false,
   money: { realisedPaise: '25000', unrealisedPaise: '-1200', totalPaise: '23800', realisedInWindowPaise: '25000', byBot: [{ botId: 'bot-one', totalPaise: '23800', returnOnBudgetPct: 2.38 }] },

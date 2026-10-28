@@ -35,7 +35,7 @@ A Docker Linux adapter was added in v0.1.16. It requires a full local `sha256:` 
 No sandbox containers were left behind. The report is in `.local/artifact-sandbox-verification.json`. Run it again with:
 
 ```cmd
-wsl -d Ubuntu-24.04 -u root -- bash -c "cd /mnt/c/Users/<you>/.../Nexus/integrations/skfolio && python3 verify_artifact_sandbox.py --image sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1"
+wsl -d Ubuntu-24.04 -u root -- bash -c "cd /mnt/c/Users/<you>/.../Trading-Organisation/integrations/skfolio && python3 verify_artifact_sandbox.py --image sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1"
 ```
 
 This is local containment evidence, not remote attestation (`remoteAttestation: false`).

@@ -7,17 +7,17 @@ import { renderOrganisation, captureOrganisation } from './obsidian-organisation
 const bots = [{ id: 'student', name: '[[Injected]]', state: 'school', department: 'research', specialty: 'costs', token: 'DO_NOT_EXPORT' }];
 const knowledge = { evidence: [{ id: 'e1', status: 'verified', content: 'PRIVATE_SOURCE' }], lessons: [{ id: 'l1', bot_id: 'student', evidence_id: 'e1', content: 'PRIVATE_LESSON' }] };
 test('graph links only included records and excludes raw content and extra fields', () => {
-  const notes = renderOrganisation(bots, knowledge, 'Nexus/Organisation/run', {});
+  const notes = renderOrganisation(bots, knowledge, 'Trading-Organisation/Organisation/run', {});
   const all = [...notes.values()].join('\n');
   for (const secret of ['DO_NOT_EXPORT', 'PRIVATE_SOURCE', 'PRIVATE_LESSON', '[[Injected]]']) assert.ok(!all.includes(secret));
-  assert.ok(notes.get('Lesson-l1.md').includes('[[Nexus/Organisation/run/Bot-student]]'));
-  assert.ok(notes.get('Lesson-l1.md').includes('[[Nexus/Organisation/run/Evidence-e1]]'));
+  assert.ok(notes.get('Lesson-l1.md').includes('[[Trading-Organisation/Organisation/run/Bot-student]]'));
+  assert.ok(notes.get('Lesson-l1.md').includes('[[Trading-Organisation/Organisation/run/Evidence-e1]]'));
   assert.throws(() => renderOrganisation([{ id: '../escape' }], knowledge, 'x', {}));
   const missing = renderOrganisation([], knowledge, 'x', {});
   assert.ok(missing.get('Lesson-l1.md').includes('Not included'));
 });
 test('capture makes only bounded GET requests and saves completion marker last', async () => {
-  const vault = await mkdtemp(join(tmpdir(), 'nexus-org-view-'));
+  const vault = await mkdtemp(join(tmpdir(), 'org-org-view-'));
   await mkdir(join(vault, '.obsidian'));
   const calls = [], env = { PRINCIPALS_JSON: JSON.stringify([{ role: 'researcher', token: 'test' }]) };
   const result = await captureOrganisation(vault, env, async (url, options) => {
