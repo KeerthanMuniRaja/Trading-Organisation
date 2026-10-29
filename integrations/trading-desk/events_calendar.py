@@ -6,8 +6,9 @@ source is fetched): .local/events.json, for example
 Kinds: results, rbi-policy, budget, fomc, macro-data, holiday, other. An event without symbols concerns the whole market.
 Invalid entries are skipped and counted, never guessed. The debate, the scenario panel and the digest read it; a
 missing file is said plainly ('no calendar'), never treated as 'nothing scheduled'.
-The organisation adds the results days the press reported for the desk shares (results_calendar.py, NEWS-07), marked
-source 'press'; an owner results entry for the same share within 20 days replaces the press one.
+The organisation adds the results days the press reported for the desk shares, and the RBI and Fed decision days
+(results_calendar.py, NEWS-07), marked source 'press'; an owner entry for the same share's results, or the same
+decider's policy day, within 20 days replaces the press one.
 """
 from __future__ import annotations
 
@@ -24,7 +25,7 @@ PRESS = daily.ROOT / '.local' / 'world' / 'results-calendar.json'
 KINDS = ('results', 'rbi-policy', 'budget', 'fomc', 'macro-data', 'holiday', 'other')
 SHARES = {s.removesuffix('.NS') for s in daily.datasets.UNIVERSE}
 OWNER_WINS_DAYS = 20
-PRESS_ONLY = 'press-reported results days only (no owner calendar): other dates unknown'
+PRESS_ONLY = 'press-reported results and policy days only (no owner calendar): other dates unknown'
 
 
 def press_events(path=PRESS):
@@ -37,7 +38,12 @@ def press_events(path=PRESS):
         return None
     out = []
     for e in raw if isinstance(raw, list) else []:
-        share = str(e.get('symbol', '')).removesuffix('.NS')
+        if e.get('kind') in ('rbi-policy', 'fomc') and e.get('date'):  # market-wide: every share sees it
+            out.append({'date': str(e['date']), 'kind': e['kind'], 'symbols': [], 'source': 'press',
+                        'title': f"{e.get('company') or e['kind']} (press report, {e.get('publisher') or 'news'} "
+                                 f"{str(e.get('publishedAt', ''))[:10]}; not the official calendar)"[:160]})
+            continue
+        share = str(e.get('symbol') or '').removesuffix('.NS')
         if share in SHARES and e.get('date'):
             out.append({'date': str(e['date']), 'kind': 'results', 'symbols': [share], 'source': 'press',
                         'title': f"{e.get('company') or share} results (press report, {e.get('publisher') or 'news'} "
@@ -52,8 +58,11 @@ def load(path=CALENDAR, press=PRESS):
     if owner is None and reported is None:
         return None, 0
     owner = owner or []
-    owned = [(e['symbols'][0], date.fromisoformat(e['date'])) for e in owner if e['kind'] == 'results' and len(e['symbols']) == 1]
-    extra = [e for e in reported or [] if not any(s == e['symbols'][0] and abs((d - date.fromisoformat(e['date'])).days) <= OWNER_WINS_DAYS
+    # the owner's entry wins over the press's for the same share's results, or the same decider's policy day
+    owned = [(e['symbols'][0] if e['kind'] == 'results' else e['kind'], date.fromisoformat(e['date'])) for e in owner
+             if (e['kind'] == 'results' and len(e['symbols']) == 1) or e['kind'] in ('rbi-policy', 'fomc')]
+    key = lambda e: e['symbols'][0] if e['kind'] == 'results' else e['kind']  # noqa: E731
+    extra = [e for e in reported or [] if not any(s == key(e) and abs((d - date.fromisoformat(e['date'])).days) <= OWNER_WINS_DAYS
                                                    for s, d in owned)]
     return sorted(owner + extra, key=lambda e: (e['date'], e['kind'], e['title'])), skipped
 

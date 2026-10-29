@@ -41,6 +41,16 @@ the title:
 - **Without your file:** the status reads `press-reported results days only (no owner calendar): other dates unknown`.
   An empty list then means "none reported", never "nothing scheduled", and policy dates stay unknown until you add them.
 - **The mentor's results-day lesson** now reaches the debate whenever a press results date is upcoming.
+- **Policy days (29 Oct 2026):** the same reader finds RBI and Fed decision days.
+  - **What counts:** the headline must name the decider, with a decision word (meeting, decision, policy, outcome) just
+    before the date. For example: "US Fed meeting October 2026 today" or "RBI MPC meeting on December 4".
+  - **What doesn't:** minutes, speeches and testimony before the date.
+  - **How they appear:** as market-wide events (`rbi-policy`, `fomc`) that every share sees, titled "not the official
+    calendar".
+  - **Your entries win:** your entry for the same decider within 20 days replaces the press one.
+  - **First one found:** the Fed decision of 28 Oct.
+- **The results-day lesson is now measured** (`results_day_moves` in the [mentor](mentor.md)): each results day's move
+  is compared with the share's usual move. The lesson is judged from 30 cases.
 
 ## Who uses it
 

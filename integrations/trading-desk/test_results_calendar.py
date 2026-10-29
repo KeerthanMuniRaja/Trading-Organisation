@@ -36,6 +36,26 @@ class DatesTests(unittest.TestCase):
         self.assertEqual(rc.dates_in('Q2 results on Oct 17 | shares jump 5% today', D), [date(2026, 10, 17)])  # not today too
 
 
+class PolicyDayTests(unittest.TestCase):
+    def test_rbi_and_fed_decision_days_are_read_from_the_press(self):
+        d = date(2026, 10, 28)
+        self.assertEqual(rc.policy_days("US Fed meeting October 2026 today: Expectations, date and time, when & where to watch "
+                                        "Kevin Warsh's speech", d), [('fomc', d)])  # the real 28 Oct headline: the speech comes after
+        self.assertEqual(rc.policy_days('RBI MPC meeting on December 4: rate cut likely, say economists', d), [('rbi-policy', date(2026, 12, 4))])
+        self.assertEqual(rc.policy_days('RBI monetary policy outcome tomorrow: what to expect', d), [('rbi-policy', date(2026, 10, 29))])
+        for title in ('Fed minutes on Oct 8 show split over rates',               # minutes are not a decision
+                      'Sensex falls ahead of Fed decision',                        # no date
+                      'RBI to curb rupee volatility on Monday, says FM',            # no decision word before the date
+                      'Fed governor speech on Nov 3 in focus'):
+            self.assertEqual(rc.policy_days(title, d), [], title)
+
+    def test_policy_days_are_market_wide_entries(self):
+        found = rc.read([item('US Fed meeting October 2026 today: Expectations', at='2026-10-28T14:50:00+05:30')], rc.market_pulse.aliases(ROWS), ROWS)
+        self.assertEqual([(e['date'], e['kind'], e['symbol']) for e in found], [('2026-10-28', 'fomc', None)])
+        kept = rc.merge([], found + [{**found[0], 'date': '2026-11-04', 'publishedAt': '2026-10-30T10:00:00+05:30'}], date(2026, 10, 30))
+        self.assertEqual([k['date'] for k in kept], ['2026-11-04'])  # rescheduled: the later headline wins
+
+
 class CalendarTests(unittest.TestCase):
     def test_headlines_become_one_entry_per_share_and_date(self):
         rows = rc.market_pulse.aliases(ROWS)

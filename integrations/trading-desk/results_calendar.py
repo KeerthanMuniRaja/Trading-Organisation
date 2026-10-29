@@ -10,6 +10,10 @@ Dividend record dates, splits, bonuses, IPOs and election results never count. A
 nearest the headline; a date more than a week before it or two months after is not trusted. When later headlines give
 a different date for the same share within 20 days, the latest headline wins (a rescheduled meeting).
 
+The same reading finds the market-wide policy days (29 Oct 2026): an RBI or Fed decision day when the headline names
+the decider and a decision word comes just before the date ("US Fed meeting October 2026 today", "RBI MPC meeting
+on December 4"). Minutes, speeches and testimony before the date are not decisions.
+
 The headline history keeps only the newest 500 items, so the calendar accumulates in .local/world/results-calendar.json
 (kept 400 days). It is the press's account: the debate sees it as background with its source, never as evidence, and
 the owner's own .local/events.json overrides it.
@@ -47,7 +51,12 @@ NOT_BETWEEN = re.compile(r'[|;?]|record date|ex-?date|ex-dividend|dividend|bonus
                          r'\b(?:' + market_pulse.UP + '|' + market_pulse.DOWN + r')\b', re.IGNORECASE)
 NOT_BEFORE = re.compile(r'\b(?:election|exit poll|poll|exam|bypoll|assembly)\s*$', re.IGNORECASE)
 MAX_GAP = 40        # characters between the results word and an explicit date
-MAX_GAP_RELATIVE = 12  # ... and "today" / "tomorrow" ("results today", "results due tomorrow")
+MAX_GAP_RELATIVE = 16  # ... and "today" / "tomorrow" ("results today", "Fed meeting October 2026 today")
+# market-wide policy days (29 Oct 2026): who decides, and a decision word just before the date
+POLICY = {'fomc': (re.compile(r'\b(?:US Fed|Fed|FOMC|Federal Reserve)\b'), 'US Federal Reserve decision'),
+          'rbi-policy': (re.compile(r'\b(?:RBI|MPC|Monetary Policy Committee)\b'), 'RBI monetary policy decision')}
+POLICY_WORDS = re.compile(r'\b(?:meeting|decision|policy|announcement|outcome|review)\b', re.IGNORECASE)
+NOT_POLICY = re.compile(r'\b(?:minutes|speech|testimony|Jackson Hole|governor said)\b', re.IGNORECASE)
 
 
 def _day(m, published):
@@ -66,13 +75,14 @@ def _day(m, published):
     return day if -7 <= (day - published).days <= 60 else None
 
 
-def dates_in(title, published):
-    """The results days a headline gives: [date], usually one."""
+def dates_in(title, published, keyword=RESULTS, reject=None):
+    """The days a headline gives for its event (results by default): [date], usually one. `reject`: words that, before
+    the date, make it some other event ("Fed governor speech on Nov 3")."""
     found = []
     for m in DATE.finditer(title):
         before = title[max(0, m.start() - MAX_GAP - 30):m.start()]
-        words = list(RESULTS.finditer(before))
-        if not words:
+        words = list(keyword.finditer(before))
+        if not words or (reject and reject.search(before)):
             continue
         word = words[-1]
         between = before[word.end():]
@@ -80,7 +90,7 @@ def dates_in(title, published):
             continue
         if NOT_BEFORE.search(before[:word.start()]):
             continue
-        if word.group(0).lower().startswith('board') and not REAL_RESULTS.search(title):
+        if keyword is RESULTS and word.group(0).lower().startswith('board') and not REAL_RESULTS.search(title):
             continue  # a board meeting about something else
         day = _day(m, published)
         if day and day not in found:
@@ -88,13 +98,23 @@ def dates_in(title, published):
     return found
 
 
+def policy_days(title, published):
+    """[(kind, date)] for an RBI or Fed decision day the headline gives. The decider must be named, and a decision word
+    must come just before the date; minutes, speeches and testimony before the date are not decisions (a speech
+    mentioned after it, "Fed meeting today: ... where to watch Warsh's speech", does not change the meeting)."""
+    return [(kind, day) for kind, (who, _) in POLICY.items() if who.search(title) for day in dates_in(title, published, POLICY_WORDS, NOT_POLICY)]
+
+
 def read(items, alias_list, names):
-    """Calendar entries from headlines: one per (share, date) the headline gives."""
+    """Calendar entries from headlines: one per (share, date) the headline gives, and one per market-wide policy day."""
     out = []
     for h in items:
         if not h.get('publishedAt') or not h.get('title'):
             continue
         published = datetime.fromisoformat(str(h['publishedAt'])).astimezone(IST).date()
+        for kind, day in policy_days(h['title'], published):
+            out.append({'date': day.isoformat(), 'kind': kind, 'symbol': None, 'company': POLICY[kind][1], 'desk': False,
+                        'title': h['title'][:200], 'publisher': h.get('source'), 'publishedAt': str(h['publishedAt'])})
         days = dates_in(h['title'], published)
         if not days:
             continue
@@ -102,7 +122,7 @@ def read(items, alias_list, names):
                                       *(s if s.endswith('.NS') else s + '.NS' for s in h.get('symbols') or [])]))
         for day in days:
             for s in symbols:
-                out.append({'date': day.isoformat(), 'symbol': s, 'company': names.get(s, datasets.UNIVERSE.get(s, s)),
+                out.append({'date': day.isoformat(), 'kind': 'results', 'symbol': s, 'company': names.get(s, datasets.UNIVERSE.get(s, s)),
                             'desk': s in datasets.UNIVERSE, 'title': h['title'][:200], 'publisher': h.get('source'),
                             'publishedAt': str(h['publishedAt'])})
     return out
@@ -115,14 +135,14 @@ def merge(old, new, today, keep_days=KEEP_DAYS):
     for e in sorted([*old, *new], key=lambda e: e['publishedAt']):
         if (today - date.fromisoformat(e['date'])).days > keep_days:
             continue
-        kept = by_share.setdefault(e['symbol'], [])
+        kept = by_share.setdefault(e.get('symbol') or e.get('kind'), [])  # a policy day has no share: one series per decider
         near = [k for k in kept if abs((date.fromisoformat(k['date']) - date.fromisoformat(e['date'])).days) <= RESCHEDULE_DAYS]
         if any(k['date'] == e['date'] for k in near):
             continue
         for k in near:
             kept.remove(k)
         kept.append(e)
-    return sorted((e for kept in by_share.values() for e in kept), key=lambda e: (e['date'], e['symbol']))
+    return sorted((e for kept in by_share.values() for e in kept), key=lambda e: (e['date'], e.get('symbol') or '', e.get('kind') or ''))
 
 
 def build(headlines_path=HEADLINES, out=OUT, now=None, rows=None):
@@ -145,7 +165,7 @@ def main(argv=None):
     r = build()
     today = datetime.now(IST).date().isoformat()
     print(json.dumps({'headlinesRead': r['headlinesRead'], 'foundThisRun': r['foundThisRun'], 'kept': len(r['events']),
-                      'upcomingDesk': [f"{e['date']} {e['company']}" for e in r['events'] if e['desk'] and e['date'] >= today],
+                      'upcomingDesk': [f"{e['date']} {e['company']}" for e in r['events'] if (e['desk'] or not e.get('symbol')) and e['date'] >= today],
                       'upcoming': [f"{e['date']} {e['company']}" for e in r['events'] if e['date'] >= today][:15]},
                      indent=2, ensure_ascii=False))
 

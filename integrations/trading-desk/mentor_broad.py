@@ -221,8 +221,50 @@ def results_season(prepared, min_shares=50):
             'holds': t >= 2}
 
 
+RESULTS_CALENDAR = daily.ROOT / '.local' / 'world' / 'results-calendar.json'
+RESULTS_MIN_CASES = 30
+
+
+def results_day_moves(prepared, calendar=RESULTS_CALENDAR, min_cases=RESULTS_MIN_CASES, window=250):
+    """On the results days the press reported (results_calendar.py), how far each share moved against the market over
+    that day and the next session (results often come after the close), against its own typical two-session move over
+    the year before. The calendar grows every day, so the check waits for enough cases instead of guessing."""
+    import json
+    from pathlib import Path
+    shares, _ = prepared
+    events = json.loads(Path(calendar).read_text(encoding='utf-8')).get('events', []) if Path(calendar).exists() else []
+    ratios, moves = [], []
+    for e in {(e['symbol'], e['date']) for e in events}:
+        p = shares.get(e[0])
+        if not p:
+            continue
+        i = next((k for k, d in enumerate(p['dates']) if d >= e[1]), None)
+        if i is None or i < 2 or i + 1 >= len(p['dates']) or p['rel'][i] is None or p['rel'][i + 1] is None:
+            continue
+        pairs = [abs(p['rel'][k] + p['rel'][k + 1]) for k in range(max(1, i - window), i - 1)
+                 if p['rel'][k] is not None and p['rel'][k + 1] is not None]
+        if len(pairs) < 100 or statistics.median(pairs) == 0:
+            continue
+        move = abs(p['rel'][i] + p['rel'][i + 1])
+        moves.append(move)
+        ratios.append(move / statistics.median(pairs))
+    if len(ratios) < min_cases:
+        so_far = (f' So far the median move was {statistics.median(ratios):.1f} times the share\'s usual two-session move.'
+                  if ratios else '')
+        return {'cases': len(ratios), 'text': f'Only {len(ratios)} press-reported results days have prices yet; the lesson is judged '
+                                              f'at {min_cases}.{so_far}', 'holds': None}
+    median = statistics.median(ratios)
+    big = sum(r >= 2 for r in ratios) / len(ratios)
+    return {'cases': len(ratios), 'medianTimesUsual': round(median, 2), 'twiceUsualPct': round(100 * big), 'averageMovePct': round(100 * statistics.fmean(moves), 2),
+            'text': f'On {len(ratios)} press-reported results days, shares moved {100 * statistics.fmean(moves):.1f}% against the market over the day '
+                    f'and the next session on average: the median was {median:.1f} times the share\'s usual two-session move, and '
+                    f'{round(100 * big)} in 100 moved at least twice as much as usual.',
+            'holds': median >= 1.5}
+
+
 CHECKS = {'big_day_follow_through': big_day_follow_through, 'falling_knives': falling_knives, 'turn_of_month': turn_of_month,
-          'stop_loss': stop_loss, 'momentum_in_rebounds_broad': momentum_in_rebounds, 'results_season': results_season}
+          'stop_loss': stop_loss, 'momentum_in_rebounds_broad': momentum_in_rebounds, 'results_season': results_season,
+          'results_day_moves': results_day_moves}
 
 
 def load(cache=daily.BROAD):

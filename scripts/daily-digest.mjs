@@ -98,9 +98,11 @@ export async function knowledgeSummary(root = join(dirname(fileURLToPath(import.
   try { routing = JSON.parse(await readFile(join(root, '.local', 'models', 'routing.json'), 'utf8')); } catch { /* no decision model */ }
   let exams = null;
   try { exams = JSON.parse(await readFile(join(root, '.local', 'model-eval', 'auto-last.json'), 'utf8')); } catch { /* not examined yet */ }
+  let rndForward = null;  // RND-04: R&D ideas judged on months after registration
+  try { rndForward = JSON.parse(await readFile(join(root, '.local', 'trading-desk', 'rnd', 'forward', 'reports', 'latest.json'), 'utf8')); } catch { /* none yet */ }
   const events = await upcomingEvents(root, now);
-  return live || unknown.length || drafts || review || events || pulse || tuning || routing || exams
-    ? { live, unknown, drafts, review, events, pulse, tuning, routing, exams } : null;
+  return live || unknown.length || drafts || review || events || pulse || tuning || routing || exams || rndForward
+    ? { live, unknown, drafts, review, events, pulse, tuning, routing, exams, rndForward } : null;
 }
 
 /** NEWS-05: the owner's events calendar (.local/events.json), the next `days` days; null when there is no calendar.
@@ -112,11 +114,15 @@ export async function upcomingEvents(root = join(dirname(fileURLToPath(import.me
   try { press = JSON.parse(await readFile(join(root, '.local', 'world', 'results-calendar.json'), 'utf8')).events; } catch { /* none yet */ }
   if (raw === null && press === null) return null;
   const owner = Array.isArray(raw) ? raw : [];
-  const owned = owner.filter(e => e?.kind === 'results' && e.symbols?.length === 1);
+  const POLICY = ['rbi-policy', 'fomc'];
+  // the owner's entry wins over the press's for the same share's results, or the same decider's policy day
+  const key = e => (e.kind === 'results' ? String(e.symbols?.[0]).replace(/\.NS$/, '') : e.kind);
+  const owned = owner.filter(e => (e?.kind === 'results' && e.symbols?.length === 1) || POLICY.includes(e?.kind));
   const near = (a, b) => Math.abs(Date.parse(a) - Date.parse(b)) <= 20 * 86_400_000;
-  const reported = (Array.isArray(press) ? press : []).filter(e => e?.desk)
-    .map(e => ({ date: e.date, kind: 'results', symbols: [String(e.symbol).replace(/\.NS$/, '')], title: `${e.company} results (press report, not the exchange filing)` }))
-    .filter(e => !owned.some(o => String(o.symbols[0]).replace(/\.NS$/, '') === e.symbols[0] && near(o.date, e.date)));
+  const reported = (Array.isArray(press) ? press : []).filter(e => e?.desk || POLICY.includes(e?.kind))
+    .map(e => (POLICY.includes(e.kind) ? { date: e.date, kind: e.kind, title: `${e.company} (press report, not the official calendar)` }
+      : { date: e.date, kind: 'results', symbols: [String(e.symbol).replace(/\.NS$/, '')], title: `${e.company} results (press report, not the exchange filing)` }))
+    .filter(e => !owned.some(o => key(o) === key(e) && near(o.date, e.date)));
   const today = new Date(now + 330 * 60_000).toISOString().slice(0, 10), end = new Date(now + 330 * 60_000 + days * 86_400_000).toISOString().slice(0, 10);
   return [...owner, ...reported].filter(e => e && /^\d{4}-\d{2}-\d{2}$/.test(String(e.date)) && e.date >= today && e.date <= end && e.title)
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
@@ -124,7 +130,7 @@ export async function upcomingEvents(root = join(dirname(fileURLToPath(import.me
 
 export function eventLines(events) {
   if (events === null || events === undefined) return [];
-  return ['## Coming up (next 7 days, from your events calendar and press-reported results days)',
+  return ['## Coming up (next 7 days, from your events calendar and press-reported results and policy days)',
     ...(events.length ? events.map(e => `- ${e.date} ${String(e.kind ?? 'other')}: ${String(e.title).slice(0, 120)}${e.symbols?.length ? ` (${e.symbols.join(', ')})` : ''}`)
       : ['- Nothing scheduled in the calendar.']), ''];
 }
@@ -241,7 +247,17 @@ export function researchLines(k) {
     ...(safe ? [`- Lowest risk: ${safe.name}, worst fall ${safe.maxDrawdownPct}% (basket ${r.basket.maxDrawdownPct}%), Sharpe ${safe.sharpe} (basket ${r.basket.sharpe})`] : []),
     ...(wf ? [`- Choosing the best past idea each year (walk-forward): ${wf.ahead}/${wf.behind} months, ${wf.averageExcessPct}% a month`] : []),
     ...(r.bestAfterTax && r.basket?.afterTaxCagrPct !== undefined ? [`- After an approximate capital-gains tax: best idea ${r.bestAfterTax.name} `
-      + `${r.bestAfterTax.afterTaxCagrPct}% a year, holding the basket ${r.basket.afterTaxCagrPct}% a year`] : []), ''];
+      + `${r.bestAfterTax.afterTaxCagrPct}% a year, holding the basket ${r.basket.afterTaxCagrPct}% a year`] : []),
+    ...forwardLines(k.rndForward), ''];
+}
+
+/** RND-04: the R&D forward tests, judged only on months after registration. */
+export function forwardLines(f) {
+  if (!f?.tests?.length) return [];
+  const live = f.tests.filter(t => t.status === 'waiting' || t.status === 'running');
+  const show = t => `${t.idea} ${t.status === 'waiting' ? `from ${t.firstMonth}` : `${t.monthsJudged}/${t.monthsNeeded} months, ${t.averageExcessPct}% a month, t ${t.tStat ?? '?'}`}`;
+  return [`- Forward tests (months after registration only): ${live.length} of ${f.maxLive} running`
+    + (live.length ? ` (${live.map(show).join('; ')})` : '') + (f.passed?.length ? `; PASSED: ${f.passed.join(', ')} (eligible for a birth proposal on your agenda)` : '')];
 }
 
 export function regimeLine(r) {

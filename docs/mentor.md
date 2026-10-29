@@ -29,7 +29,7 @@ so they reason better. The design keeps three rules:
 | Trading costs decide small edges | **checked** | 0.15% one way, so about 0.3% for a full round trip |
 | After SEVERE distribution days, falls are deeper | **checked** | Average worst fall −3.58%, against −2.03% after NORMAL days |
 | **Momentum fails when a fall turns into a rebound** | **contradicted** | On our 8 shares, momentum did *better* in the 6 months after a deep fall: +1.19% a month against the basket. It is not shown to the agents |
-| Results days carry gap risk; RBI and Fed days; Infosys earns in dollars; Reliance is several businesses; ex-dividend is not a loss; past winners mislead | unverified | No check yet. Shown as experience, clearly labelled |
+| RBI and Fed days; Infosys earns in dollars; Reliance is several businesses; ex-dividend is not a loss; past winners mislead | unverified | No check yet. Shown as experience, clearly labelled |
 
 **Curriculum v2 (the same evening): ten more lessons, six checked on our data.**
 
@@ -67,6 +67,11 @@ must stand out from noise (a t-statistic of at least 2), not just be larger.
 | Results season | **checked**, reworded | Results weeks are only slightly more stock-specific (2.2% against 2.15% daily spread, t 2.9). The lesson now says the real risk is each company's own results day |
 | Patience is taxed less | **checked** | Our basket grew 15.25% a year: 12.2% after tax sold every year, 14.09% held and taxed once at the long-term rate |
 | Past winners mislead | **checked** | Picking each year's best idea so far: 31 months ahead of the basket, 39 behind, −0.118% a month, out of sample |
+
+**29 Oct 2026: results days get a check (`results_day_moves`).** The organisation now keeps its own results calendar from the press ([events calendar](events-calendar.md), NEWS-07):
+- **What it measures:** for each reported results day, the share's move against the market over that day and the next session, since results often come after the close. That is compared with the share's own usual two-session move over the year before.
+- **The rule:** the lesson holds when the median results-day move is at least 1.5 times the usual. It is judged only from 30 cases; until then it stays unverified and says how many it has.
+- **First reading:** 15 cases, with a median move of 2.0 times the usual. That points the lesson's way, but it is not judged yet.
 
 The first wording of the 52-week-low lesson ("shares kept lagging") was not supported once noise was tested, so it
 now claims only what the data shows: no edge in buying there.

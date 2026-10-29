@@ -17,7 +17,7 @@
      "appliesTo": {"always": true}, "test": "turnover_cost"},
     {"id": "results-gap-risk", "title": "Results days carry gap risk",
      "lesson": "A share can jump or fall several percent on its quarterly results, regardless of its trend. A position opened a few days before results carries that event risk in addition to the signal; check the events calendar.",
-     "appliesTo": {"events": ["results"]}, "test": null},
+     "appliesTo": {"events": ["results"]}, "test": "results_day_moves"},
     {"id": "policy-days", "title": "RBI and Fed decision days move rate-sensitive shares",
      "lesson": "Banks react most to RBI policy surprises, and the rupee and foreign flows react to the US Federal Reserve. A move just before a policy decision is often positioning, not a new trend.",
      "appliesTo": {"events": ["rbi-policy", "fomc"], "symbols": ["HDFCBANK", "ICICIBANK", "AXISBANK", "SBIN"]}, "test": null},

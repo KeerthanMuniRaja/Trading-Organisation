@@ -72,6 +72,32 @@ class BroadMentorTests(unittest.TestCase):
         self.assertTrue(planted['holds'], planted['text'])
         self.assertGreater(planted['spreadInSeasonPct'], planted['spreadOtherwisePct'])
 
+    def test_results_days_are_judged_on_the_press_calendar_once_there_are_enough(self):
+        import json
+        import tempfile
+        quiet = universe(shares=40, years=3, sd=0.015)
+        events = [{'symbol': f'S{k:02d}.NS', 'date': quiet['S00.NS'][400 + 7 * k]['date']} for k in range(40)]
+        jumped = {s: [dict(b) for b in bars] for s, bars in quiet.items()}
+        for k, e in enumerate(events):                                  # plant a 6% results gap that stays (either way)
+            bars = jumped[e['symbol']]
+            i = next(n for n, b in enumerate(bars) if b['date'] == e['date'])
+            for b in bars[i:]:
+                b['closePaise'] = round(b['closePaise'] * (1.06 if k % 2 else 0.94))
+        with tempfile.TemporaryDirectory() as d:
+            calendar = Path(d) / 'results-calendar.json'
+            calendar.write_text(json.dumps({'events': events}), encoding='utf-8')
+            gap = mb.results_day_moves(mb.prepare(jumped), calendar)
+            self.assertEqual(gap['cases'], 40)
+            self.assertTrue(gap['holds'], gap['text'])
+            self.assertGreater(gap['medianTimesUsual'], 2)
+            calm = mb.results_day_moves(mb.prepare(quiet), calendar)    # the same days with nothing planted
+            self.assertFalse(calm['holds'], calm['text'])
+            few = mb.results_day_moves(mb.prepare(jumped), calendar, min_cases=50)
+            self.assertIsNone(few['holds'])                             # too few: unverified, never guessed
+            self.assertIn('judged at 50', few['text'])
+            self.assertIn('So far the median move was', few['text'])
+            self.assertIsNone(mb.results_day_moves(mb.prepare(jumped), Path(d) / 'none.json')['holds'])
+
     def test_falling_knives_and_too_little_data(self):
         knives = mb.falling_knives(mb.prepare(universe(shares=80, years=6)))
         self.assertGreaterEqual(knives['samplesNearLow'], 200, knives['text'])

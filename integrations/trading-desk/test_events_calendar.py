@@ -39,14 +39,21 @@ class CalendarTests(unittest.TestCase):
         press.write_text(json.dumps({'events': [
             {'date': '2026-10-30', 'symbol': 'SBIN.NS', 'company': 'State Bank of India', 'publisher': 'Mint', 'publishedAt': '2026-10-20T10:00:00+05:30'},
             {'date': '2026-11-04', 'symbol': 'NTPC.NS', 'company': 'NTPC', 'publisher': 'Mint', 'publishedAt': '2026-10-21T10:00:00+05:30'},
-            {'date': '2026-11-04', 'symbol': 'TVSMOTOR.NS', 'company': 'TVS Motor'}]}), encoding='utf-8')  # not a desk share
+            {'date': '2026-11-04', 'symbol': 'TVSMOTOR.NS', 'company': 'TVS Motor'},  # not a desk share
+            {'date': '2026-10-28', 'kind': 'fomc', 'symbol': None, 'company': 'US Federal Reserve decision', 'publisher': 'Mint'},
+            {'date': '2026-11-21', 'kind': 'rbi-policy', 'symbol': None, 'company': 'RBI monetary policy decision', 'publisher': 'Mint'}]}),
+            encoding='utf-8')
         events, _ = ec.load(self.path, press)
         mine = [e for e in events if e['source'] == 'press']
-        self.assertEqual([(e['date'], e['symbols']) for e in mine], [('2026-11-04', ['NTPC'])])  # SBI: the owner's 28 Oct entry wins
+        # the owner's entries win within 20 days: SBI results (28 Oct), the Fed (27 Oct) and the RBI (20 Nov)
+        self.assertEqual([(e['date'], e['symbols']) for e in mine], [('2026-11-04', ['NTPC'])])
         self.assertIn('not the exchange filing', mine[0]['title'])
         only, _ = ec.load(Path(self.tmp.name) / 'none.json', press)  # no owner file: the press days still reach the agents
         self.assertEqual(ec.context('2026-10-23', 'SBIN', path=Path(self.tmp.name) / 'none.json', press=press)['status'], ec.PRESS_ONLY)
-        self.assertEqual(len(only), 2)
+        self.assertEqual(len(only), 4)
+        fed = [e for e in ec.upcoming(only, '2026-10-23', 10, 'HDFCBANK') if e['kind'] == 'fomc']  # market-wide: every share sees it
+        self.assertEqual((len(fed), fed[0]['symbols']), (1, []))
+        self.assertIn('not the official calendar', fed[0]['title'])
         signal = {'id': 's', 'symbol': 'NTPC', 'createdAt': '2026-10-28T11:00:00Z', 'evidenceIds': []}
         ctx = debate.context(signal, Path(self.tmp.name), [], calendar=ec.context(signal['createdAt'], 'NTPC', path=Path(self.tmp.name) / 'none.json', press=press))
         self.assertEqual([e['source'] for e in ctx['upcomingEvents']['events']], ['press'])

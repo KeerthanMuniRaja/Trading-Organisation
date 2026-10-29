@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { arithmeticProblems, knowledgeSummary, modelLines, pulseLines, render, run, trustCheck, upcomingEvents } from './daily-digest.mjs';
+import { arithmeticProblems, forwardLines, knowledgeSummary, modelLines, pulseLines, render, run, trustCheck, upcomingEvents } from './daily-digest.mjs';
 
 test('a logged failure the playbook has since learned is no longer reported as unknown', async () => {
   const root = await mkdtemp(join(tmpdir(), 'digest-unknown-'));
@@ -114,6 +114,12 @@ test('the research section and failures the playbook does not know yet', () => {
     walkForward: { outOfSampleMonths: 70, ahead: 33, behind: 37, averageExcessPct: -0.349 } } } };
   const text = render(digest, null, null, known);
   assert.match(text, /## Research \(seen history, net of costs\)\n- 17 ideas tried on 2017-12..2026-09; passing: none \(bar 0.002941\)/);
+  // RND-04: forward tests, judged only on later months
+  assert.deepEqual(forwardLines({ maxLive: 5, passed: [], tests: [{ idea: 'momentum-6m-top3-quarterly', status: 'waiting', firstMonth: '2026-11' },
+    { idea: 'reversal-1m-bottom3', status: 'running', monthsJudged: 3, monthsNeeded: 24, averageExcessPct: 0.4, tStat: 0.8 }, { idea: 'old', status: 'ended' }] }),
+  ['- Forward tests (months after registration only): 2 of 5 running (momentum-6m-top3-quarterly from 2026-11; reversal-1m-bottom3 3/24 months, 0.4% a month, t 0.8)']);
+  assert.match(forwardLines({ maxLive: 5, passed: ['x'], tests: [{ idea: 'x', status: 'passed' }] })[0], /0 of 5 running; PASSED: x \(eligible/);
+  assert.deepEqual(forwardLines(null), []);
   assert.match(text, /momentum-6m-top3: 61\/45 months vs the basket, 0.003% a month, beats 81% of random pickers/);
   assert.match(text, /Lowest risk: equal-weight-distribution, worst fall -9.05% \(basket -35.28%\), Sharpe 0.9 \(basket 0.79\)/);
   assert.match(text, /walk-forward\): 33\/37 months, -0.349% a month/);
@@ -174,7 +180,7 @@ test('the digest shows what is coming up from the owner\'s calendar, and nothing
     const events = await upcomingEvents(root, Date.parse('2026-10-23T06:00:00Z'));
     assert.deepEqual(events.map(e => e.title), ['Fed decision', 'SBI Q2 results']);
     const text = render(digest, null, null, { events });
-    assert.match(text, /## Coming up \(next 7 days, from your events calendar and press-reported results days\)\n- 2026-10-27 fomc: Fed decision\n- 2026-10-28 results: SBI Q2 results \(SBIN\)/);
+    assert.match(text, /## Coming up \(next 7 days, from your events calendar and press-reported results and policy days\)\n- 2026-10-27 fomc: Fed decision\n- 2026-10-28 results: SBI Q2 results \(SBIN\)/);
     assert.match(render(digest, null, null, { events: [] }), /Nothing scheduled in the calendar/);
     assert.doesNotMatch(render(digest), /Coming up/);
     // NEWS-07: press-reported results days for desk shares join in; the owner's SBI entry wins over the press one
@@ -182,11 +188,14 @@ test('the digest shows what is coming up from the owner\'s calendar, and nothing
     await writeFile(join(root, '.local', 'world', 'results-calendar.json'), JSON.stringify({ events: [
       { date: '2026-10-29', symbol: 'SBIN.NS', company: 'State Bank of India', desk: true },
       { date: '2026-10-26', symbol: 'NTPC.NS', company: 'NTPC', desk: true },
-      { date: '2026-10-26', symbol: 'TVSMOTOR.NS', company: 'TVS Motor', desk: false }] }));
+      { date: '2026-10-26', symbol: 'TVSMOTOR.NS', company: 'TVS Motor', desk: false },
+      { date: '2026-10-28', kind: 'fomc', symbol: null, company: 'US Federal Reserve decision', desk: false },   // the owner's 27 Oct entry wins
+      { date: '2026-10-29', kind: 'rbi-policy', symbol: null, company: 'RBI monetary policy decision', desk: false }] }));
     const both = await upcomingEvents(root, Date.parse('2026-10-23T06:00:00Z'));
-    assert.deepEqual(both.map(e => e.title), ['NTPC results (press report, not the exchange filing)', 'Fed decision', 'SBI Q2 results']);
+    assert.deepEqual(both.map(e => e.title), ['NTPC results (press report, not the exchange filing)', 'Fed decision', 'SBI Q2 results',
+      'RBI monetary policy decision (press report, not the official calendar)']);
     await rm(join(root, '.local', 'events.json'));
-    assert.equal((await upcomingEvents(root, Date.parse('2026-10-23T06:00:00Z'))).length, 2); // no owner file: the press days still show
+    assert.equal((await upcomingEvents(root, Date.parse('2026-10-23T06:00:00Z'))).length, 4); // no owner file: the press days still show
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
