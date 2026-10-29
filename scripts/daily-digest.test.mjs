@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { arithmeticProblems, forwardLines, knowledgeSummary, modelLines, pulseLines, render, run, trustCheck, upcomingEvents } from './daily-digest.mjs';
+import { arithmeticProblems, firmLines, forwardLines, knowledgeSummary, modelLines, pulseLines, render, run, trustCheck, upcomingEvents } from './daily-digest.mjs';
 
 test('a logged failure the playbook has since learned is no longer reported as unknown', async () => {
   const root = await mkdtemp(join(tmpdir(), 'digest-unknown-'));
@@ -203,6 +203,20 @@ test('the digest shows what is coming up from the owner\'s calendar, and nothing
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+test('the firm: each department with its ceiling, members and today\'s work, and the work no department owns yet', () => {
+  const charters = { desk: { name: 'Trading desk', steps: ['rule-bot', 'eod-trading'] }, research: { name: 'Research', steps: ['rnd-scout', 'debate'] } };
+  const registry = { departments: [{ id: 'desk', name: 'Trading desk', status: 'active', budgetPaise: '500000', leadBotId: null,
+    members: [{ botId: 'momentum-rules', state: 'paper', budgetPaise: '500000', latestFitness: 'no-detectable-skill' }, { botId: 'tradingagents', state: 'school', budgetPaise: '0' }] }],
+  unregisteredLabels: ['research'], pendingProposals: [{ id: 'a1b2c3d4-0000', departmentId: 'research' }] };
+  const steps = { 'rule-bot': { status: 'done' }, 'eod-trading': { status: 'failed' }, 'rnd-scout': { status: 'done' }, 'news-livemint': { status: 'done' },
+    alerts: { status: 'failed' } };
+  const lines = firmLines(registry, steps, charters).join('\n');
+  assert.match(lines, /## The firm \(departments\)\n- Trading desk \(active; ceiling ₹5,000(\.00)?, members' budgets ₹5,000(\.00)?; no lead yet\): momentum-rules paper \(no-detectable-skill\), tradingagents school; today 1 step\(s\) done, FAILED: eod-trading/);
+  assert.match(lines, /- Research \(not registered: proposal a1b2c3d4 waits for you on the agenda\); today 1 step\(s\) done/);
+  assert.match(lines, /- No department owns 2 other step\(s\) yet .*; FAILED: alerts/);
+  assert.deepEqual(firmLines(null, steps, charters), []);
+});
+
 test('the review scorecard shows how taken and turned-down calls went', () => {
   const review = { calls: 9, verdict: 'insufficient-evidence', accepted: { scored: 5, right: 3, rightPct: 60, buysWithPath: 4, averageWorstPct: -3.1,
     averageBestPct: 4.2, worstPct: -8 }, rejected: { scored: 4, right: 1, rightPct: 25 },
@@ -256,7 +270,7 @@ test('the run writes the note locally and sends only a short summary to an optio
       return url.endsWith('/v1/owner/digest') ? { ok: true, json: async () => digest } : { ok: true };
     };
     const env = { PRINCIPALS_JSON: JSON.stringify([{ id: 'e', role: 'evaluator', token: 'eval-token' }]), ALERT_WEBHOOK_URL: 'https://notify.example/t' };
-    const result = await run(env, { fetchImpl, outDir: dir, world: null, regime: null, knowledge: null, trust: null });
+    const result = await run(env, { fetchImpl, outDir: dir, world: null, regime: null, knowledge: null, trust: null, firm: null });
     assert.equal(result.webhook, true);
     assert.match(await readFile(join(dir, '2026-10-14.md'), 'utf8'), /Needs you/);
     assert.equal(sent[1].auth, undefined); // the backend credential never goes to the webhook

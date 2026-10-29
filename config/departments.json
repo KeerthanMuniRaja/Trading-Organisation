@@ -1,14 +1,18 @@
 {
-  "version": 1,
-  "note": "Charters the agents propose for the bot groups that already exist (bots' department labels). The owner decides each one on the agenda, with its budget ceiling (scripts/firm.mjs). Editing a charter here changes only future proposals.",
+  "version": 2,
+  "note": "Charters the agents propose for the bot groups that already exist (bots' department labels). The owner decides each one on the agenda, with its budget ceiling (scripts/firm.mjs). Editing a charter here changes only future proposals. 'steps' are the daily cycle steps each department answers for in the digest's firm report.",
   "departments": {
     "desk": {
       "name": "Trading desk",
-      "mandate": "Runs the organisation's paper-trading members: turns tested rules and model research into proposals, under the deterministic review, the release gate and the loss brakes. Judged by live paper fitness against holding all shares equally."
+      "mandate": "Runs the organisation's paper-trading members: turns tested rules and model research into proposals, under the deterministic review, the release gate and the loss brakes. Judged by live paper fitness against holding all shares equally.",
+      "steps": ["release-renewal", "release-trial", "rule-bot", "rule-bot-entries", "model-allocator", "model-allocator-decide", "model-allocator-propose",
+                "tradingagents-decide", "tradingagents-propose", "eod-trading", "eod-trading-entries", "score-signals", "paper-snapshot"]
     },
     "research": {
       "name": "Research",
-      "mandate": "Finds and tests what the desk could trade: daily trend research, the debate desk's bull and bear cases, R&D ideas and their forward tests. Judged by whether its calls and findings beat chance on later data."
+      "mandate": "Finds and tests what the desk could trade: daily trend research, the debate desk's bull and bear cases, R&D ideas and their forward tests. Judged by whether its calls and findings beat chance on later data.",
+      "steps": ["regime-study", "rnd-scout", "rnd-forward", "rnd-bots", "factor-lab", "factor-forward", "forward-daily-rules", "forward-portfolio",
+                "debate", "scenario-panel", "scenario-score", "scenario-reflect", "reaction-study", "reflections", "outcome-labels", "organisation-lessons"]
     }
   }
 }

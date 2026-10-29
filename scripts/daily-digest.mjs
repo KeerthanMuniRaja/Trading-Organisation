@@ -255,6 +255,53 @@ export function researchLines(k) {
     ...forwardLines(k.rndForward), ''];
 }
 
+/** ORG-01: the firm. Each department (registered, or a bot group waiting to be), its ceiling and members, and today's
+ *  cycle steps it answers for; then the work no department owns yet, so a missing department shows instead of hiding.
+ *  `registry`: GET /v1/departments; `steps`: today's cycle journal steps; `charters`: config/departments.json. */
+export function firmLines(registry, steps, charters) {
+  if (!registry) return [];
+  const rupee = p => rupees(String(p ?? '0'));
+  const work = ids => {
+    const mine = ids.map(id => steps?.[id]).filter(Boolean);
+    const failed = ids.filter(id => steps?.[id]?.status === 'failed');
+    return mine.length ? `today ${mine.filter(s => s.status === 'done' || s.status === 'degraded').length} step(s) done`
+      + (failed.length ? `, FAILED: ${failed.join(', ')}` : '') : 'no cycle steps today';
+  };
+  const owned = new Set(Object.values(charters ?? {}).flatMap(c => c.steps ?? []));
+  const lines = ['## The firm (departments)'];
+  for (const d of registry.departments ?? []) {
+    const used = (d.members ?? []).reduce((sum, m) => sum + BigInt(m.budgetPaise ?? 0), 0n);
+    lines.push(`- ${d.name} (${d.status}; ceiling ${rupee(d.budgetPaise)}, members' budgets ${rupee(used)}${d.overBudget ? ', OVER the ceiling' : ''}`
+      + `${d.leadBotId ? `; lead ${d.leadBotId}` : '; no lead yet'}): `
+      + (d.members ?? []).map(m => `${m.botId} ${m.state}${m.latestFitness ? ` (${m.latestFitness})` : ''}`).join(', ')
+      + `; ${work(charters?.[d.id]?.steps ?? [])}`);
+  }
+  const pending = registry.pendingProposals ?? [];
+  for (const label of registry.unregisteredLabels ?? []) {
+    const p = pending.find(x => x.departmentId === label);
+    lines.push(`- ${charters?.[label]?.name ?? label} (not registered: ${p ? `proposal ${p.id.slice(0, 8)} waits for you on the agenda` : 'npm run firm -- plan'}); `
+      + work(charters?.[label]?.steps ?? []));
+  }
+  const loose = Object.entries(steps ?? {}).filter(([id]) => !owned.has(id));
+  const looseFailed = loose.filter(([, s]) => s.status === 'failed').map(([id]) => id);
+  if (loose.length) lines.push(`- No department owns ${loose.length} other step(s) yet (news, fact-checking, world stories, knowledge, risk and owner reports)`
+    + (looseFailed.length ? `; FAILED: ${looseFailed.join(', ')}` : ''));
+  return [...lines, ''];
+}
+
+/** The firm's data for firmLines: the department registry (owner's read), today's cycle steps and the charters; null
+ *  when any part cannot be read (the digest never fails for it). */
+export async function firmSummary(s, fetchImpl = fetch, root = join(dirname(fileURLToPath(import.meta.url)), '..'), now = Date.now()) {
+  try {
+    const r = await fetchImpl(s.base + '/v1/departments', { redirect: 'error', headers: { Authorization: 'Bearer ' + s.token } });
+    if (!r.ok) return null;
+    let steps = {};
+    try { steps = JSON.parse(await readFile(join(root, '.local', 'cycles', `${new Date(now).toISOString().slice(0, 10)}.json`), 'utf8')).steps; } catch { /* no cycle yet */ }
+    const charters = JSON.parse(await readFile(join(root, 'config', 'departments.json'), 'utf8')).departments;
+    return { registry: await r.json(), steps, charters };
+  } catch { return null; }
+}
+
 /** RND-04: the R&D forward tests, judged only on months after registration. */
 export function forwardLines(f) {
   if (!f?.tests?.length) return [];
@@ -273,7 +320,7 @@ export function regimeLine(r) {
     + (s ? `. On our history: ${s.verdict}; falls over 5% within ${s.horizonSessions} sessions followed ${Math.round(100 * (severe?.fallOver5PctShare ?? 0))}% of SEVERE days and ${Math.round(100 * (normal?.fallOver5PctShare ?? 0))}% of NORMAL days` : '');
 }
 
-export function render(d, world = null, regime = null, known = null, trust = null) {
+export function render(d, world = null, regime = null, known = null, trust = null, firm = null) {
   const t = d.trading, k = d.knowledge, m = d.money;
   const unknown = known?.unknown ?? [];
   const needs = [...d.needsOwner, ...(world?.coverage?.advice ?? []),
@@ -316,6 +363,7 @@ export function render(d, world = null, regime = null, known = null, trust = nul
       ? `- Loss brakes: ${d.protections.paused.length ? d.protections.paused.map(b => `${b.botId} paused (${b.pauses.map(x => x.code.replace(/^protection-/, '')
         + (x.until ? ` until ${x.until.slice(0, 16).replace('T', ' ')} UTC` : '')).join(', ')})`).join('; ') + '; new buys only, each lifts by itself' : 'set; nothing paused'}`
       : '- Loss brakes: not set, so losses never pause a bot (founderReview B3; npm run protections)'] : []), '',
+    ...(firm ? firmLines(firm.registry, firm.steps, firm.charters) : []),
     '## Live fitness (paper calls on new days)',
     ...((d.liveFitness ?? []).length ? d.liveFitness.map(f => `- ${f.botId} (${f.scope}): ${f.verdict}, ${f.right} of ${f.judged} right`)
       : ['- No bot has scored live calls yet.']), '',
@@ -336,14 +384,15 @@ export function render(d, world = null, regime = null, known = null, trust = nul
 }
 
 export async function run(env = process.env, { fetchImpl = fetch, outDir = join(dirname(fileURLToPath(import.meta.url)), '..', '.local', 'digests'),
-  world = worldSummary, regime = marketRegime, knowledge = knowledgeSummary, trust = trustCheck } = {}) {
+  world = worldSummary, regime = marketRegime, knowledge = knowledgeSummary, trust = trustCheck, firm = firmSummary } = {}) {
   const s = settings(env);
   const response = await fetchImpl(s.base + '/v1/owner/digest', { method: 'POST', redirect: 'error', body: '{}',
     headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + s.token } });
   if (!response.ok) throw new Error(`digest refused (HTTP ${response.status})`);
   const digest = await response.json();
   const text = render(digest, world ? await world() : null, regime ? await regime() : null, knowledge ? await knowledge() : null,
-    trust ? { ...await trust(), env: Object.fromEntries(Object.keys(LIMIT_SETTINGS).filter(k => env[k] !== undefined).map(k => [k, env[k]])) } : null);
+    trust ? { ...await trust(), env: Object.fromEntries(Object.keys(LIMIT_SETTINGS).filter(k => env[k] !== undefined).map(k => [k, env[k]])) } : null,
+    firm ? await firm(s, fetchImpl) : null);
   await mkdir(outDir, { recursive: true });
   const path = join(outDir, digest.generatedAt.slice(0, 10) + '.md');
   await writeFile(path, text);
