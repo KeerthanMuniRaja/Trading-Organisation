@@ -54,7 +54,7 @@ function liveSection(live) {
   }).join('');
   return `<p>Each bot trades paper money on new days only, with Indian delivery charges and slippage, and is compared with simply
 holding all eight shares equally over the same days. A few weeks prove nothing; the comparison is shown so it can be followed.</p>
-<div class="scroll"><table><thead><tr><th>Bot</th><th class="n">Paper P&amp;L</th><th class="n">On its budget</th><th class="n">Return vs basket</th><th class="n">Ahead / behind</th><th>Days</th></tr></thead>
+<div class="scroll"><table><thead><tr><th>Bot</th><th class="n">Paper P&amp;L (all time)</th><th class="n">On its budget (all time)</th><th class="n">Return vs basket (days compared)</th><th class="n">Ahead / behind</th><th>Days compared</th></tr></thead>
 <tbody>${rows || '<tr><td colspan="6">No bot has traded yet.</td></tr>'}</tbody></table></div>
 <p class="muted">Total paper P&amp;L ${rupees(live.money?.totalPaise)} (realised ${rupees(live.money?.realisedPaise)}, open ${rupees(live.money?.unrealisedPaise)}).
 ${(live.liveFitness ?? []).length ? '' : 'No bot has enough scored live calls for a verdict yet.'}</p>`;
