@@ -67,6 +67,23 @@ class PanelTests(unittest.TestCase):
         self.assertEqual(seen[0]['marketRegime']['summary'], 'SEVERE on 2026-10-27: 11 distribution days')
         self.assertIn('never a reason for up or down', seen[0]['marketRegime']['note'])
 
+    def test_a_world_event_that_echoed_in_india_is_rehearsed_first_with_its_indian_coverage(self):
+        echo = {'driver': 'us-fed-rates', 'abroad': {'title': 'Federal Reserve issues FOMC statement', 'countries': ['US'], 'firstSeen': '2026-10-28T18:00:00Z'},
+                'indianStories': 2, 'india': [{'title': 'Sensex jumps after Fed keeps rates unchanged', 'firstSeen': '2026-10-29T04:00:00Z'}],
+                'shares': ['HDFCBANK', 'ICICIBANK', 'NOT-OURS']}
+        self.stories.write_text(json.dumps({'top': [STORY], 'echoes': [echo]}), encoding='utf-8')
+        first, second = sp.linked_stories(self.stories, limit=2)
+        self.assertEqual((first['title'], first['countries'], first['symbols']), ('Federal Reserve issues FOMC statement', ['US'], ['HDFCBANK.NS', 'ICICIBANK.NS']))
+        self.assertEqual(first['indianCoverage'], ['Sensex jumps after Fed keeps rates unchanged'])
+        self.assertEqual(second['title'], STORY['title'])
+        seen = []
+
+        def llm(system, user, schema):
+            seen.append(json.loads(user))
+            return {'calls': []}, {}
+        sp.ask_panel(llm, first, rounds=1)
+        self.assertEqual(seen[0]['indianCoverage'], ['Sensex jumps after Fed keeps rates unchanged'])  # data for the panel, not instructions
+
     def test_a_day_when_nobody_answered_is_not_filed_and_can_be_rerun(self):
         now = datetime(2023, 6, 1, 12, tzinfo=timezone.utc)
         r = sp.run(fake_model({p: 'fail' for p in sp.PERSONAS}), now=now, stories_path=self.stories, out=self.out, cache=self.cache)

@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { cluster, coverage, enable, headlineHistory, linkStudy, loadCatalogue, probe, stories } from './world-news.mjs';
+import { cluster, coverage, echoes, enable, headlineHistory, linkStudy, loadCatalogue, probe, stories } from './world-news.mjs';
 
 const NOW = Date.parse('2026-10-20T12:00:00Z');
 const source = (id, country, extra = {}) => ({ id, name: `Wire ${id}`, country, tier: 2, topics: ['markets'], feedUrl: `https://${id}.example/feed.xml`,
@@ -103,6 +103,25 @@ test('stories: one story across countries and publishers, linked to the shares d
   // the same link in two feeds is one item (syndication counts once)
   const dup = cluster([item('news-us', 'Brent jumps', 1), item('news-us', 'Brent jumps', 2)], { catalogue, links });
   assert.deepEqual([dup.length, dup[0].items, dup[0].drivers[0].shares], [1, 2, ['RELIANCE']]);
+});
+
+test('echoes: a world event joins the later Indian stories on the same driver, which titles alone cannot (WORLD-02)', () => {
+  const catalogue = [source('us', 'US'), source('in', 'IN')];
+  const out = cluster([
+    item('news-in', 'Sensex slips ahead of the Federal Reserve decision', 1),   // before the event: not an echo
+    item('news-us', 'Federal Reserve issues FOMC statement', 2),
+    item('news-in', 'Banks rally after the Federal Reserve keeps rates unchanged', 3),
+    item('news-in', 'Infosys wins a large deal in Europe', 4),                  // another driver: not an echo
+  ], { catalogue, links });
+  assert.equal(out.filter(s => s.crossBorder).length, 0);   // no shared title words, so no cross-border story
+  const [e, ...rest] = echoes(out);
+  assert.equal(rest.length, 0);
+  assert.deepEqual([e.driver, e.abroad.title, e.indianStories, e.india.map(i => i.title)],
+    ['us-fed-rates', 'Federal Reserve issues FOMC statement', 1, ['Banks rally after the Federal Reserve keeps rates unchanged']]);
+  assert.deepEqual(echoes(out, { maxGapHours: 0.5 }), []);  // too late to count as an echo
+  // an Indian driver's words abroad are no world event: Brent (crude-oil, an Indian driver) in a US story is not echoed
+  const oil = cluster([item('news-us', 'Brent jumps on supply fears', 1), item('news-in', 'Reliance rises as Brent climbs', 2)], { catalogue, links });
+  assert.deepEqual(echoes(oil), []);
 });
 
 test('stories read the feed runs of the window and write the latest report', async () => {

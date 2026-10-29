@@ -22,7 +22,11 @@ export function worldLines(world) {
   return ['## World news (unverified press; links are inferred)',
     `- Feeds working: ${working} of ${enabled} enabled; countries covered: ${c.countriesCovered.join(', ') || 'none yet'}`,
     ...(s ? [`- Last ${s.windowHours} hours: ${s.items} items in ${s.stories} stories; ${s.crossBorder} across countries, ${s.reachingShares} reach the shares`,
-      ...s.top.filter(x => x.directShares.length || x.drivers.length).slice(0, 8).map(x => `- ${describeStory(x)}`)]
+      ...s.top.filter(x => x.directShares.length || x.drivers.length).slice(0, 8).map(x => `- ${describeStory(x)}`),
+      // WORLD-02: a world event, then Indian stories on the same driver (inferred, never a cause)
+      ...(s.echoes?.length ? [`- World events echoed in Indian news (same driver, later): ${s.worldEchoes}`,
+        ...s.echoes.slice(0, 3).map(e => `  - [${e.abroad.countries.join('/')}] ${String(e.abroad.title).slice(0, 90)} → ${e.indianStories} Indian `
+          + `stor${e.indianStories === 1 ? 'y' : 'ies'} on ${e.driver}${e.shares.length ? ` (${e.shares.join(', ')})` : ''}`)] : [])]
       : ['- No stories grouped yet (cycle step world-stories).']),
     ...(world.links ? [`- Driver links tested on ${world.links.headlines} headlines: ${world.links.carrying.length} of ${world.links.drivers} carry information`
       + (world.links.carrying.length ? ` (${world.links.carrying.join(', ')})` : '') + `; ${world.links.verdicts['insufficient-evidence'] ?? 0} need more events`] : []),

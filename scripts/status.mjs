@@ -51,7 +51,8 @@ function localLines(f) {
   if (f.world && !f.world.error) {
     const w = f.world, s = w.stories;
     out.push(`World     feeds working in ${w.coverage.countriesCovered.join(', ') || 'no country yet'}`
-      + (s ? `; last ${s.windowHours}h: ${s.stories} stories, ${s.crossBorder} across countries, ${s.reachingShares} reach the shares` : '')
+      + (s ? `; last ${s.windowHours}h: ${s.stories} stories, ${s.crossBorder} across countries, ${s.reachingShares} reach the shares`
+        + (s.worldEchoes ? `, ${s.worldEchoes} world event(s) echoed in Indian news` : '') : '')
       + (w.links ? `; links carrying information: ${w.links.carrying.join(', ') || 'none yet'} of ${w.links.drivers}` : ''));
   }
   return out;

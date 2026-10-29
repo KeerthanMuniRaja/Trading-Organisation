@@ -91,6 +91,10 @@ test('the world section: coverage, stories that reach the shares, and a broken f
   assert.match(text, /Driver links tested on 900 headlines: 1 of 17 carry information \(crude-oil\); 12 need more events/);
   assert.match(text, /Scenario panel \(shadow\): 7 right, 5 wrong after 5 sessions \(insufficient-evidence\); 4 call\(s\) waiting/);
   assert.doesNotMatch(text, /football/); // stories that reach no share stay in the file, not the digest
+  // WORLD-02: a world event, then Indian stories on the same driver
+  const echoed = render(digest, { ...world, stories: { ...world.stories, worldEchoes: 1, echoes: [{ driver: 'us-fed-rates',
+    abroad: { title: 'Federal Reserve issues FOMC statement', countries: ['US'] }, indianStories: 2, shares: ['HDFCBANK', 'SBIN'] }] } });
+  assert.match(echoed, /World events echoed in Indian news \(same driver, later\): 1\n  - \[US\] Federal Reserve issues FOMC statement → 2 Indian stories on us-fed-rates \(HDFCBANK, SBIN\)/);
   assert.ok(text.indexOf('enable cn-scmp-china') < text.indexOf('## Money'));
   assert.doesNotMatch(render(digest), /World news/); // no world data, no section
 });

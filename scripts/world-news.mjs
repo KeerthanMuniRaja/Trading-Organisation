@@ -181,13 +181,43 @@ export function cluster(items, { catalogue = [], links = [], threshold = 0.5 } =
     || b.countries.length - a.countries.length || b.publishers - a.publishers || b.lastSeen.localeCompare(a.lastSeen));
 }
 
+/**
+ * WORLD-02 (29 Oct 2026): how a world event reached Indian news. Title similarity cannot join "Federal Reserve issues
+ * FOMC statement" with "Sensex jumps after Fed keeps rates unchanged"; the economic driver they share can. For each
+ * story from abroad, the Indian stories with the same driver that appeared after it, within `maxGapHours`. An echo is
+ * an inferred link (the same driver, later in time), never a cause and never evidence.
+ */
+export function echoes(stories, { maxGapHours = 48 } = {}) {
+  // only world drivers: an Indian driver's words found abroad ("monetary policy" in a Bank of England release) say
+  // nothing about the RBI, so they are no echo of a world event
+  const world = s => s.drivers.filter(d => d.region && d.region !== 'IN');
+  const abroad = stories.filter(s => !s.countries.includes('IN') && world(s).length);
+  const india = stories.filter(s => s.countries.includes('IN'));
+  const out = [];
+  for (const a of abroad) {
+    const start = Date.parse(a.firstSeen);
+    for (const d of world(a)) {
+      const echoed = india.filter(s => s.drivers.some(x => x.driver === d.driver)
+        && Date.parse(s.firstSeen) >= start && Date.parse(s.firstSeen) - start <= maxGapHours * 3_600_000);
+      if (!echoed.length) continue;
+      out.push({ driver: d.driver, abroad: { title: a.title, countries: a.countries, sources: a.sources, firstSeen: a.firstSeen },
+        indianStories: echoed.length, india: echoed.slice(0, 3).map(s => ({ title: s.title, firstSeen: s.firstSeen, directShares: s.directShares })),
+        shares: [...new Set([...d.shares, ...echoed.flatMap(s => s.directShares)])].sort() });
+    }
+  }
+  return out.sort((x, y) => y.indianStories - x.indianStories || y.abroad.firstSeen.localeCompare(x.abroad.firstSeen));
+}
+
 /** Writes .local/world/stories-<day>.json and latest.json: the stories that reach the shares, then the rest. */
 export async function stories({ root = ROOT, hours = 48, now = Date.now(), catalogue, links } = {}) {
   const items = await recentItems({ root, hours, now });
   const all = cluster(items, { catalogue: catalogue ?? await loadCatalogue(), links: links ?? JSON.parse(await readFile(LINKS, 'utf8')).links });
+  const echoed = echoes(all);
   const report = { generatedAt: new Date(now).toISOString(), windowHours: hours, items: items.length, stories: all.length,
     crossBorder: all.filter(s => s.crossBorder).length, reachingShares: all.filter(s => s.directShares.length || s.drivers.length).length,
-    top: all.slice(0, 30), note: 'Unverified press, grouped by title similarity. Driver links are inferred. Not evidence and not a trading signal.' };
+    worldEchoes: echoed.length, top: all.slice(0, 30), echoes: echoed.slice(0, 15),
+    note: 'Unverified press, grouped by title similarity. Driver links and echoes (a world story, then Indian stories on the same '
+      + 'driver) are inferred. Not evidence and not a trading signal.' };
   const dir = join(root, '.local', 'world');
   await mkdir(dir, { recursive: true });
   for (const name of [`stories-${report.generatedAt.slice(0, 10)}.json`, 'latest.json']) await writeFile(join(dir, name), JSON.stringify(report, null, 2) + '\n');
@@ -268,9 +298,11 @@ async function main() {
     if (!Number.isInteger(hours) || hours < 1 || hours > 336) throw new Error('--hours must be 1–336');
     const r = await stories({ hours });
     const history = await headlineHistory();
-    console.log(`${r.items} items → ${r.stories} stories (${r.crossBorder} across countries, ${r.reachingShares} reach the shares); ${history} headlines kept for the link study`);
+    console.log(`${r.items} items → ${r.stories} stories (${r.crossBorder} across countries, ${r.reachingShares} reach the shares, `
+      + `${r.worldEchoes} world event(s) echoed in Indian news); ${history} headlines kept for the link study`);
+    for (const e of r.echoes.slice(0, 5)) console.log(`  echo [${e.abroad.countries.join('/')}] ${e.abroad.title.slice(0, 80)} → ${e.indianStories} Indian on ${e.driver}`);
     for (const s of r.top.slice(0, 10)) console.log('  ' + describe(s));
-    console.log(JSON.stringify({ state: 'done', items: r.items, stories: r.stories, crossBorder: r.crossBorder, reachingShares: r.reachingShares }));
+    console.log(JSON.stringify({ state: 'done', items: r.items, stories: r.stories, crossBorder: r.crossBorder, reachingShares: r.reachingShares, worldEchoes: r.worldEchoes }));
     return;
   }
   throw new Error('Usage: world-news.mjs list | probe <id...>|--all | enable <id...> --yes | coverage | stories [--hours N]');

@@ -46,12 +46,22 @@ SYSTEM = ('You are {who}. You are one voice on a panel that rehearses how a news
 
 
 def linked_stories(path=STORIES, limit=2):
-    """The latest stories that reach a share, strongest first, each with the shares it reaches (direct or inferred)."""
+    """The latest stories that reach a share, strongest first, each with the shares it reaches (direct or inferred).
+    WORLD-02: the strongest world event that echoed in Indian news (a story abroad, then Indian stories on the same
+    driver) comes first, with the Indian coverage as data, so the panel rehearses the outside world and not only India."""
     if not Path(path).exists():
         return []
     report = json.loads(Path(path).read_text(encoding='utf-8'))
     out = []
+    for e in report.get('echoes', []):
+        symbols = [x + '.NS' for x in e.get('shares', []) if x + '.NS' in daily.datasets.UNIVERSE]
+        if symbols:
+            out.append({'title': e['abroad']['title'][:240], 'countries': e['abroad'].get('countries', []), 'drivers': [e['driver']],
+                        'symbols': symbols, 'indianCoverage': [i['title'][:160] for i in e.get('india', [])[:3]]})
+            break
     for s in report.get('top', []):
+        if any(o['title'] == s['title'][:240] for o in out):
+            continue
         shares = sorted({*s.get('directShares', []), *(x for d in s.get('drivers', []) for x in d.get('shares', []))})
         if shares:
             out.append({'title': s['title'][:240], 'countries': s.get('countries', []), 'drivers': [d['driver'] for d in s.get('drivers', [])],
@@ -109,6 +119,7 @@ def ask_panel(llm, story, regime=None, lessons=None, rounds=ROUNDS, events=None,
     reasons and answers again; its first answer is kept as `firstRound`."""
     answers, lessons = {}, lessons or {}
     base = {'story': story['title'], 'countries': story['countries'], 'drivers': story['drivers'], 'shares': story['symbols'],
+            **({'indianCoverage': story['indianCoverage']} if story.get('indianCoverage') else {}),
             **({'marketRegime': regime_context(regime)} if regime else {}), **({'upcomingEvents': events} if events else {}),
             **({'mentorNotes': mentor_notes} if mentor_notes else {})}
     for name, who in PERSONAS.items():

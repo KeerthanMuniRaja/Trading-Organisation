@@ -94,6 +94,26 @@ Stories that reach a share come first; within those, stories with more countries
 step `world-stories` writes `.local/world/latest.json`. The digest shows the stories that reach a share under
 **World news**.
 
+## Echoes: how a world event reached Indian news (WORLD-02, 29 Oct 2026)
+
+Title similarity cannot join "Federal Reserve issues FOMC statement" (US) with "Sensex jumps after Fed keeps rates
+unchanged" (India), so after the world feeds came on, `crossBorder` stayed at 0. The economic driver the two share can
+join them.
+- **What counts:** for each story from abroad with a **world** driver (region US, CN or WORLD), the Indian stories on
+  the same driver that appeared after it, within 48 hours, are its echoes.
+- **What doesn't:** an Indian driver's words found abroad are not an echo. "Monetary policy" in a Bank of England
+  release says nothing about the RBI.
+- **What an echo is:** an inferred link (the same driver, later in time), never a cause and never evidence.
+
+The report (`echoes`, `worldEchoes`) feeds:
+- the digest's World news section;
+- the status line;
+- the **scenario panel**, which now rehearses the strongest echoed world event first, with its Indian coverage given as
+  data. Before this, its two stories a day were always Indian.
+
+The first run, on 29 Oct, found "Federal Reserve issues FOMC statement" (US), followed by 7 Indian stories on US Fed
+rates.
+
 ## World drivers
 
 `integrations/trading-desk/impact_links.json` now has world drivers alongside the Indian ones. Each carries a `region`.
