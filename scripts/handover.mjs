@@ -7,6 +7,7 @@
 //   5. mark this machine handed over: its supervisor then refuses to start (supervisor --take-back to undo)
 // Run the organisation on one machine only: two machines grow two databases that cannot be merged.
 //   npm run handover -- --to "home EliteBook"
+//   npm run handover -- --check      what it would find (supervisor, backend, secrets, uncommitted code); changes nothing
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
@@ -36,6 +37,23 @@ export function parseBundle(text) {
   return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, v.join('\n').replace(/\n+$/, '') + '\n']));
 }
 
+/** Code that `git push origin dev` would leave behind on this machine: uncommitted changes and new files (git status
+ *  --porcelain lines, the local data folder is ignored). */
+export function leftBehind(porcelain) {
+  return String(porcelain ?? '').split('\n').map(l => l.replace(/\r$/, '')).filter(l => l.trim()).map(l => l.slice(3));
+}
+
+/** --check (29 Oct 2026): what the handover would find, changing nothing. Ready only when nothing would stop it. */
+export function preview({ beat, backendUp, secrets, porcelain, dataRepo, now = Date.now() }) {
+  const s = supervisorState(beat, now), left = leftBehind(porcelain);
+  const blockers = [...(backendUp && s.state === 'none' ? ['the backend runs without the supervisor: stop it first'] : []),
+    ...secrets.filter(([, present]) => !present).map(([path]) => `missing ${path} (the secret backup needs it)`),
+    ...(dataRepo ? [] : ['no data repository at .local/data-repo'])];
+  return { ready: blockers.length === 0, blockers,
+    supervisor: s.state === 'busy' ? `busy with "${s.running}": the handover waits for it` : s.state === 'idle' ? 'idle: the handover stops it' : 'not running',
+    uncommittedCode: left, ...(left.length ? { warning: `${left.length} uncommitted code change(s) would stay on this machine; commit them first` } : {}) };
+}
+
 /** What the supervisor is doing: 'none' (no live heartbeat), 'idle' or 'busy'. Its heartbeat beats every minute. */
 export function supervisorState(beat, now = Date.now()) {
   if (!beat || now - Date.parse(beat.at) > 5 * 60_000) return { state: 'none' };
@@ -50,6 +68,14 @@ const readBeat = () => { try { return JSON.parse(readFileSync(HEARTBEAT, 'utf8')
 
 async function main() {
   const to = (() => { const i = process.argv.indexOf('--to'); return i > 0 ? process.argv[i + 1] : 'another machine'; })();
+  const porcelain = sh('git', ['status', '--porcelain']).stdout;
+  if (process.argv.includes('--check')) {
+    const backendUp = await fetch('http://127.0.0.1:3000/v1/health', { signal: AbortSignal.timeout(3000) }).then(r => r.ok, () => false);
+    console.log(JSON.stringify(preview({ beat: readBeat(), backendUp, porcelain, dataRepo: existsSync(join(root, '.local', 'data-repo', '.git')),
+      secrets: SECRET_FILES.map(([, path]) => [path, existsSync(join(root, path))]) }), null, 2));
+    return;
+  }
+  for (const file of leftBehind(porcelain)) say(`WARNING: not committed, stays on this machine: ${file}`);
   // 1. the supervisor: wait out a running job (the cycle can take an hour or more), then stop it
   for (let s = supervisorState(readBeat()); s.state === 'busy'; s = supervisorState(readBeat())) {
     say(`the supervisor is running "${s.running}"; waiting for it to finish (checks every minute; Ctrl+C to stop)`);

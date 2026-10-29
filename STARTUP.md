@@ -17,7 +17,10 @@ orders fill at verified prices; every result is scored and audited. It is paper 
 
 ## 0. Moving to a new machine: two commands (28 Oct 2026)
 
-1. **On the machine it runs on now:** `npm run handover -- --to "home EliteBook"`. It:
+1. **On the machine it runs on now:** first `npm run handover -- --check`. It changes nothing and says whether the
+   handover is ready: what the supervisor is doing, whether the three secret files and the data repository are there,
+   and any **uncommitted code** that the push would leave behind (commit it first). Then
+   `npm run handover -- --to "home EliteBook"`, which lists any uncommitted file again as a warning. It:
    - waits for any running job, then stops the supervisor;
    - takes a verified backup, exports the data, and pushes the data repository and `dev`;
    - marks this machine handed over, so its supervisor refuses to start (`npm run supervisor -- --take-back` undoes it);

@@ -3,7 +3,21 @@ import test from 'node:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { parseBundle, secretsBundle, supervisorState } from './handover.mjs';
+import { leftBehind, parseBundle, preview, secretsBundle, supervisorState } from './handover.mjs';
+
+test('--check says what the handover would find, and names code that would stay behind', () => {
+  const now = Date.parse('2026-10-30T14:00:00Z'), all = [['.env', true], ['.local/credentials.json', true], ['.local/owner-signing-key.pem', true]];
+  const busy = preview({ beat: { at: '2026-10-30T13:59:30Z', pid: 7, running: 'cycle' }, backendUp: true, secrets: all, porcelain: '', dataRepo: true, now });
+  assert.deepEqual([busy.ready, busy.supervisor, busy.uncommittedCode], [true, 'busy with "cycle": the handover waits for it', []]);
+  const messy = preview({ beat: null, backendUp: true, secrets: [...all.slice(0, 2), ['.local/owner-signing-key.pem', false]],
+    porcelain: ' M scripts/x.mjs\r\n?? integrations/new.py\n', dataRepo: false, now });
+  assert.equal(messy.ready, false);
+  assert.deepEqual(messy.blockers, ['the backend runs without the supervisor: stop it first', 'missing .local/owner-signing-key.pem (the secret backup needs it)',
+    'no data repository at .local/data-repo']);
+  assert.deepEqual(messy.uncommittedCode, ['scripts/x.mjs', 'integrations/new.py']);
+  assert.match(messy.warning, /2 uncommitted code change\(s\) would stay on this machine/);
+  assert.deepEqual(leftBehind(''), []);
+});
 
 test('the secret backup restores the three files exactly, in the layout the owner keeps', () => {
   // a fake key, its header assembled at run time so the secret scan never sees a key-shaped literal in the repository
