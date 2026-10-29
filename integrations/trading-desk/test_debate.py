@@ -110,6 +110,22 @@ class DebateTests(unittest.TestCase):
         self.assertEqual(ctx['verifiedEvidenceIds'], [])                                  # citation rights unchanged
         self.assertEqual(db.checked_claims('HDFCBANK', state=Path(self.tmp.name) / 'none'), [])
 
+    def test_world_events_that_reached_indian_news_reach_the_debate_as_of_the_proposal(self):
+        world = Path(self.tmp.name) / 'latest.json'
+        fed = {'driver': 'us-fed-rates', 'abroad': {'title': 'Federal Reserve issues FOMC statement', 'countries': ['US'], 'firstSeen': '2026-10-28T18:00:00.000Z'},
+               'india': [{'title': 'Sensex jumps after Fed keeps rates unchanged', 'firstSeen': '2026-10-29T04:00:00.000Z'},
+                         {'title': 'Banks rally on the Fed', 'firstSeen': '2026-10-29T09:00:00.000Z'}], 'shares': ['HDFCBANK', 'SBIN']}
+        china = {**fed, 'driver': 'china-economy', 'shares': ['RELIANCE']}
+        world.write_text(json.dumps({'echoes': [fed, china]}), encoding='utf-8')
+        got = db.world_events_for('HDFCBANK', '2026-10-29T06:00:00Z', path=world)
+        self.assertEqual([(e['event'], e['driver'], e['indianCoverage']) for e in got],
+                         [('Federal Reserve issues FOMC statement', 'us-fed-rates', ['Sensex jumps after Fed keeps rates unchanged'])])  # not the later story
+        self.assertEqual(db.world_events_for('HDFCBANK', '2026-10-28T12:00:00Z', path=world), [])  # before the event: nothing
+        self.assertEqual(db.world_events_for('INFY', None, path=world), [])                          # not one of its drivers
+        ctx = db.context({'id': 's', 'symbol': 'HDFCBANK', 'createdAt': '2026-10-29T06:00:00Z', 'evidenceIds': []}, self.cache, [], world=got)
+        self.assertIn('never a cause or evidence', ctx['worldEvents']['note'])
+        self.assertNotIn('worldEvents', db.context({'id': 's', 'symbol': 'HDFCBANK', 'evidenceIds': []}, self.cache, []))
+
     def test_the_second_pass_corrects_what_the_data_does_not_support_and_can_only_help(self):
         signal = {**PENDING[0], 'challenges': []}
         ctx = {'verifiedEvidenceIds': [], 'marketPulse': {'note': 'press reports read by rules: unverified context, never evidence'}}

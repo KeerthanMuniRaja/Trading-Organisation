@@ -196,8 +196,29 @@ def press_dossier(symbol, as_of, index=None):
             'stories': [f"{x['firstSeen'][:10]} ({', '.join(x['countries'])}) {x['title']}" for x in d['stories'][:3]]}
 
 
+WORLD = daily.ROOT / '.local' / 'world' / 'latest.json'
+WORLD_NOTE = 'a world event, then Indian news on the same economic driver: an inferred link, background, never a cause or evidence'
+
+
+def world_events_for(symbol, as_of=None, path=WORLD, limit=2):
+    """WORLD-02: the world events that echoed in Indian news and reach this share (scripts/world-news.mjs echoes), as of
+    the proposal: an event or Indian story published later is left out, so a replay never sees the future."""
+    if not Path(path).exists():
+        return []
+    share = symbol.removesuffix('.NS')
+    out = []
+    for e in json.loads(Path(path).read_text(encoding='utf-8')).get('echoes', []):
+        if share not in e.get('shares', []) or (as_of and not published_before(e['abroad'].get('firstSeen'), as_of)):
+            continue
+        coverage = [i['title'][:160] for i in e.get('india', []) if not as_of or published_before(i.get('firstSeen'), as_of)]
+        if coverage:
+            out.append({'event': e['abroad']['title'][:200], 'countries': e['abroad'].get('countries', []), 'driver': e['driver'],
+                        'firstSeen': e['abroad'].get('firstSeen'), 'indianCoverage': coverage})
+    return out[:limit]
+
+
 def context(signal, cache, headlines, knowledge=None, record=None, news_status='ok', press='unset', reads=None, calendar=None, evidence=None,
-            mentor_notes=None, pulse=None, checked=None):
+            mentor_notes=None, pulse=None, checked=None, world=None):
     """What a debater sees. Everything is as of the proposal: no headline published after it was made (so a replay of a
     past day never sees the future), and dataStatus says plainly what is missing (TradingAgents' 'no data' vs
     'unavailable' markers)."""
@@ -237,7 +258,9 @@ def context(signal, cache, headlines, knowledge=None, record=None, news_status='
             # AWARE-01: what the press reports about this share's moves and big players, and how unusual its last move was
             **({'marketPulse': pulse} if pulse else {}),
             # NEWS-06: quote-checked, single-source claims about this share (context; citations stay verified-only)
-            **({'checkedClaims': {'note': CHECKED_NOTE, 'claims': checked}} if checked else {})}
+            **({'checkedClaims': {'note': CHECKED_NOTE, 'claims': checked}} if checked else {}),
+            # WORLD-02: world events that reached Indian news on a driver of this share
+            **({'worldEvents': {'note': WORLD_NOTE, 'events': world}} if world else {})}
 
 
 def argue(llm, side, signal, ctx, opposing=None, contents=None):
@@ -329,7 +352,8 @@ def run(llm, env=os.environ, cache=daily.DAILY, opener=None, headlines_path=HEAD
                                  method=mentor.method_of(signal.get('model')))
         pulse = market_pulse.for_share(signal['symbol'], as_of=signal.get('createdAt'))
         checked = checked_claims(signal['symbol'], signal.get('createdAt'))
-        ctx = context(signal, cache, headlines, knowledge, record, news_status, press, reads, calendar, contents, notes, pulse, checked)
+        world = world_events_for(signal['symbol'], signal.get('createdAt'))
+        ctx = context(signal, cache, headlines, knowledge, record, news_status, press, reads, calendar, contents, notes, pulse, checked, world)
         # a real debate: the bear argues first and the bull answers the bear's case (same two calls as before)
         bear_case = (argued.get(bots['bear']) or {}).get('argument')
         for side in ('bear', 'bull'):

@@ -109,7 +109,10 @@ The report (`echoes`, `worldEchoes`) feeds:
 - the digest's World news section;
 - the status line;
 - the **scenario panel**, which now rehearses the strongest echoed world event first, with its Indian coverage given as
-  data. Before this, its two stories a day were always Indian.
+  data. Before this, its two stories a day were always Indian;
+- the **debate desk** (`worldEvents` in a debater's context). It gets at most 2 echoed world events that reach the
+  share under debate, as of the proposal: an event or Indian story published later is left out. Each carries its own
+  note that it is background, never a cause or evidence.
 
 The first run, on 29 Oct, found "Federal Reserve issues FOMC statement" (US), followed by 7 Indian stories on US Fed
 rates.
