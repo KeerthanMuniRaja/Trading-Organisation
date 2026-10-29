@@ -100,6 +100,34 @@ class CalendarTests(unittest.TestCase):
             self.assertEqual([(e['date'], e['symbol']) for e in r['events']], [('2026-10-17', 'HDFCBANK.NS')])
             self.assertIn('unverified', r['note'])
 
+    def test_coming_desk_results_days_are_filed_with_the_backend_by_the_evaluator(self):
+        sent = []
+
+        def opener(req, timeout):
+            sent.append((req.full_url, json.loads(req.data), req.headers['Authorization']))
+
+            class Response:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *a):
+                    return False
+
+                def read(self, n=None):
+                    return json.dumps({'filed': 1, 'alreadyKnown': 0}).encode()
+            return Response()
+        env = {'API_URL': 'http://127.0.0.1:3000', 'PRINCIPALS_JSON': json.dumps([{'role': 'evaluator', 'token': 'e'}])}
+        events = [{'date': '2026-10-30', 'kind': 'results', 'symbols': ['RELIANCE']},
+                  {'date': '2026-10-20', 'kind': 'results', 'symbols': ['INFY']},     # already past
+                  {'date': '2027-02-05', 'kind': 'results', 'symbols': ['SBIN']},     # beyond 60 days
+                  {'date': '2026-11-05', 'kind': 'fomc', 'symbols': []}]              # market-wide, not a share's results
+        now = datetime(2026, 10, 29, 12, tzinfo=timezone.utc)
+        self.assertEqual(rc.file_days(env, opener, now, events), {'filed': 1, 'alreadyKnown': 0})
+        url, body, auth = sent[0]
+        self.assertEqual((url, body['days'], auth), ('http://127.0.0.1:3000/v1/protections/results-days', [{'symbol': 'RELIANCE', 'day': '2026-10-30'}], 'Bearer e'))
+        self.assertEqual(rc.file_days(env, opener, now, events[1:]), {'filed': 0, 'alreadyKnown': 0})  # nothing to file: no call
+        self.assertEqual(len(sent), 1)
+
 
 if __name__ == '__main__':
     unittest.main()

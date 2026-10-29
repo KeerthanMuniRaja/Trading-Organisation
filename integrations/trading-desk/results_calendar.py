@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 from datetime import date, datetime, timedelta, timezone
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -188,12 +189,38 @@ def build(headlines_path=HEADLINES, out=OUT, now=None, rows=None, snapshots_path
     return report
 
 
+FILE_AHEAD_DAYS = 60
+
+
+def file_days(env=None, opener=None, now=None, events=None):
+    """PROTECT-03 (founderReview W13): the desk shares' coming results days, filed with the backend by the evaluator, so
+    the owner's pre-results sizing can see them. The owner's calendar wins over the press (events_calendar.load). The
+    backend keeps what it has and adds new days; a wrong date can only make a buy smaller, never larger."""
+    import events_calendar
+    import signal_scorer as sc
+    from urllib import request as urlrequest
+    now = now or datetime.now(timezone.utc)
+    today = now.astimezone(IST).date()
+    if events is None:
+        events, _ = events_calendar.load()
+    days = sorted({(e['symbols'][0], e['date']) for e in events or [] if e['kind'] == 'results' and len(e['symbols']) == 1
+                   and 0 <= (date.fromisoformat(e['date']) - today).days <= FILE_AHEAD_DAYS})
+    if not days:
+        return {'filed': 0, 'alreadyKnown': 0}
+    base, token = sc.principals(env if env is not None else os.environ, 'evaluator')
+    return sc.post(base, token, '/v1/protections/results-days', {'source': 'results calendar (owner file, then press)',
+                                                                 'days': [{'symbol': s, 'day': d} for s, d in days]}, opener or urlrequest.urlopen)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.parse_args(argv)
+    parser.add_argument('--file', action='store_true', help="also file the desk shares' coming results days with the backend (evaluator)")
+    args = parser.parse_args(argv)
     r = build()
+    filed = file_days() if args.file else None
     today = datetime.now(IST).date().isoformat()
     print(json.dumps({'headlinesRead': r['headlinesRead'], 'foundThisRun': r['foundThisRun'], 'kept': len(r['events']),
+                      **({'filedWithBackend': filed} if filed is not None else {}),
                       'upcomingDesk': [f"{e['date']} {e['company']}" for e in r['events'] if (e['desk'] or not e.get('symbol')) and e['date'] >= today],
                       'upcoming': [f"{e['date']} {e['company']}" for e in r['events'] if e['date'] >= today][:15]},
                      indent=2, ensure_ascii=False))

@@ -1,0 +1,25 @@
+{
+  "note": "founderReview W13 (PROTECT-03), on top of W4's brakes and sector limit: a new buy of a share whose results day falls within the next 5 calendar days (today included: about 3 sessions, across a weekend) gets half the size the review would otherwise give it (reason pre-results-sized-50pct). Results days are filed daily by the evaluator from the results calendar (the owner's .local/events.json first, then the press). A wrong date can only make a buy smaller; exits are never limited. Apply only once the digest shows the results-day lesson as checked: npm run protections -- set docs/policies/protections-with-results.json --reason \"Half size before results\".",
+  "rules": {
+    "measure": "equity",
+    "dailyLossPct": 3,
+    "weeklyLossPct": 6,
+    "monthlyLossPct": null,
+    "losingExits": null,
+    "shareCooldownDays": null,
+    "sectorLimit": {
+      "maxPct": 50,
+      "sectors": {
+        "AXISBANK": "Financial Services",
+        "HDFCBANK": "Financial Services",
+        "ICICIBANK": "Financial Services",
+        "SBIN": "Financial Services",
+        "INFY": "Information Technology",
+        "ITC": "Fast Moving Consumer Goods",
+        "NTPC": "Power",
+        "RELIANCE": "Oil Gas & Consumable Fuels"
+      }
+    },
+    "preResultsSizing": { "withinDays": 5, "sizePct": 50 }
+  }
+}

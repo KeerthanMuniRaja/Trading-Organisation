@@ -7,7 +7,7 @@ import { PaperTrading } from './paper.js';
 import { liveReleases } from './bot-releases.js';
 import { restated } from './corporate-actions.js';
 import { isSuspended } from './bot-control.js';
-import { activePauses, sectorLimitFor } from './protections.js';
+import { activePauses, preResultsFor, sectorLimitFor } from './protections.js';
 import { Allow } from './security.js';
 import { available, balance, tradingLoss } from './treasury.js';
 import { verifiedPrice } from './price-evidence.js';
@@ -277,6 +277,12 @@ export class TradeSignals {
                 + await pending('AND s.bot_id=$1 AND s.symbol = ANY($2)', [signal.bot_id, sector.symbols]);
               const toSector = BigInt(bot.budget) * BigInt(Math.round(sector.maxPct * 100)) / 10000n - inSector;
               if (toSector < allowance) [binding, allowance] = ['sector-limit', toSector];
+            }
+            // PROTECT-03 (W13): just before the share's results day, the owner's share of the size (results-day gaps)
+            const results = await preResultsFor(tx, signal.symbol);
+            if (results) {
+              allowance = allowance * BigInt(results.sizePct) / 100n;
+              reasons.push(`pre-results-sized-${results.sizePct}pct`);
             }
             quantity = allowance > 0n ? allowance / perShare : 0n;
             if (quantity < 1n) { quantity = null; reasons.push('size-below-one-share', binding); }

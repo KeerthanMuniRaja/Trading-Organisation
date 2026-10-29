@@ -83,7 +83,7 @@ export async function planSteps({ withModel = false, root = ROOT, decisionCheck 
     // NEWS-07: results and policy days the press reports, from headlines and from the article text the fact-checker has
     // just refreshed ("results on October 30"), kept beyond the headline history, so the debate and the mentor's
     // results-day lesson see them with no owner calendar (no model, no network)
-    { id: 'results-calendar', cmd: PY, args: [desk('results_calendar.py')], timeoutMs: 120_000, requires: join(root, '.local', 'world', 'headline-history.json') },
+    { id: 'results-calendar', cmd: PY, args: [desk('results_calendar.py'), '--file'], timeoutMs: 120_000, requires: join(root, '.local', 'world', 'headline-history.json') },
     // AUTO-02: every open learning workflow advances one stage for the role it waits on (the model writes the lessons)
     withModel
       ? { id: 'learning-workflows', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'learning-cycle.mjs')], timeoutMs: 3_600_000 }

@@ -36,6 +36,23 @@ Why: four of our eight shares are banks, their daily moves correlate 0.47 with e
 (the mentor's first lesson), and the live momentum bot once held three of them at once: closer to one bet than three.
 The suggested value is in founder review B29.
 
+## Smaller buys just before results (PROTECT-03, 29 Oct 2026, migration 057)
+
+`preResultsSizing: {withinDays, sizePct}` gives a new buy `sizePct` of its size when the share's results day falls within
+the next `withinDays` calendar days, today included. The size is otherwise worked out as before. The review records
+`pre-results-sized-<sizePct>pct`. Exits are never limited.
+
+- **Where the days come from:** every cycle, the `results-calendar` step files the desk shares' results days for the
+  next 60 days with the backend (`POST /v1/protections/results-days`, the evaluator only).
+  - It files from the results calendar: the owner's `.local/events.json` first, then the press.
+  - Filed days are append-only (`results_days`): a moved date is filed as a new day, and the old one stays.
+- **Why that is safe:** a wrong or stale date can only make a buy smaller, never larger.
+- **Why it exists:** a results day moves a share about twice its usual two sessions (the mentor's `results_day_moves`
+  check: 15 cases so far, judged from 30). A position opened just before carries that gap on top of its signal.
+- **Switching it on:** the owner's decision (founder review W13), once the lesson is checked. The ready policy is
+  `docs/policies/protections-with-results.json`: W4's brakes and sector limit, plus half size within 5 days.
+  With no `preResultsSizing` in the policy, filed days change nothing.
+
 ## Where it is enforced
 
 The brakes are checked in the same three places as the halt:

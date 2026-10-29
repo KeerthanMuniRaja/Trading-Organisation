@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { owner, trader, evaluator, market, fixture, key } from './helpers.js';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { activePauses, Protections, protectionRules } from '../src/protections.js';
+import { activePauses, preResultsFor, Protections, protectionRules } from '../src/protections.js';
 import { OwnerDigest } from '../src/owner-digest.js';
 import { TradeSignals, RULES_VERSION } from '../src/trade-signals.js';
-import { PaperPerformance } from '../src/paper-performance.js';
+import { indiaDay, PaperPerformance } from '../src/paper-performance.js';
 
 const DAY = 86_400_000;
 
@@ -142,11 +142,50 @@ test('a sector limit sizes a buy down to the room left in its sector; other sect
     assert.equal(tech.quantity, '33');
     assert.ok(tech.reasons.includes('sized-by-target-weight'));
     // the suggested founder files are valid policies as written
-    for (const file of ['protections-suggested.json', 'protections-with-sectors.json'])
+    for (const file of ['protections-suggested.json', 'protections-with-sectors.json', 'protections-with-results.json'])
       protectionRules.parse(JSON.parse(readFileSync(join('docs', 'policies', file), 'utf8')).rules);
     // the accepted bank intent counts too: a third bank finds no room left in the sector at all
     const full = await buy('BANKC');
     assert.equal(full.outcome, 'rejected');
     assert.ok(full.reasons.includes('size-below-one-share') && full.reasons.includes('sector-limit'), full.reasons.join());
+  } finally { await f.db.close(); }
+});
+
+test('just before a results day a buy gets the owner\'s share of its size; the evaluator files the days, append-only', async () => {
+  const f = await fixture();
+  try {
+    const e = await f.evidence(); await f.deposit('2000000');
+    await f.org.bot(owner, key(), { id: 'bot-one', name: 'Fixture', department: 'research', specialty: 'demo', method: 'test', contribution: 'Results fixture', budgetPaise: '1000000' });
+    await f.db.transaction(tx => tx.query("UPDATE bots SET state='paper' WHERE id='bot-one'"));
+    for (const s of ['RESULTS', 'QUIET'])
+      await f.paper.quote(market, key(), { symbol: s, bidPaise: '10000', askPaise: '10000', observedAt: new Date().toISOString(), sourceId: e.sourceId });
+    const signals = new TradeSignals(f.db, f.cfg), protections = new Protections(f.db);
+    const buy = async (symbol: string) => signals.review(evaluator, key(), { signalId: (await signals.propose(trader, key(), { botId: 'bot-one', symbol,
+      action: 'enter-long', horizonDays: 30, conviction: 'high', targetWeightPct: 20, thesis: 't', invalidation: 'i',
+      expiresAt: new Date(Date.now() + DAY).toISOString(), evidenceIds: [e.evidenceId] })).id });
+    const inTwoDays = indiaDay(Date.now() + 2 * DAY), inThirtyDays = indiaDay(Date.now() + 30 * DAY);
+    const days = { source: 'press calendar', days: [{ symbol: 'RESULTS', day: inTwoDays }, { symbol: 'RESULTS', day: inThirtyDays }] };
+
+    // only the evaluator files results days; filing again changes nothing
+    assert.throws(() => protections.fileResultsDays(trader, key(), days));
+    assert.deepEqual(await protections.fileResultsDays(evaluator, key(), days), { filed: 2, alreadyKnown: 0 });
+    assert.deepEqual(await protections.fileResultsDays(evaluator, key(), days), { filed: 0, alreadyKnown: 2 });
+    await assert.rejects(() => f.db.transaction(tx => tx.query("UPDATE results_days SET day=day+1")));
+
+    // the window counts calendar days from today: day 2 is inside 3 days, day 30 only from day 28
+    await protections.setPolicy(owner, key(), { rules: { preResultsSizing: { withinDays: 3, sizePct: 50 } }, reason: 'Half size before results' });
+    const window = (now: number) => f.db.transaction(tx => preResultsFor(tx, 'RESULTS', now), false);
+    assert.equal((await window(Date.now()))?.day, inTwoDays);
+    assert.equal(await window(Date.now() + 3 * DAY), null);
+    assert.equal((await window(Date.now() + 28 * DAY))?.day, inThirtyDays);
+
+    // a share with no results day keeps its full size; the one before results gets half, with the reason recorded
+    const quiet = await buy('QUIET');
+    assert.equal(quiet.quantity, '20');
+    const before = await buy('RESULTS');
+    assert.equal(before.outcome, 'accepted');
+    assert.equal(before.quantity, '10');
+    assert.ok(before.reasons.includes('pre-results-sized-50pct'), before.reasons.join());
+    assert.throws(() => protections.setPolicy(owner, key(), { rules: { preResultsSizing: { withinDays: 3, sizePct: 5 } }, reason: 'too small' }));
   } finally { await f.db.close(); }
 });

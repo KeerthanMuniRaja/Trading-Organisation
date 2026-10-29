@@ -38,8 +38,17 @@ export const protectionRules = z.object({
    *  (NSE's industry names, from the NIFTY 500 constituent file); a share not in the map is not limited. */
   sectorLimit: z.object({ maxPct: z.number().min(5).max(100), sectors: z.record(z.string().regex(/^[A-Z0-9&_-]{1,30}$/), z.string().trim().min(1).max(80))
     .refine(m => Object.keys(m).length <= 600, 'At most 600 shares') }).strict().nullable().default(null),
+  /** PROTECT-03 (founderReview W13): a new buy of a share whose results day falls within the next `withinDays` calendar
+   *  days (India time, today included) gets `sizePct` of the size the review would otherwise give it (reason
+   *  `pre-results-sized-<sizePct>pct`). Results days are filed by the evaluator from the press calendar
+   *  (POST /v1/protections/results-days). Exits are never limited. */
+  preResultsSizing: z.object({ withinDays: z.number().int().min(1).max(10), sizePct: z.number().int().min(10).max(100) }).strict().nullable().default(null),
 }).strict();
 const policySchema = z.object({ rules: protectionRules, reason: z.string().trim().min(1).max(600) }).strict();
+const resultsDaysSchema = z.object({
+  source: z.string().trim().min(1).max(200),
+  days: z.array(z.object({ symbol: z.string().regex(/^[A-Z0-9&_-]{1,30}$/), day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).strict()).min(1).max(200),
+}).strict();
 const statusSchema = z.object({ botId: id.optional() }).strict();
 export type ProtectionRules = z.infer<typeof protectionRules>;
 const WINDOWS = [['dailyLossPct', 1, 'protection-daily-loss'], ['weeklyLossPct', 7, 'protection-weekly-loss'],
@@ -75,6 +84,16 @@ export async function sectorLimitFor(tx: Sql, symbol: string) {
   const sector = limit?.sectors[symbol];
   if (!limit || !sector) return null;
   return { sector, maxPct: limit.maxPct, symbols: Object.keys(limit.sectors).filter(s => limit.sectors[s] === sector) };
+}
+
+/** PROTECT-03: the owner's pre-results sizing for a buy of `symbol` now, with the results day it is for; null when no
+ *  rule is set or no results day of the share falls within the window. */
+export async function preResultsFor(tx: Sql, symbol: string, now = Date.now()) {
+  const rule = (await currentProtections(tx))?.rules.preResultsSizing;
+  if (!rule) return null;
+  const row = (await tx.query(`SELECT day::text AS day FROM results_days WHERE symbol=$1 AND day >= $2::date AND day < $2::date + $3::int
+    ORDER BY day LIMIT 1`, [symbol, indiaDay(now), rule.withinDays])).rows[0];
+  return row ? { day: String(row.day), sizePct: rule.sizePct, withinDays: rule.withinDays } : null;
 }
 
 export type Pause = { code: string; detail: string; until: string | null };
@@ -149,6 +168,22 @@ export class Protections {
     });
   }
 
+  /** PROTECT-03, the evaluator: the shares' coming results days, from the press calendar. A day already filed is kept as
+   *  it is; nothing is ever changed or removed (a wrong date can only make a buy smaller). */
+  fileResultsDays(actor: Actor, key: string, raw: unknown) {
+    permit(actor, 'evaluator');
+    const input = parse(resultsDaysSchema, raw);
+    return this.db.command(actor, 'results-days', key, input, async tx => {
+      let filed = 0;
+      for (const d of input.days) {
+        filed += (await tx.query(`INSERT INTO results_days(symbol,day,source,filed_by) VALUES($1,$2::date,$3,$4) ON CONFLICT DO NOTHING RETURNING 1`,
+          [d.symbol, d.day, input.source, actor.id])).rows.length;
+      }
+      if (filed) await audit(tx, actor, 'protection.results-days.filed', input.source, { filed, days: input.days });
+      return { filed, alreadyKnown: input.days.length - filed };
+    });
+  }
+
   /** The policy and every paper bot's pauses now (or one bot's). */
   status(actor: Actor, raw: unknown) {
     permit(actor, 'owner', 'evaluator');
@@ -173,4 +208,7 @@ export class ProtectionsController {
   @Post('protections/policy') @Allow('owner') policy(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) { return this.protections.setPolicy(r.actor, k ?? '', b); }
   @Post('protections/status') @Allow('owner', 'evaluator') status(@Req() r: Request, @Body() b: unknown) { return this.protections.status(r.actor, b); }
   @Post('protections/guard') @Allow('evaluator') guard(@Req() r: Request, @Headers('idempotency-key') k: string) { return this.protections.guard(r.actor, k ?? ''); }
+  @Post('protections/results-days') @Allow('evaluator') resultsDays(@Req() r: Request, @Headers('idempotency-key') k: string, @Body() b: unknown) {
+    return this.protections.fileResultsDays(r.actor, k ?? '', b);
+  }
 }
