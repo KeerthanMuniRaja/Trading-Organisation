@@ -4,7 +4,29 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { decisionModel, planSteps, runCycle, runHttp, escalate, releaseCheck, computeCheck, taSteps, verifyMarketData, verifyFeed, ESCALATE_AFTER,
-  runManifest, dataManifest, fingerprint, circuitOpen, CIRCUIT_AFTER, CIRCUIT_REST_MS } from './organisation-cycle.mjs';
+  runManifest, dataManifest, fingerprint, circuitOpen, CIRCUIT_AFTER, CIRCUIT_REST_MS, academyOn, ACADEMY_STEPS } from './organisation-cycle.mjs';
+
+test('the department worker runs only once the owner switched on an academy or lifecycle policy (W12)', async () => {
+  const off = Object.fromEntries(ACADEMY_STEPS.map(id => [id, { status: 'done', summary: 'HTTP 201 {"status":"disabled","actions":[]}' }]));
+  assert.match(academyOn(off), /W12/);
+  assert.match(academyOn({}), /policy is off/);  // nothing ran: nothing to work on
+  assert.equal(academyOn({ ...off, lifecycle: { status: 'done', summary: 'HTTP 201 {"status":"applied","actions":[{"kind":"birth"}]}' } }), null);
+  assert.match(academyOn({ ...off, lifecycle: { status: 'failed', summary: 'HTTP 500' } }), /policy is off/);  // a failed cycle switches nothing on
+  const plan = await planSteps({ root: '/nowhere' });
+  const ids = plan.map(s => s.id);
+  assert.ok(ids.indexOf('memory-review') < ids.indexOf('department-researcher') && ids.indexOf('department-researcher') < ids.indexOf('department-evaluator'));
+  assert.equal(ids.indexOf('rnd-forward'), ids.indexOf('rnd-scout') + 1);  // RND-04: judged on the scout's newest report
+  const researcher = plan.find(s => s.id === 'department-researcher');
+  assert.deepEqual([researcher.args.slice(-3), researcher.when, /skfolio/.test(researcher.requires)], [['researcher', '--minutes', '10'], academyOn, true]);
+  // the runner asks when() with this run's results so far
+  const dir = await mkdtemp(join(tmpdir(), 'cycle-when-'));
+  try {
+    const ran = [];
+    const results = await runCycle({ steps: [{ id: 'gate', cmd: 'x' }, { id: 'worker', cmd: 'x', when: s => s.gate?.summary === 'go' ? null : 'not yet' }],
+      journalPath: join(dir, 'd.json'), run: async step => { ran.push(step.id); return { code: 0, tail: 'stay' }; } });
+    assert.deepEqual([results.map(r => [r.id, r.status, r.reason ?? null]), ran], [[['gate', 'done', null], ['worker', 'skipped', 'not yet']], ['gate']]);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
 
 test('TradingAgents decides only weekly with the model and its own environment; its member proposes every cycle', () => {
   const friday = Date.parse('2026-10-23T11:00:00Z'), tuesday = Date.parse('2026-10-20T11:00:00Z');

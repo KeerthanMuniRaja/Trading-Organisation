@@ -105,12 +105,22 @@ export async function planSteps({ withModel = false, root = ROOT, decisionCheck 
       ['lifecycle', '/v1/lifecycle/cycles', 'evaluator'], ['research-dispatch', '/v1/dispatch/cycles', 'evaluator'],
       ['experiment-reviews', '/v1/development/experiments/cycles', 'evaluator'], ['memory-research', '/v1/learning/cycles', 'researcher'],
       ['memory-review', '/v1/learning/cycles', 'evaluator']].map(([id, path, role]) => ({ id, kind: 'http', method: 'POST', path, role })),
+    // W12 (ORG-03): those cycles only queue work. The department worker does it: students sit their exams, the researcher
+    // claims dispatched datasets and fits them (skfolio, no model), the evaluator reviews the trials. It runs only once
+    // the owner has switched on one of the policies above, so a switch-on starts a working loop, not a queue nobody empties.
+    ...[['department-researcher', 'researcher', '10'], ['department-evaluator', 'evaluator', '0']].map(([id, role, minutes]) => ({
+      id, cmd: NODE, args: [join(root, 'scripts', 'run-department.mjs'), role, ...(minutes === '0' ? [] : ['--minutes', minutes])],
+      timeoutMs: (Number(minutes) + 5) * 60_000, when: academyOn,
+      requires: join(root, 'integrations', 'skfolio', '.venv', ...(process.platform === 'win32' ? ['Scripts', 'python.exe'] : ['bin', 'python'])) })),
     // RND-01: R&D screens its fixed catalogue of strategy ideas every day (no model); it turns a robust one into verified
     // evidence and a birth proposal for the owner's agenda only once the owner named an approved research source
     // RND-03: with the model on, R&D first invents new ideas (specifications only, at most 3 a month, each raising the bar)
     { id: 'rnd-scout', cmd: PY, args: [desk('rnd_scout.py'), ...(withModel ? ['--invent', 'model'] : []), ...(process.env.RND_SOURCE
       ? ['--propose', '--source', process.env.RND_SOURCE, '--department', process.env.RND_DEPARTMENT || 'desk'] : [])],
       timeoutMs: withModel ? 900_000 : 300_000 }, // invention can take 9 minutes on the laptop CPU, then the scout itself
+    // RND-04: the seen-history bar only rises with every idea tried, so ideas also get a forward test: once a month the
+    // best unserved one is registered and judged only on later months (at most 5 at once; no model)
+    { id: 'rnd-forward', cmd: PY, args: [desk('rnd_forward.py')], timeoutMs: 300_000 },
     // KNOW-05: the organisation's live knowledge (research, regime, news links, scenario record) for the agents and the digest
     { id: 'knowledge-refresh', cmd: PY, args: [desk('live_knowledge.py'), 'refresh'], timeoutMs: 120_000 },
     // MENTOR-01: the mentor's lessons, each re-checked on today's data (no model, no network)
@@ -391,7 +401,14 @@ export async function dataManifest({ root = ROOT } = {}) {
     fingerprint: await fingerprint(names.map(n => join(dir, n)), root) };
 }
 
-export const ESCALATE_AFTER = 3;          // consecutive failed cycles before a step becomes an incident
+export const ACADEMY_STEPS = ['academy-exams', 'academy-remediation', 'lifecycle', 'research-dispatch', 'memory-research', 'memory-review'];
+/** Why the department worker waits: null once any academy or lifecycle cycle ran this time with its policy on. */
+export function academyOn(steps) {
+  const on = ACADEMY_STEPS.some(id => steps[id]?.status === 'done' && !/"status"\s*:\s*"disabled"/.test(String(steps[id].summary ?? '')));
+  return on ? null : 'every academy and lifecycle policy is off (the owner switches them on: founderReview W12)';
+}
+
+export const ESCALATE_AFTER = 3;         // consecutive failed cycles before a step becomes an incident
 // OPS-04 circuit breaker for model agents (from FinceptTerminal's agent runner): a model step that failed CIRCUIT_AFTER
 // cycles in a row rests for CIRCUIT_REST_MS instead of failing (and spending model time) every day, then tries once again;
 // one success closes the circuit. The escalation above still tells the owner.
@@ -466,8 +483,11 @@ export async function runCycle({ steps, journalPath, streaksPath = join(dirname(
     if (!force && previous?.status === 'done' && !step.critical) { results.push({ id: step.id, status: 'done', resumed: true }); continue; }
     let outcome;
     const resting = step.skip ? null : circuitOpen(step.id, streaks[step.id], now().getTime());
+    // a step that depends on what earlier steps found this run: when() gives the reason to wait, or null to run
+    const waiting = step.skip || resting || !step.when ? null : step.when(journal.steps);
     if (step.skip) outcome = { status: 'skipped', reason: step.skip };
     else if (resting) outcome = { status: 'skipped', reason: resting };
+    else if (waiting) outcome = { status: 'skipped', reason: waiting };
     else if (step.requires && !existsSync(step.requires)) outcome = { status: 'skipped', reason: 'missing ' + step.requires.split(/[\\/]/).slice(-2).join('/') };
     else {
       // a release-controlled bot whose code is not the authorised release does not run at all (it would be refused anyway)

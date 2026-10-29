@@ -124,7 +124,7 @@ def entries(ledger_path=None):
     return out
 
 
-def fingerprint(ledger_path=None):
+def _code_parts():
     import market_regime
     import rnd_ideas
     parts = [VERSION, str(ONE_WAY_COST_PCT), str(ALPHA), str(MIN_MONTHS), str(START), inspect.getsource(catalogue), json.dumps(ADOPTED_SPECS, sort_keys=True)]
@@ -132,8 +132,19 @@ def fingerprint(ledger_path=None):
     parts += [inspect.getsource(f) for f in (rnd_ideas._trend_template, rnd_ideas._pullback, rnd_ideas.rsi, rnd_ideas._combo, rnd_ideas._every, market_regime.distribution_days,
                                              market_regime.basket, market_regime.calm, market_regime.follow_through, market_regime.calm_or_followed_through)]
     parts += [inspect.getsource(f) for f in (pd.top_momentum, pd.inverse_volatility, pd.trend_filtered, low_volatility, reversal)]
+    return parts + [inspect.getsource(rnd_ideas.rule_of), inspect.getsource(monthly)]
+
+
+def code_fingerprint():
+    """The rules' code alone (timing, costs, every builder), without the ledger: a new idea in the ledger does not change
+    what an already registered idea does (rnd_forward.py)."""
+    return hashlib.sha256('\n'.join(_code_parts()).encode()).hexdigest()[:16]
+
+
+def fingerprint(ledger_path=None):
+    import rnd_ideas
     # the invented ideas are part of what was tried: the grammar's code and every idea in the ledger
-    parts += [inspect.getsource(rnd_ideas.rule_of), *sorted(i['hash'] for i in rnd_ideas.ledger(ledger_path or rnd_ideas.LEDGER))]
+    parts = _code_parts()[:-1] + [*sorted(i['hash'] for i in rnd_ideas.ledger(ledger_path or rnd_ideas.LEDGER))]
     return hashlib.sha256('\n'.join(parts).encode()).hexdigest()[:16]
 
 

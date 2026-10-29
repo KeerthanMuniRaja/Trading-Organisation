@@ -91,6 +91,25 @@ The fixed catalogue is only the start: the research department proposes new idea
 - **The bar rises with every idea.** The scout tests the catalogue and every ledger idea together, at p < 0.05 ÷ the number of ideas ever tried. Inventing more ideas makes passing harder, never easier, so luck can't be mined. The ledger is part of the scout's fingerprint.
 - **The same road to trading.** A passing invented idea becomes verified evidence and a birth proposal. With standing approvals, it can go on to a release, qualification, a starting budget and monthly trading through `rnd_bot.py`, which runs ledger ideas exactly like catalogue ones.
 
+## Forward tests: judged on months nobody has seen (RND-04, `rnd_forward.py`, cycle step `rnd-forward`)
+
+The seen-history bar only rises: after 25 ideas it is p < 0.002, and the best idea stands at p = 0.10. On eight shares, more searching cannot pass anything; it only raises the bar. So ideas also get a forward test, the factor lab's method applied to the scout's ideas:
+
+- **Registration:** automatic, once a month, no owner step.
+  - The best unserved idea in the newest scout report is frozen: one that is ahead of the basket on average and not yet registered. "Unserved" means no live bot runs it; the live bot is judged by its own live fitness.
+  - Only months that start after registration count.
+  - At most one idea a month, and at most **5** running at once.
+- **Verdict:** only after **24** judged months, using the scout's own timing and costs.
+  - It passes if the one-sided t of the idea's monthly excess over the basket is at least **2.5** (about 1%), and it is ahead on average.
+  - Five tests at 1% each keep the family's false-pass rate at 5%.
+- **Ending:** a test ends, and frees its slot, if the rules' code changes after registration.
+  - The fingerprint is `rnd_scout.code_fingerprint()`: timing, costs and every builder, but not the idea ledger.
+  - So a newly invented idea does not end the tests already running.
+- **A pass is eligibility, not a trade:** the idea may go to a birth proposal on the owner's agenda, and live paper fitness after birth is still the real test.
+- **Honest expectation:** a real edge of 0.5% a month with typical monthly noise would need longer than 24 months to reach t 2.5. A pass will be rare, and when one comes it means something.
+- **First registration (29 Oct 2026):** `momentum-6m-top3-quarterly`, the live bot's rule traded quarterly. On the seen history it was ahead in 60 of 106 differing months. It is judged from November 2026.
+- **Files:** `.local/trading-desk/rnd/forward/` holds the registrations, and `reports/latest.json` the latest report.
+
 ## When an idea passes
 
 The step only screens until the owner names an approved research source. To let it propose, set `RND_SOURCE` (for example `desk-research`), optionally with `RND_DEPARTMENT` (default `desk`), in `.env`. The source must be registered and approved once by the owner (`POST /v1/sources`). Then a passing idea that no bot serves yet goes through the organisation like any proposal:
