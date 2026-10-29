@@ -706,7 +706,17 @@ It only reads saved results. Open the file in a browser, and rerun it after more
 **Public copy (owner's choice).** On 9 October 2026 the owner chose to publish the page openly, so it can be viewed from any device or account. It is served by GitHub Pages from a separate public repository, [KeerthanMuniRaja/trading-desk-results](https://github.com/KeerthanMuniRaja/trading-desk-results). The code repository is untouched by it. (Correction, 21 Oct 2026: the code repository is public too; see founderReview.md B25.) The public page and repository do not use the project's name.
 
 - **Address:** https://keerthanmuniraja.github.io/trading-desk-results/
-- **Updating:** regenerate the page, scan it for anything private, then upload it as `index.html` to that repository. The upload must include the current file's `sha`.
+- **Since 29 Oct 2026 the public page is the organisation's results** (`npm run results-page`, `scripts/results-page.mjs`), no longer this replay dashboard. It shows:
+  - the live paper books against holding all eight shares;
+  - ten years of research on the eight shares, and the walk-forward result;
+  - the NIFTY 500 signal study, marking which signal passes the bar;
+  - the market state and the lessons checked on our data;
+  - awareness counts.
+
+  `npm run results-page -- --publish` builds it, refuses to publish if it finds a local path, a credential, an e-mail
+  address or the project's name, then commits `index.html` and `README.md` to that repository as the owner and pushes.
+  The owner asks for each publication.
+- **Updating (the old dashboard):** regenerate the page, scan it for anything private, then upload it as `index.html` to that repository. The upload must include the current file's `sha`.
 - **Before uploading:** the page contains results and model reasoning only, never credentials, local paths or `.env` values. Check this before every upload.
 
 ## Tests
