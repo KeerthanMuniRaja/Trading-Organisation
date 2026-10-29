@@ -307,8 +307,9 @@ def backend_claim(c, obs):
     body = {'evidenceId': c['evidenceId'], 'statement': c['statement'], 'quote': c['quote'],
             'symbols': sorted({s.removesuffix('.NS') for s in c['symbols']}), 'eventType': c['eventType'], 'direction': c['direction'],
             'eventDate': c['eventDate'], 'certainty': c['certainty']}
-    if claims.fact_key(c):
-        body.update(metric=c['metric'], period=c['period'])
+    key = claims.fact_key(c)
+    if key:  # one name per fact (CLAIMS-03), so the registry groups what the fact-checker grouped
+        body.update(metric=key[0], period=key[1])
         if c.get('reportedChangePct') is not None:
             body['reportedChangePct'] = c['reportedChangePct']
     return body

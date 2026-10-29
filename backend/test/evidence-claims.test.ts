@@ -9,7 +9,7 @@ const ARTICLE = 'Reliance Industries on Friday reported a 12% rise in quarterly 
 
 async function setup() {
   const f = await fixture();
-  for (const id of ['publisher-a', 'publisher-b', 'publisher-c'])
+  for (const id of ['publisher-a', 'publisher-b', 'publisher-c', 'publisher-d'])
     await f.org.sources(owner, key(), { id, name: id, url: `https://${id}.example.org/feed`, approved: true });
   const article = async (sourceId: string, content = ARTICLE, publishedAt = '2025-01-03T10:00:00Z') =>
     (await f.org.evidence(researcher, key(), { sourceId, kind: 'news', content, publishedAt })).id as string;
@@ -109,6 +109,11 @@ test('corroboration compares only the same figure for the same period; price opi
     result = await f.claims.corroboration(owner, { symbol: 'RELIANCE.NS' });
     assert.equal(result.clusters[0]!.status, 'corroborated');
     assert.deepEqual(result.clusters[0]!.priceOpinions, ['negative', 'positive']);
+    // The event type is the drafting model's label, not the fact: the same figure filed under another type joins it.
+    await accept('publisher-d', 'Exchange filing: Reliance quarterly net profit up 12% on retail.', 'Reliance quarterly net profit up 12%',
+      { ...q3, reportedChangePct: 12, eventType: 'corporate-action' }, '2025-01-04T11:00:00Z');
+    result = await f.claims.corroboration(owner, { symbol: 'RELIANCE.NS' });
+    assert.deepEqual([result.clusters.length, result.clusters[0]!.independentOrigins, result.clusters[0]!.eventTypes], [1, 3, ['corporate-action', 'earnings']]);
     // A different period is a different fact, even in the same week.
     await accept('publisher-c', 'For the full year FY24, Reliance net profit fell 3% after weak refining margins.',
       'net profit fell 3% after weak refining margins', { metric: 'net profit', period: 'FY24', reportedChangePct: -3 }, '2025-01-05T09:00:00Z');

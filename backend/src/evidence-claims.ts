@@ -149,23 +149,25 @@ export class EvidenceClaims {
 }
 
 type Claim = ReturnType<typeof view>;
-type Cluster = { eventType: string; metric: string; period: string; status: 'contradicted' | 'corroborated' | 'single-source';
+type Cluster = { eventTypes: string[]; metric: string; period: string; status: 'contradicted' | 'corroborated' | 'single-source';
   independentOrigins: number; reportedChangesPct: number[]; priceOpinions: string[]; claimIds: string[];
   firstPublishedAt: string; lastPublishedAt: string };
 /** Two reported figures disagree when their signs differ or they differ by more than 1 point or 10%, whichever is larger. */
 export function figuresDisagree(a: number, b: number) {
   return (a > 0 && b < 0) || (a < 0 && b > 0) || Math.abs(a - b) > Math.max(1, 0.1 * Math.max(Math.abs(a), Math.abs(b)));
 }
-/** One cluster per fact (event type, metric, period). Claims without a fact key must be filtered out by the caller. */
+/** One cluster per fact (metric, period). Claims without a fact key must be filtered out by the caller. The event type
+ *  is the drafting model's label, not part of the fact (one listing-day gain was filed under two types, 28 Oct 2026). */
 export function cluster(claims: Claim[]): Cluster[] {
   const byFact = new Map<string, Claim[]>();
   for (const c of claims) {
-    const key = JSON.stringify([c.eventType, c.metric, c.period]);
+    const key = JSON.stringify([c.metric, c.period]);
     byFact.set(key, [...(byFact.get(key) ?? []), c]);
   }
   const out: Cluster[] = [];
   for (const [key, items] of [...byFact.entries()].sort()) {
-    const [eventType, metric, period] = JSON.parse(key) as [string, string, string];
+    const [metric, period] = JSON.parse(key) as [string, string];
+    const eventTypes = [...new Set(items.map(c => c.eventType as string))].sort();
     items.sort((a, b) => a.publishedAt.localeCompare(b.publishedAt) || a.id.localeCompare(b.id));
     const origins: { sources: Set<string>; quotes: string[] }[] = [];
     for (const c of items) {
@@ -174,7 +176,7 @@ export function cluster(claims: Claim[]): Cluster[] {
     }
     const figures = items.map(c => c.reportedChangePct).filter((v): v is number => v !== null);
     const contradicted = figures.some((a, x) => figures.slice(x + 1).some(b => figuresDisagree(a, b)));
-    out.push({ eventType, metric, period, status: contradicted ? 'contradicted' : origins.length >= 2 ? 'corroborated' : 'single-source',
+    out.push({ eventTypes, metric, period, status: contradicted ? 'contradicted' : origins.length >= 2 ? 'corroborated' : 'single-source',
       independentOrigins: origins.length, reportedChangesPct: figures, priceOpinions: [...new Set(items.map(c => c.direction))].sort(),
       claimIds: items.map(c => c.id), firstPublishedAt: items[0]!.publishedAt, lastPublishedAt: items.at(-1)!.publishedAt });
   }

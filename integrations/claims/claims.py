@@ -5,10 +5,10 @@
                 text, whose company is never mentioned, or whose dates are impossible. The model's output
                 gains no authority: verified-span claims are still unreviewed, not knowledge.
 2. corroborate  Offline, the backend's fact-key rule (docs/evidence-claims.md). Only claims with a fact key (the
-                figure's metric and period) are compared; each cluster is one fact: company, event type, metric
-                and period. Counts independent origins (distinct sources, with near-identical syndicated copies
-                counted once) and flags contradictions (reported figures for the same fact that disagree).
-                Price-direction opinions never decide anything.
+                figure's metric and period) are compared; each cluster is one fact: company, metric and period,
+                each given one name by fixed rules (CLAIMS-03). Counts independent origins (distinct sources, with
+                near-identical syndicated copies counted once) and flags contradictions (reported figures for the
+                same fact that disagree). Price-direction opinions never decide anything.
 3. headlines    Offline. Writes the trading desk's news-analyst input: one dated headline per claim.
 
 Input: the backend review queue's observations (JSON list, or {"observations": [...]}) with evidence_id,
@@ -18,7 +18,7 @@ Run with any project Python environment, e.g. .local\\replay-venv\\Scripts\\pyth
 from __future__ import annotations
 
 import argparse
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
 import os
@@ -31,7 +31,8 @@ import unicodedata
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'integrations' / 'hermes'))
 RUNS = ROOT / '.local' / 'claims'
-NAME = re.compile(r'^[A-Za-z0-9_-]{1,60}$')
+IST = timezone(timedelta(hours=5, minutes=30))
+NAME =re.compile(r'^[A-Za-z0-9_-]{1,60}$')
 
 # The trading desk's universe, with the names Indian financial news commonly uses.
 COMPANIES = {
@@ -46,7 +47,9 @@ COMPANIES = {
 }
 # Other listed companies share these words; an alias followed by one of these is not our company.
 NOT_FOLLOWED_BY = {
-    'Reliance': r'\s+(?:Power|Capital|Infra\w*|Communications|Home|Naval|General|Nippon)',
+    # Jio Platforms is listed separately since its 28 Oct 2026 debut, and "Reliance Group" is a group of companies:
+    # "Reliance Jio shares rose 23%" is not a figure for Reliance Industries' share
+    'Reliance': r'\s+(?:Power|Capital|Infra\w*|Communications|Home|Naval|General|Nippon|Jio|Group)',
     'SBI': r'\s+(?:Life|Cards?|Mutual|Funds?|General)',
     'NTPC': r'\s+Green',
     'ITC': r'\s+Hotels',  # listed separately since the 2025 demerger
@@ -143,6 +146,78 @@ def metric_key(value):
 def period_key(value):
     """Canonical period, as the backend stores it: "Q2 FY27" and "q2fy27" match."""
     return re.sub(r'[^A-Z0-9]+', '', value.upper())
+
+
+# ---------- one name per fact (CLAIMS-03, 28 Oct 2026) ----------
+# The model names one fact many ways: the Jio listing was "share price, DEBUT", "share price, MARKETDEBUT" and "ipo
+# premium, DEBOUT" across two publishers, and "Wednesday" is a different day in every article. On 28 Oct none of 16 fact
+# groups had two publishers, so nothing could be verified. Fixed rules give each fact one name before comparing.
+METRIC_NAMES = {
+    'share price': ('share price', 'share price change', 'share price rise', 'share price fall', 'share price gain',
+                    'share price decline', 'stock price', 'stock price change', 'shares', 'stock', 'listing gain',
+                    'listing premium', 'ipo premium', 'debut gain', 'debut premium'),
+    'market cap': ('market cap', 'market capitalisation', 'market capitalization', 'mcap', 'm cap', 'market value',
+                   'market valuation'),
+    'net profit': ('net profit', 'profit after tax', 'pat', 'net income'),
+    'revenue': ('revenue', 'revenues', 'revenue from operations', 'total revenue', 'net sales', 'sales', 'topline'),
+    'net interest income': ('net interest income', 'nii'),
+}
+METRIC_CANON = {alias: name for name, aliases in METRIC_NAMES.items() for alias in aliases}
+# a market price belongs to the company named with it: "Jio Financial Services share price fell" is not Reliance's
+NAMED_METRICS = {'share price', 'market cap'}
+WEEKDAYS = ('MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY')
+SAME_DAY = {'TODAY', 'DAILY', 'INTRADAY', 'SESSION', 'TODAYSSESSION', 'DAY', 'ONTHEDAY'}
+QUARTER_END_MONTH = {'JUN': 1, 'JUNE': 1, 'SEP': 2, 'SEPT': 2, 'SEPTEMBER': 2, 'DEC': 3, 'DECEMBER': 3, 'MAR': 4, 'MARCH': 4}
+
+
+def canonical_metric(value):
+    key = metric_key(value)
+    return METRIC_CANON.get(key, key)
+
+
+def _quarter_fy(quarter, published):
+    """The Indian financial year of the latest quarter `quarter` ending by a month after `published` (results come out
+    after the quarter; previews a little before): Q2 written in October 2026 is Q2 FY27."""
+    end_month = {1: 6, 2: 9, 3: 12, 4: 3}[quarter]
+    year = published.year + 1
+    while date(year, end_month, 28) > published + timedelta(days=31):
+        year -= 1
+    return year + 1 if quarter < 4 else year
+
+
+def canonical_period(value, published=None):
+    """One name per period. Relative ones (Q2, Wednesday, today) are resolved against the article's date when known."""
+    key = period_key(value)
+    # Q2FY27, Q2 FY2027, FY27 Q2, Q2 FY2026-27; a bare year ("Q2 2026") is ambiguous (calendar or financial), so only an
+    # explicit FY sets the year, otherwise it comes from the article's date
+    m = re.fullmatch(r'Q([1-4])(?:FY(\d{6}|\d{4}|\d{2})|\d{4}|\d{2})?', key) or re.fullmatch(r'FY(\d{6}|\d{4}|\d{2})Q([1-4])', key)
+    if m:
+        quarter, fy = (int(m[1]), m[2]) if key.startswith('Q') else (int(m[2]), m[1])
+        if fy:
+            return f'Q{quarter}FY{fy[-2:]}'
+        return key if published is None else f'Q{quarter}FY{_quarter_fy(quarter, published) % 100:02d}'
+    m = re.fullmatch(r'FY(\d{6}|\d{4}|\d{2})', key)  # FY27, FY2027, FY2026-27
+    if m:
+        return f'FY{m[1][-2:]}'
+    if 'DEBUT' in key or 'DEBOUT' in key or 'LISTING' in key:
+        return 'LISTINGDAY'
+    if key in ('YTD', 'YEARTODATE'):
+        return 'YTD'
+    if key in ('PASTYEAR', 'ONEYEAR', '1YEAR', '1Y', '12MONTHS', 'PAST12MONTHS', 'OVERTHEPASTYEAR', 'INAYEAR'):
+        return '1Y'
+    if published is not None:
+        m = re.fullmatch(r'(?:JULY?|OCT(?:OBER)?|JAN(?:UARY)?|APR(?:IL)?)?(JUNE?|SEPT?(?:EMBER)?|DEC(?:EMBER)?|MAR(?:CH)?)QUARTER', key)
+        if m:
+            quarter = QUARTER_END_MONTH[m[1]]
+            return f'Q{quarter}FY{_quarter_fy(quarter, published) % 100:02d}'
+        if key in WEEKDAYS:
+            back = (published.weekday() - WEEKDAYS.index(key)) % 7
+            return 'D' + (published - timedelta(days=back)).strftime('%Y%m%d')
+        if key in SAME_DAY:
+            return 'D' + published.strftime('%Y%m%d')
+        if key == 'YESTERDAY':
+            return 'D' + (published - timedelta(days=1)).strftime('%Y%m%d')
+    return key
 
 
 def number_in_quote(quote, value):
@@ -281,11 +356,19 @@ def origins(claims):
 
 
 def fact_key(claim):
-    """(metric, period) in canonical form, or None: a claim without a fact key never corroborates anything."""
+    """(metric, period) with one name per fact (CLAIMS-03), or None: a claim without a fact key never corroborates
+    anything. Relative periods are resolved against the article's date (in India time)."""
     metric, period = claim.get('metric'), claim.get('period')
     if not (isinstance(metric, str) and isinstance(period, str) and metric_key(metric) and period_key(period)):
         return None
-    return metric_key(metric), period_key(period)
+    when = claim.get('publishedAt')
+    day = datetime.fromisoformat(when.replace('Z', '+00:00')).astimezone(IST).date() if isinstance(when, str) else None
+    return canonical_metric(metric), canonical_period(period, day)
+
+
+def compared_for(claim, symbol, key):
+    """Whether a keyed claim speaks for this share's fact: a market price only when its quote names the share."""
+    return key[0] not in NAMED_METRICS or symbol in mentions(claim['quote'])
 
 
 def figures_disagree(a, b):
@@ -298,25 +381,28 @@ def published(claim):
 
 
 def corroborate(claims):
-    """One cluster per fact: (symbol, eventType, metric, period). Claims without a fact key are not compared."""
+    """One cluster per fact: (symbol, metric, period). Claims without a fact key are not compared. The event type is the
+    model's label, not part of the fact (one listing-day gain was filed as a deal by one publisher and a corporate action
+    by another), so it is reported but never splits a fact."""
     by_fact = {}
     for c in claims:
         key = fact_key(c)
         if key is None:
             continue
         for symbol in c['symbols']:
-            by_fact.setdefault((symbol, c['eventType'], *key), []).append(c)
+            if compared_for(c, symbol, key):
+                by_fact.setdefault((symbol, *key), []).append(c)
     return [summarise(fact, items) for fact, items in sorted(by_fact.items())]
 
 
 def summarise(fact, items):
-    symbol, event, metric, period = fact
+    symbol, metric, period = fact
     items = sorted(items, key=published)
     figures = [c['reportedChangePct'] for c in items if c.get('reportedChangePct') is not None]
     contradicted = any(figures_disagree(a, b) for x, a in enumerate(figures) for b in figures[x + 1:])
     independent = len(origins(items))
     status = 'contradicted' if contradicted else 'corroborated' if independent >= 2 else 'single-source'
-    return {'symbol': symbol, 'eventType': event, 'metric': metric, 'period': period, 'status': status,
+    return {'symbol': symbol, 'eventTypes': sorted({c['eventType'] for c in items}), 'metric': metric, 'period': period, 'status': status,
             'independentOrigins': independent, 'sources': sorted({c['sourceId'] for c in items}),
             'reportedChangesPct': figures, 'priceOpinions': sorted({c['direction'] for c in items}),
             'firstPublishedAt': items[0]['publishedAt'], 'lastPublishedAt': items[-1]['publishedAt'],

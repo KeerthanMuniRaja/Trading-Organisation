@@ -17,7 +17,9 @@ import { Allow } from './security.js';
 // Alerts describe; they never halt, trade, fund or retire anything.
 
 type Condition = { rule: string; severity: 'info' | 'warning' | 'critical'; subject: string; message: string; detail: Record<string, unknown> };
-const BACKLOG_HOURS = 24, BACKLOG_COUNT = 20, STALE_QUOTE_SECONDS = 86_400;
+// The fact-checker (integrations/claims/autolearn.py) holds single-source evidence up to holdDays (7 by default) while it
+// waits for a second publisher, then decides; only evidence older than that and a day's slack is really stuck.
+const BACKLOG_HOURS = 8 * 24, BACKLOG_COUNT = 20, STALE_QUOTE_SECONDS = 86_400;
 const listSchema = z.object({ includeResolved: z.boolean().default(false), limit: z.number().int().min(1).max(500).default(100) }).strict();
 const idsSchema = z.object({ alertIds: z.array(z.uuid()).min(1).max(100) }).strict();
 
@@ -74,7 +76,8 @@ export async function conditions(tx: Sql, config: Config): Promise<Condition[]> 
     AND NOT EXISTS (SELECT 1 FROM evidence_triage t WHERE t.evidence_id=e.id AND t.decision='out-of-scope')`,
     [BACKLOG_HOURS])).rows[0]!.n);
   if (backlog >= BACKLOG_COUNT) out.push({ rule: 'evidence-backlog', severity: 'warning', subject: 'unverified-evidence',
-    message: `${backlog} pieces of evidence have waited over ${BACKLOG_HOURS} hours for review.`, detail: { count: backlog } });
+    message: `${backlog} pieces of evidence have waited over ${BACKLOG_HOURS / 24} days for review, longer than the fact-checker's hold period: is it running?`,
+    detail: { count: backlog } });
 
   // priced = an approved live quote from the last day, or a verified daily close (PAPER-02) within its own tolerance
   const stale = (await tx.query(`SELECT p.bot_id,p.symbol FROM positions p LEFT JOIN quotes q ON q.symbol=p.symbol

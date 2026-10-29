@@ -18,7 +18,7 @@ Code: [`backend/src/alerts.ts`](../backend/src/alerts.ts) (migration 037), worke
 | `realised-loss-limit` | warning at 75% of `MAX_REALISED_LOSS_PAISE`, critical at 100% | Net realised **trading** loss (paper buys, sells and dividends; owner operating expenses do not count) approaches or reaches the limit |
 | `bot-drawdown` | warning at 10%, critical at 20% | A bot's paper equity fell that far from its peak in the last 90 days of daily snapshots |
 | `fitness-review` | warning | A bot was worse than its baseline in its last two fitness reports |
-| `evidence-backlog` | warning | 20 or more pieces of evidence have waited over 24 hours for review |
+| `evidence-backlog` | warning | 20 or more pieces of evidence have waited over 8 days for review: longer than the fact-checker's 7-day hold for a second publisher, so it is stuck (until 28 Oct 2026 the limit was 24 hours, which fired daily on evidence the fact-checker was deliberately holding) |
 | `stale-position-prices` | warning | Open positions have neither an approved quote from the last day nor a verified daily close from the last 4 days |
 | `department-proposals-pending` | info | Department proposals await the owner's decision |
 | `incident-open` | warning | A warning incident is open, for example a cycle escalation |

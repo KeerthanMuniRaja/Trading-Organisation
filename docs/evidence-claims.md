@@ -49,7 +49,7 @@ All routes are `POST`. Mutations require an `Idempotency-Key`.
 - `direction`: positive, negative, neutral or unclear.
 - `certainty`: reported-fact, company-statement, forecast, opinion or rumour.
 
-**How corroboration is computed:** it uses only usable claims for the symbol **that carry a fact key**. Each cluster is one fact: the same event type, metric and period. Claims without a fact key are counted as `unmatchedClaims` and never corroborate anything. Two positive earnings stories about different figures or periods are therefore not "the same news".
+**How corroboration is computed:** it uses only usable claims for the symbol **that carry a fact key**. Each cluster is one fact: the same metric and period. The event type is the drafting model's label, not part of the fact. Since 28 Oct 2026, a figure filed under two types joins one cluster, and the cluster lists its `eventTypes`. The optional `eventType` filter still selects which claims are read. The fact-checker sends each fact key under one name (CLAIMS-03, [claims README](../integrations/claims/README.md)). Claims without a fact key are counted as `unmatchedClaims` and never corroborate anything. Two positive earnings stories about different figures or periods are therefore not "the same news".
 - **Independent origins:** distinct sources count separately, but near-identical quotes (syndicated copies) count once.
 - **Status:**
   - `contradicted` when two reported figures for the same fact disagree: their signs differ, or they differ by more than 1 point or 10%, whichever is larger.

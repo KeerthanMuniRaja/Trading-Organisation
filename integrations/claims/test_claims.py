@@ -58,6 +58,7 @@ class MentionTests(unittest.TestCase):
     def test_company_names_map_to_symbols_without_look_alike_companies(self):
         self.assertEqual(claims.mentions('Reliance Industries posts profit'), {'RELIANCE.NS'})
         self.assertEqual(claims.mentions('Reliance Power and Reliance Capital fall'), set())
+        self.assertEqual(claims.mentions('Reliance Jio Platforms shares rose 23%; the Reliance Group gained'), set())  # listed apart since 28 Oct 2026
         self.assertEqual(claims.mentions('Shares of Reliance rose'), {'RELIANCE.NS'})
         self.assertEqual(claims.mentions('SBI Life gains; NTPC Green lists'), set())
         self.assertEqual(claims.mentions('SBI raises deposit rates as NTPC commissions a unit'), {'SBIN.NS', 'NTPC.NS'})
@@ -194,6 +195,44 @@ class CorroborationTests(unittest.TestCase):
         self.assertEqual(cluster['status'], 'contradicted')
         self.assertEqual([claims.figures_disagree(*p) for p in ((12, 12.9), (12, 13.5), (40, 43), (40, 45), (1, -1), (0.5, 1.4))],
                          [False, True, False, True, True, False])
+
+    def test_one_name_per_fact_from_the_models_many_names(self):
+        from datetime import date
+        oct28 = date(2026, 10, 28)  # a Wednesday
+        p = lambda v, d=oct28: claims.canonical_period(v, d)  # noqa: E731
+        self.assertEqual([p(v) for v in ('Q2', 'Q2 FY27', 'q2fy2027', 'FY27 Q2', 'Q2 FY2026-27', 'September quarter', 'July-September quarter')],
+                         ['Q2FY27'] * 7)
+        self.assertEqual((p('Q4'), p('Q3'), p('Q2', date(2026, 9, 20))), ('Q4FY26', 'Q3FY26', 'Q2FY27'))  # latest such quarter; a preview just before
+        self.assertEqual(p('Q2 2026'), 'Q2FY27')  # a bare year is ambiguous: the article's date decides
+        self.assertEqual([p(v) for v in ('FY27', 'FY2027', 'FY 2026-27')], ['FY27'] * 3)
+        self.assertEqual([p(v) for v in ('DEBUT', 'MARKETDEBUT', 'DEBOUT', 'listing day', 'POSTDEBUT')], ['LISTINGDAY'] * 5)
+        self.assertEqual([p(v) for v in ('Wednesday', 'today', 'intraday', 'Monday', 'yesterday')],
+                         ['D20261028', 'D20261028', 'D20261028', 'D20261026', 'D20261027'])
+        self.assertEqual([p(v) for v in ('past year', '12 months', 'YTD', 'year to date')], ['1Y', '1Y', 'YTD', 'YTD'])
+        self.assertEqual((p('Wednesday', None), p('Q2', None), p('H1 FY27')), ('WEDNESDAY', 'Q2', 'H1FY27'))  # no date: left as written
+        self.assertEqual([claims.canonical_metric(v) for v in ('IPO premium', 'Share Price change', 'market capitalisation', 'PAT', 'Revenue from operations', 'EBITDA')],
+                         ['share price', 'share price', 'market cap', 'net profit', 'revenue', 'ebitda'])
+        self.assertEqual(claims.canonical_metric('consolidated net profit'), 'consolidated net profit')  # a different figure stays apart
+
+    def test_two_publishers_naming_one_fact_differently_now_corroborate(self):
+        # 28 Oct 2026: the same listing-day gain, named and filed differently by two publishers
+        mint = accepted('e1', 'livemint', '2026-10-28T10:00:00+05:30', 'Reliance Industries shares fell 2% on Wednesday as investors weighed the listing',
+                        event='earnings', fact={'metric': 'share price', 'period': 'WEDNESDAY'}, change=-2)
+        et = accepted('e2', 'economictimes', '2026-10-28T15:00:00+05:30', 'RIL stock declined about 2% in Wednesday trade after Jio listed',
+                      event='corporate-action', fact={'metric': 'stock price change', 'period': 'today'}, change=-2)
+        cluster, = claims.corroborate([mint, et])
+        self.assertEqual((cluster['status'], cluster['metric'], cluster['period'], cluster['eventTypes']),
+                         ('corroborated', 'share price', 'D20261028', ['corporate-action', 'earnings']))
+
+    def test_a_group_companys_price_never_speaks_for_the_share(self):
+        jio = accepted('e1', 'livemint', '2026-10-28T10:00:00+05:30', 'Jio Financial Services share price fell over 1% on Wednesday',
+                       fact={'metric': 'share price', 'period': 'WEDNESDAY'}, change=-1)
+        ril = accepted('e2', 'economictimes', '2026-10-28T15:00:00+05:30', 'Reliance Industries shares fell 2% on Wednesday',
+                       fact={'metric': 'share price', 'period': 'WEDNESDAY'}, change=-2)
+        cluster, = claims.corroborate([jio, ril])  # the Jio claim is filed under RELIANCE.NS but does not name it
+        self.assertEqual((cluster['status'], cluster['claimIds']), ('single-source', ['e2-economictimes']))
+        profit = accepted('e3', 'a', '2026-10-28T10:00:00+05:30', 'the company said net profit rose 12%', change=12)
+        self.assertEqual(len(claims.corroborate([profit])), 1)  # results figures keep the article's company, as before
 
     def test_headlines_feed_the_desk_news_analyst(self):
         items = [accepted('e1', 'a', '2026-10-03T10:00:00+00:00', 'margins expanded sharply this quarter for the firm'),

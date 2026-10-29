@@ -62,9 +62,13 @@ test('backlogs, stale position prices and pending owner decisions are surfaced',
     await f.db.transaction(tx => tx.query("UPDATE quotes SET observed_at=now()-interval '3 days'"));
     for (let i = 0; i < 20; i++)
       await f.org.evidence(researcher, key(), { sourceId: e.sourceId, kind: 'dataset', content: 'Waiting note ' + i + key(), publishedAt: '2025-01-01T00:00:00Z' });
+    // two days old: still inside the fact-checker's hold period, so not a backlog
     await f.db.transaction(tx => tx.query("UPDATE evidence SET received_at=now()-interval '2 days' WHERE status='unverified'"));
     const raised = (await new OwnerAlerts(f.db, f.cfg).cycle(owner, key())).raised.map(a => a.rule).sort();
-    assert.deepEqual(raised, ['evidence-backlog', 'stale-position-prices']);
+    assert.deepEqual(raised, ['stale-position-prices']);
+    await f.db.transaction(tx => tx.query("UPDATE evidence SET received_at=now()-interval '9 days' WHERE status='unverified'"));
+    const later = (await new OwnerAlerts(f.db, f.cfg).cycle(owner, key())).raised;
+    assert.deepEqual(later.map(a => a.rule), ['evidence-backlog']);
   } finally { await f.db.close(); }
 });
 

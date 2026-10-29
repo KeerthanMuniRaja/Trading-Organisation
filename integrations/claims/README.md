@@ -33,7 +33,16 @@ flowchart LR
    - its fact key breaks the backend's rules: metric and period must come together, a change needs both, and **the change's number must be written in the quote** (`112` is not `12`; `1,250` is 1250).
 
    Rejected claims are kept, with their reasons. Accepted fact keys are stored in the backend's canonical form (`net profit`, `Q2FY27`).
-2. **Corroboration** uses the backend's fact-key rule ([evidence-claims.md](../../docs/evidence-claims.md)). Only claims with a fact key are compared, and each cluster is one fact: the same company, event type, metric and period. Claims without a fact key never corroborate anything, so "profit up 12%" and "wins an order" are not the same news.
+2. **Corroboration** uses the backend's fact-key rule ([evidence-claims.md](../../docs/evidence-claims.md)). Only claims with a fact key are compared, and each cluster is one fact: the same company, metric and period. Claims without a fact key never corroborate anything, so "profit up 12%" and "wins an order" are not the same news.
+   - **One name per fact (CLAIMS-03, 28 Oct 2026).** The model names one fact many ways. On 28 Oct, two publishers' reports of the Jio listing-day gain were keyed `share price` / `DEBUT`, `share price` / `MARKETDEBUT` and `ipo premium` / `DEBOUT`, and none of 16 fact groups had two publishers. Fixed rules (`canonical_metric`, `canonical_period`) now give each fact one name before comparing:
+     - **Metrics:** `ipo premium`, `stock price change` and `listing gain` become `share price`; `market capitalisation` becomes `market cap`; `PAT` becomes `net profit`; `revenue from operations` and `sales` become `revenue`. `consolidated net profit` stays separate, as a different figure.
+     - **Quarters and years:** `Q2`, `Q2 FY2027`, `FY27 Q2` and `July-September quarter` all become `Q2FY27`. A quarter with no year takes the latest such quarter by the article's date. A bare "Q2 2026" is ambiguous (calendar or financial year), so the article's date decides.
+     - **Days:** `Wednesday`, `today`, `intraday` and `yesterday` become the actual date (`D20261028`, in India time). Anything with debut or listing becomes `LISTINGDAY`.
+     - **Other periods:** `past year` becomes `1Y`, and `year to date` becomes `YTD`.
+   - **The event type is not part of the fact.** It is the model's label: one listing-day gain was filed as a deal by one publisher and a corporate action by the other. Clusters report `eventTypes`.
+   - **A market price belongs to the company named with it.** A `share price` or `market cap` claim is compared for a share only when its own quote names that share. "Jio Financial Services share price fell 1%" was filed under Reliance by the model, and is not Reliance's price. Results figures keep the article's company, as before.
+   - **Look-alike companies:** "Reliance Jio" and "Reliance Group" no longer count as Reliance Industries, since Jio Platforms has been listed separately since 28 Oct 2026.
+   - **No new verifications today:** re-run on 28 Oct's claims, nothing new corroborated. The only cross-publisher overlap was Jio's own price, which correctly stays off Reliance.
    - **Independent origins** are distinct sources. Near-identical quotes (syndicated wire copies) count as one origin, so ten copies of one story do not look like ten confirmations.
    - Each cluster is labelled:
      - `contradicted` when two reported figures for the fact disagree (signs differ, or they differ by more than 1 point or 10%, whichever is larger);
