@@ -175,14 +175,54 @@ def onboard(env=os.environ, opener=None, decisions=DECISIONS, now=None):
             'next': 'standing approvals or the owner agenda: activate, qualify and fund it'}
 
 
+def renew(env=os.environ, opener=None, decisions=DECISIONS, now=None):
+    """Self-repair for code updates (AUTO-05, as release-renewal.mjs does for the rule bot): once the member has a release,
+    any change to ta_decide.py or ta_bot.py makes its proposals 'not-authorised', and it would fall silent. When only the
+    code changed (same engine and model, same settings), the researcher registers a release of the current code and the
+    evaluator evaluates it on the live record of the release authorised now. The owner's standing approval
+    trialNewReleases starts it as a canary; live fitness keeps or drops it. A changed model or settings is a new idea."""
+    from urllib import request as urlrequest
+    opener = opener or urlrequest.urlopen
+    now = now or datetime.now(timezone.utc)
+    bot_id = env.get('TA_BOT_ID')
+    files = sorted(decisions.glob('????-??-??.json')) if decisions.exists() else []
+    if not bot_id or not files:
+        return {'state': 'nothing-to-renew'}
+    ident = identity(json.loads(files[-1].read_text(encoding='utf-8')))
+    researcher, evaluator = sc.principals(env, 'researcher'), sc.principals(env, 'evaluator')
+    if not call(*evaluator, 'POST', '/v1/releases/view', {'botId': bot_id}, opener).get('releases'):
+        return {'state': 'no-release', 'reason': 'still earning its first release in shadow'}
+    gate = call(*evaluator, 'POST', '/v1/releases/check', {'botId': bot_id, **ident}, opener)
+    if gate.get('allowed'):
+        return {'state': 'current', 'releaseVersion': gate.get('version'), 'stage': gate.get('stage')}
+    if gate.get('reason') != 'version-not-authorised':
+        return {'state': 'not-renewed', 'reason': gate.get('reason')}
+    authorised = gate.get('authorised') or {}
+    if authorised.get('model') != ident['model'] or authorised.get('promptVersion') != ident['promptVersion']:
+        return {'state': 'not-renewed', 'reason': 'the engine, model or settings changed: that is a new release for the owner, not a code fix'}
+    if not authorised.get('releaseId'):
+        return {'state': 'not-renewed', 'reason': 'the backend did not name the authorised release'}
+    # measured fresh each day (the same body would otherwise return the first day's report)
+    fitness = sc.post(*evaluator, '/v1/bots/fitness/live', {'botId': bot_id, 'releaseId': authorised['releaseId']}, opener,
+                      key=f"ta-renewal-fitness-{bot_id}-{authorised['releaseId']}-{now.date().isoformat()}")
+    release = call(*researcher, 'POST', '/v1/releases', {'botId': bot_id, **ident, 'settings': {},
+                   'notes': f"Code update of the same TradingAgents settings ({ident['promptVersion']}); prepared automatically"}, opener)
+    evaluation = call(*evaluator, 'POST', '/v1/releases/evaluations', {'releaseId': release['id'], 'fitnessReportId': fitness['id']}, opener)
+    return {'state': 'prepared', 'releaseVersion': release.get('version'), 'fitness': fitness.get('verdict'),
+            'canaryEligible': evaluation.get('canaryEligible'),
+            'next': 'standing approval trialNewReleases starts it as a canary; otherwise it waits on the owner agenda'}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=['propose', 'onboard', 'all'])
+    parser.add_argument('command', choices=['propose', 'onboard', 'renew', 'all'])
     parser.add_argument('--source', default=os.environ.get('PRICE_EVIDENCE_SOURCE', 'market-yahoo-daily'))
     args = parser.parse_args(argv)
     out = {}
     if args.command in ('onboard', 'all'):
         out['onboard'] = onboard()
+    if args.command in ('renew', 'all'):
+        out['renew'] = renew()
     if args.command in ('propose', 'all'):
         out['propose'] = propose(args.source)
     print(json.dumps(out, indent=2))

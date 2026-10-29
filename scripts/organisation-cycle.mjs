@@ -223,7 +223,8 @@ export function taSteps({ withModel, root, desk, now = Date.now(), env = process
     : weekday !== decideDay ? { id: 'tradingagents-decide', skip: `decides weekly (India weekday ${decideDay})` }
       : { id: 'tradingagents-decide', cmd: venv, args: [ta('ta_decide.py'), '--day', day], timeoutMs: 6 * 3_600_000, requires: venv,
         computeGate: { botId: env.TA_BOT_ID }, ...(decision ? { env: decision } : {}) };
-  return [decide, { id: 'tradingagents-propose', cmd: PY, args: [ta('ta_bot.py'), 'all', '--source', env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'], timeoutMs: 300_000 }];
+  return [decide, { id: 'tradingagents-propose', cmd: PY, args: [ta('ta_bot.py'), 'all', '--source', env.PRICE_EVIDENCE_SOURCE || 'market-yahoo-daily'],
+    timeoutMs: 300_000, verify: verifyMember }];
 }
 
 /** The last JSON value printed by a step (an object or an array), or null. */
@@ -254,6 +255,17 @@ export function verifyMarketData(output) {
 }
 
 /** Postcondition: the feed run reported a usable state. */
+/** AUTO-05: a TradingAgents member refused by the release check proposes nothing; that must not read as a quiet "done".
+ *  A code fix is renewed by itself (ta_bot.py renew); what is left (a new model or settings) waits for the owner. */
+export function verifyMember(output) {
+  const result = lastJson(output);
+  if (!result || typeof result !== 'object') return { status: 'failed', note: 'no member report' };
+  if (result.propose?.state !== 'not-authorised') return { status: 'done' };
+  return { status: 'degraded', note: `not authorised (${result.propose.reason}); `
+    + (result.renew?.state === 'prepared' ? `a renewed release v${result.renew.releaseVersion} waits for its canary trial`
+      : `not renewed: ${result.renew?.reason ?? result.renew?.state ?? 'unknown'}`) };
+}
+
 export function verifyFeed(output) {
   const result = lastJson(output);
   if (!result || typeof result !== 'object' || Array.isArray(result)) return { status: 'failed', note: 'no feed report' };

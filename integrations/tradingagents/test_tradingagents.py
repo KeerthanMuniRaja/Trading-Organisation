@@ -33,14 +33,15 @@ class StubGraph:
 
 
 class Backend:
-    def __init__(self, releases=(), allowed=True, scored=0):
-        self.calls, self.releases, self.allowed, self.scored = [], list(releases), allowed, scored
+    def __init__(self, releases=(), allowed=True, scored=0, authorised=None):
+        self.calls, self.releases, self.allowed, self.scored, self.authorised = [], list(releases), allowed, scored, authorised
 
     def __call__(self, req, timeout):
         route, body = req.full_url.split('3000', 1)[1], json.loads(req.data) if req.data else None
-        self.calls.append((route, body, req.headers['Authorization'].split()[-1]))
+        self.calls.append((route, body, req.headers['Authorization'].split()[-1], req.headers.get('Idempotency-key')))
         model = 'tradingagents:0.9.0:qwen'
-        reply = ({'releases': self.releases} if route == '/v1/releases/view' else {'allowed': self.allowed, 'reason': 'version-not-authorised'}
+        reply = ({'releases': self.releases} if route == '/v1/releases/view'
+                 else {'allowed': self.allowed, 'reason': 'version-not-authorised', **({'authorised': self.authorised} if self.authorised else {})}
                  if route == '/v1/releases/check' else {'signals': [{'model': model, 'action': 'enter-long', 'outcome': {'correct': True}}] * self.scored}
                  if route == '/v1/trading/signals/query' else {'id': 'fit', 'verdict': 'adds-value'} if route == '/v1/bots/fitness/live'
                  else {'id': 'rel', 'version': 1} if route == '/v1/releases' else {'activeEligible': True} if route == '/v1/releases/evaluations'
@@ -170,6 +171,24 @@ class MemberTests(unittest.TestCase):
         release = next(c for c in backend.calls if c[0] == '/v1/releases')
         self.assertEqual(release[2], 'r')  # the researcher registers; the evaluator judges
         self.assertEqual(ta_bot.onboard(ENV, Backend(releases=[{'id': 'rel'}]), self.decisions, NOW)['state'], 'has-release')
+
+    def test_a_code_fix_is_renewed_by_itself_but_a_new_model_or_settings_is_not(self):
+        ident = ta_bot.identity(json.loads(sorted(self.decisions.glob('*.json'))[-1].read_text(encoding='utf-8')))
+        same = {'releaseId': 'rel-1', 'version': 1, 'model': ident['model'], 'promptVersion': ident['promptVersion']}
+        self.assertEqual(ta_bot.renew(ENV, Backend(), self.decisions, NOW)['state'], 'no-release')       # still in shadow
+        self.assertEqual(ta_bot.renew(ENV, Backend(releases=[{'id': 'rel-1'}]), self.decisions, NOW)['state'], 'current')
+        backend = Backend(releases=[{'id': 'rel-1'}], allowed=False, authorised=same)
+        out = ta_bot.renew(ENV, backend, self.decisions, NOW)
+        self.assertEqual((out['state'], out['fitness']), ('prepared', 'adds-value'))
+        fitness = next(c for c in backend.calls if c[0] == '/v1/bots/fitness/live')
+        self.assertEqual((fitness[1], fitness[2]), ({'botId': 'tradingagents', 'releaseId': 'rel-1'}, 'e'))  # judged on the authorised release's live record
+        self.assertIn('2026-10-24', fitness[3])  # measured fresh each day, not the first day's report again
+        release = next(c for c in backend.calls if c[0] == '/v1/releases')
+        self.assertEqual((release[1]['codeFingerprint'], release[2]), (ident['codeFingerprint'], 'r'))
+        for changed in ({**same, 'model': 'tradingagents:0.9.0:bigger'}, {**same, 'promptVersion': 'other-settings'}):
+            other = Backend(releases=[{'id': 'rel-1'}], allowed=False, authorised=changed)
+            self.assertEqual(ta_bot.renew(ENV, other, self.decisions, NOW)['state'], 'not-renewed')
+            self.assertFalse([c for c in other.calls if c[0] == '/v1/releases'])
 
 
 if __name__ == '__main__':

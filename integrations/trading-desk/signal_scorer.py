@@ -63,13 +63,15 @@ def principals(env, role):
     return base, found[0]['token']
 
 
-def post(base, token, route, body, opener):
+def post(base, token, route, body, opener, key=None):
+    """POST with an idempotency key from the body (a retry returns the first result), or `key` when the same body must
+    give a fresh result on another day (a live fitness measurement)."""
     from urllib import request as urlrequest
     from urllib.error import HTTPError
     data = json.dumps(body, sort_keys=True)
     req = urlrequest.Request(base + route, data=data.encode(), method='POST', headers={
         'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json',
-        'Idempotency-Key': 'scorer-' + hashlib.sha256((route + data).encode()).hexdigest()[:64]})
+        'Idempotency-Key': key or 'scorer-' + hashlib.sha256((route + data).encode()).hexdigest()[:64]})
     try:
         with opener(req, timeout=15) as response:
             return json.loads(response.read(1_000_000))

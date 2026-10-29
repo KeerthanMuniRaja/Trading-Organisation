@@ -39,6 +39,10 @@ function localLines(f) {
   for (const t of f.forward ?? []) out.push(`Forward   ${t.name}: ${t.status}${t.monthsJudged ? `, ${t.monthsJudged}/${t.monthsNeeded} months, `
     + `top fifth ${t.averageExcessPct >= 0 ? '+' : ''}${t.averageExcessPct}% a month (ahead ${t.ahead}/${t.monthsJudged}), IC t ${t.icTStat ?? '?'}`
     : ` (first month ${t.firstMonth})`}${t.waitingForDataFrom ? `; waiting for ${t.waitingForDataFrom} prices` : ''}`);
+  // RND-04: R&D ideas judged only on months after registration
+  for (const t of (f.rndForward?.tests ?? []).filter(t => ['waiting', 'running', 'passed'].includes(t.status)))
+    out.push(`R&D fwd   ${t.idea}: ${t.status}${t.monthsJudged ? `, ${t.monthsJudged}/${t.monthsNeeded} months, ${t.averageExcessPct >= 0 ? '+' : ''}${t.averageExcessPct}% a month, t ${t.tStat ?? '?'}`
+      : ` (first month ${t.firstMonth})`}`);
   if (f.intraday) out.push(`Intraday  ${f.intraday.mode} ${f.intraday.day}: basket ${f.intraday.final.basketMovePct}%, positions ${f.intraday.final.lossPct}%; `
     + `events: ${f.intraday.events.map(e => e.rule + ':' + e.subject).join(', ') || 'none'}`);
   if (f.index) out.push(`Knowledge ${f.index.nodes} connected records (${Object.entries(f.index.byKind ?? {}).map(([k, n]) => `${n} ${k}`).join(', ')}), `
@@ -141,6 +145,7 @@ export async function gather(env = process.env, { fetchImpl = fetch, root = ROOT
   facts.routing = await json(join(root, '.local', 'models', 'routing.json'));
   const forward = join(root, '.local', 'trading-desk', 'factor-forward', 'reports');  // RESEARCH-03: pre-registered factor tests
   facts.forward = existsSync(forward) ? (await Promise.all((await readdir(forward)).filter(n => n.endsWith('.json')).sort().map(n => json(join(forward, n))))).filter(Boolean) : [];
+  facts.rndForward = await json(join(root, '.local', 'trading-desk', 'rnd', 'forward', 'reports', 'latest.json'));
   const decisions = join(root, '.local', 'tradingagents', 'decisions');
   const decided = existsSync(decisions) ? (await readdir(decisions)).filter(n => /^\d{4}-\d{2}-\d{2}\.json$/.test(n)).sort() : [];
   const ta = decided.length ? await json(join(decisions, decided.at(-1))) : null;

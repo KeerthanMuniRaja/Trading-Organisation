@@ -32,7 +32,9 @@ test('a model switch: evaluate, canary beside the active release, activate, then
     assert.deepEqual([e1.canaryEligible, e1.activeEligible], [true, true]);
     await releases.stage(owner, key(), { releaseId: v1.id, stage: 'active', reason: 'Not worse than the basket on 25 months' });
     assert.equal((await releases.check(researcher, { botId: 'allocator', ...v(SMALL, '0634b9cf839d47d2') })).stage, 'active');
-    assert.equal((await releases.check(researcher, { botId: 'allocator', ...v(SMALL, 'changed-prompt') })).reason, 'version-not-authorised');
+    const refused = await releases.check(researcher, { botId: 'allocator', ...v(SMALL, 'changed-prompt') });
+    assert.equal(refused.reason, 'version-not-authorised');
+    assert.equal(refused.authorised?.releaseId, v1.id);  // a renewal judges new code on this release's live record
 
     // the stronger model arrives with little evidence: canary only, running beside the active 4B release
     const v2 = await releases.create(owner, key(), { botId: 'allocator', ...v(BIG, '0634b9cf839d47d2'), settings: { timeoutSeconds: 120 }, notes: 'Same lessons, stronger model' });

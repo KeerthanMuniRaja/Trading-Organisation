@@ -186,7 +186,9 @@ export class BotReleases {
         && (String(r.id) === active || map.get(String(r.id))?.stage === 'canary'));
       if (match) return { allowed: true, releaseId: String(match.id), version: match.version, stage: String(match.id) === active ? 'active' : 'canary', settings: match.settings };
       const reference = releases.find(r => String(r.id) === active) ?? releases[0]!;
-      return { allowed: false, reason: 'version-not-authorised', authorised: { version: reference.version, model: reference.model, promptVersion: reference.prompt_version } };
+      // the authorised release's id lets a renewal judge new code on that release's live record (ta_bot.py renew)
+      return { allowed: false, reason: 'version-not-authorised',
+        authorised: { releaseId: String(reference.id), version: reference.version, model: reference.model, promptVersion: reference.prompt_version } };
     }, false);
   }
 

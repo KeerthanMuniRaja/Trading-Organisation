@@ -59,6 +59,10 @@ test('one screen: health, autonomy, agenda, every member, money, the day and wha
   assert.match(pulse, /Sectors   1 month to 2026-10-27: best Information Technology \+11.8%, Media \+6%; worst Realty -8.9%, Construction -12.1%; 34% of 480 NIFTY 500 shares above their 200-day average/);
   assert.match(pulse, /Pulse     7d: 2 up, 1 down in the press \(KEI Industries -8%, Mankind Pharma \+8%\); 1 big-player item\(s\); flows: foreign-investors buy Rs 6,500 cr; 1 UNEXPLAINED desk move\(s\)/);
   assert.match(forward, /Forward   m6: running, 3\/24 months, top fifth \+0.41% a month \(ahead 2\/3\), IC t 0.9; waiting for 2027-02 prices/);
+  const rnd = render({ ...FACTS, rndForward: { tests: [{ idea: 'momentum-6m-top3-quarterly', status: 'waiting', firstMonth: '2026-11' },
+    { idea: 'reversal-1m-bottom3', status: 'running', monthsJudged: 2, monthsNeeded: 24, averageExcessPct: -0.3, tStat: -0.4 }, { idea: 'old', status: 'ended' }] } }).join('\n');
+  assert.match(rnd, /R&D fwd   momentum-6m-top3-quarterly: waiting \(first month 2026-11\)\nR&D fwd   reversal-1m-bottom3: running, 2\/24 months, -0.3% a month, t -0.4/);
+  assert.doesNotMatch(rnd, /R&D fwd   old/);  // an ended test is not news every day
 });
 
 test('it only reads: GET routes, and the digest and release views', async () => {

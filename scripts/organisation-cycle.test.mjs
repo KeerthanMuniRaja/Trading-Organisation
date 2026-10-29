@@ -4,7 +4,18 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { decisionModel, planSteps, runCycle, runHttp, escalate, releaseCheck, computeCheck, taSteps, verifyMarketData, verifyFeed, ESCALATE_AFTER,
-  runManifest, dataManifest, fingerprint, circuitOpen, CIRCUIT_AFTER, CIRCUIT_REST_MS, academyOn, ACADEMY_STEPS } from './organisation-cycle.mjs';
+  runManifest, dataManifest, fingerprint, circuitOpen, CIRCUIT_AFTER, CIRCUIT_REST_MS, academyOn, ACADEMY_STEPS, verifyMember } from './organisation-cycle.mjs';
+
+test('a TradingAgents member refused by the release check is never a quiet "done" (AUTO-05)', () => {
+  const report = o => JSON.stringify(o, null, 2);
+  assert.equal(verifyMember(report({ onboard: { state: 'has-release' }, renew: { state: 'current' }, propose: { state: 'proposed', proposals: [] } })).status, 'done');
+  const renewed = verifyMember(report({ renew: { state: 'prepared', releaseVersion: 2 }, propose: { state: 'not-authorised', reason: 'version-not-authorised' } }));
+  assert.deepEqual([renewed.status, /renewed release v2 waits for its canary/.test(renewed.note)], ['degraded', true]);
+  const stuck = verifyMember(report({ renew: { state: 'not-renewed', reason: 'the engine, model or settings changed' }, propose: { state: 'not-authorised', reason: 'version-not-authorised' } }));
+  assert.match(stuck.note, /not renewed: the engine, model or settings changed/);
+  assert.equal(verifyMember('Traceback ...').status, 'failed');
+  assert.equal(taSteps({ withModel: false, root: '/r', desk: x => x, now: Date.parse('2026-10-23T11:00:00Z'), env: { TA_BOT_ID: 'ta' } })[1].verify, verifyMember);
+});
 
 test('the department worker runs only once the owner switched on an academy or lifecycle policy (W12)', async () => {
   const off = Object.fromEntries(ACADEMY_STEPS.map(id => [id, { status: 'done', summary: 'HTTP 201 {"status":"disabled","actions":[]}' }]));

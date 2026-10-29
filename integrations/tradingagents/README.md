@@ -38,6 +38,10 @@ flowchart LR
   1. **Shadow:** with no release, the bot proposes while in school with zero budget. The review rejects the trade but prices it, and the scorer scores it.
   2. **Evaluate:** after 20 scored shadow calls, `ta_bot.py onboard` has the researcher register its release (engine version, model, settings, code fingerprint). The evaluator then evaluates the release on that live shadow record.
   3. **Trade:** standing approvals or the agenda activate, qualify and fund it. From then on it trades only while `POST /v1/releases/check` allows its exact identity, and live fitness can promote or roll it back like any member.
+  4. **Renew a code fix by itself (AUTO-05, 29 Oct 2026):** any change to `ta_decide.py` or `ta_bot.py` changes the code fingerprint, and the check then refuses every proposal.
+     - **When only the code changed** (same engine, model and settings), `ta_bot.py renew` steps in. The researcher registers a release of the current code. The evaluator evaluates it on the live record of the release that is authorised now, measured fresh each day. The standing approval `trialNewReleases` then starts it as a canary, and live fitness keeps or drops it.
+     - **When the model or settings changed,** that is a new release for the owner, so renewal does not act.
+     - **In the cycle:** `ta_bot.py all` runs onboard, then renew, then propose. A refused member marks its cycle step **degraded** with the reason, never a quiet "done".
 - **Cost:** about a dozen model calls per share per decision. On the local 4B model, that is hours for all 8 shares. So it decides **once a week, on Fridays** (cycle `--with-model`). Its step checks the compute allowance first, and a share that fails is retried on the next run.
 
 ## Install (owner-approved download)
@@ -69,6 +73,7 @@ TradingAgents fetches its own market data, news and fundamentals from Yahoo Fina
 - shadow proposals with verified price evidence, once per decided day;
 - the release gate;
 - staleness;
-- earning a release only after 20 scored shadow calls.
+- earning a release only after 20 scored shadow calls;
+- a code fix renewed on the authorised release's fresh live record, and a changed model or settings left for the owner.
 
 `backend/test/shadow-fitness.test.ts` covers the backend half: unqualified calls are priced, scored and judged by model, and the first release is evaluated on them.
