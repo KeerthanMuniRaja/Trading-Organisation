@@ -169,13 +169,14 @@ class AutoLearnTests(unittest.TestCase):
         autolearn.write(self.state, 'queue.json', queue)
         newest = queue[1]['evidenceId']
         autolearn.analyst_extract(stub_model, 'stub', self.state, {**CONFIG, 'maxModelCallsPerCycle': 1})
-        self.assertEqual(list(autolearn.read(self.state, 'extracted.json', {})['results']), [newest])
+        results = autolearn.read(self.state, 'extracted.json', {})['results']
+        self.assertEqual([e for e, r in results.items() if not r.get('skipped')], [newest])  # the holiday notice needs no call
 
     def test_corroborated_news_becomes_verified_knowledge_without_a_human(self):
         backend = FakeBackend(['e1', 'e2', 'e3'])
         first = cycle(backend, self.state)
         self.assertEqual(first['queue']['pending'], 3)
-        self.assertEqual(first['evidence'], {'corroborated': 2, 'no-checkable-claims': 1})
+        self.assertEqual(first['evidence'], {'corroborated': 2, 'names-no-desk-company': 1})
         self.assertEqual([backend.evidence[e]['status'] for e in ('e1', 'e2', 'e3')], ['verified', 'verified', 'rejected'])
         self.assertEqual((first['lessons']['proposed'], first['review']['verified'], first['review']['revoked']), (4, 4, 0))
         # the backend's claim registry holds both verified claims, with their fact keys, accepted by the independent fact-checker

@@ -70,8 +70,9 @@ def linked_stories(path=STORIES, limit=2):
 
 
 def schema(symbols):
+    # minItems too: on 29 Oct one voice answered 1 of the Fed echo's 5 shares, which maxItems alone allows
     return {'type': 'object', 'additionalProperties': False, 'required': ['calls'], 'properties': {'calls': {
-        'type': 'array', 'maxItems': len(symbols), 'items': {'type': 'object', 'additionalProperties': False,
+        'type': 'array', 'minItems': len(symbols), 'maxItems': len(symbols), 'items': {'type': 'object', 'additionalProperties': False,
                                                             'required': ['symbol', 'direction', 'why'], 'properties': {
             'symbol': {'enum': symbols}, 'direction': {'enum': ['up', 'down', 'flat']}, 'why': {'type': 'string', 'maxLength': 200}}}}}}
 

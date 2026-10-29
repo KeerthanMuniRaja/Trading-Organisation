@@ -22,6 +22,7 @@ def fake_model(answers):
         if answers.get(persona) == 'fail':
             raise ValueError('INCOMPLETE_RESPONSE')
         assert set(schema['properties']['calls']['items']['properties']['symbol']['enum']) == {'HDFCBANK.NS', 'RELIANCE.NS'}
+        assert schema['properties']['calls']['minItems'] == schema['properties']['calls']['maxItems'] == 2  # every share answered
         return {'calls': [{'symbol': s, 'direction': d, 'why': f'{persona} view'} for s, d in answers.get(persona, {}).items()]}, {}
     return llm
 

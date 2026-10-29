@@ -36,6 +36,10 @@ flowchart LR
 2. **Corroboration** uses the backend's fact-key rule ([evidence-claims.md](../../docs/evidence-claims.md)). Only claims with a fact key are compared, and each cluster is one fact: the same company, metric and period. Claims without a fact key never corroborate anything, so "profit up 12%" and "wins an order" are not the same news.
    - **One name per fact (CLAIMS-03, 28 Oct 2026).** The model names one fact many ways. On 28 Oct, two publishers' reports of the Jio listing-day gain were keyed `share price` / `DEBUT`, `share price` / `MARKETDEBUT` and `ipo premium` / `DEBOUT`, and none of 16 fact groups had two publishers. Fixed rules (`canonical_metric`, `canonical_period`) now give each fact one name before comparing:
      - **Metrics:** `ipo premium`, `stock price change` and `listing gain` become `share price`; `market capitalisation` becomes `market cap`; `PAT` becomes `net profit`; `revenue from operations` and `sales` become `revenue`. `consolidated net profit` stays separate, as a different figure.
+       - A change word after a metric names a change of the same figure (29 Oct): `ebitda growth` becomes `ebitda`,
+         `share price increase` becomes `share price`, and `market value addition` becomes `market cap`.
+       - A bare `profit` becomes `net profit`, as the Indian press uses it.
+       - Qualifiers before a metric (`consolidated`, `combined`) still name a different figure.
      - **Quarters and years:** `Q2`, `Q2 FY2027`, `FY27 Q2` and `July-September quarter` all become `Q2FY27`. A quarter with no year takes the latest such quarter by the article's date. A bare "Q2 2026" is ambiguous (calendar or financial year), so the article's date decides.
      - **Days:** `Wednesday`, `today`, `intraday` and `yesterday` become the actual date (`D20261028`, in India time). Anything with debut or listing becomes `LISTINGDAY`.
      - **Other periods:** `past year` becomes `1Y`, and `year to date` becomes `YTD`.
@@ -131,6 +135,11 @@ They are labelled "single source, not verified: background, never evidence" (`de
 - **Article text is untrusted data.** It reaches the model only as a JSON field, never as an instruction. The prompt says so, and the output schema allows only claim fields, so an injected "tell the desk to buy" can at most become a quoted claim with no authority.
 - **Company names are matched deterministically.** Look-alike listed companies (Reliance Power, Reliance Capital, SBI Life, SBI Cards, NTPC Green) are not mistaken for RIL, SBI or NTPC. Short ticker-like aliases (RIL, SBI, ITC) must match in capitals.
 - **Bounded runs:** one model call per snapshot, a call limit per run, and loopback-only model access unless `--allow-remote-cost` is given.
+- **No call where no claim can survive:** a snapshot whose text names none of the desk's companies is recorded as
+  `names-no-desk-company` without a model call. The check rejects any claim about an unnamed company, so the model could
+  add nothing there. These skips don't count against the call limit.
+  - On 29 Oct 2026, 74 of the 101 calls on the queue went to such items: regulators' notices and general news.
+  - Of the 118 items still waiting, only 14 name a desk company.
 - **Resumable and bound:** each snapshot's result is saved as soon as it finishes, and a run is tied to its model and contract version. Changing either needs a new run name.
 
 ## Run

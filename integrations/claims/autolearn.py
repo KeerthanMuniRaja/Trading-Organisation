@@ -131,7 +131,7 @@ def evidence_decision(obs, record, own_claims, clusters, config, now):
     if record.get('outcome') != 'valid':
         return 'hold', 'extraction-failed'
     if not record['accepted']:
-        return 'rejected', 'no-checkable-claims'
+        return 'rejected', record.get('skipped') or 'no-checkable-claims'
     bases = [claim_basis(c, clusters, config['primarySourceIds']) for c in own_claims]
     if not own_claims:
         return 'rejected', 'no-claim-survived-recheck'

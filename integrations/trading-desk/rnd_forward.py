@@ -11,7 +11,8 @@ seen yet?
   judge     each run scores every registration on its judged months (the scout's own monthly timing and costs). The
             verdict comes only at HORIZON months: one-sided t of the monthly excess over the basket at least FORWARD_T
             (1% each, so MAX_LIVE tests together keep a 5% false-pass rate) and ahead on average.
-  end       when the rule's code changes after registration (the test would no longer test what was registered).
+  end       when the rule's code changes after registration (the test would no longer test what was registered). The idea
+            may be registered again, on later months only. A verdict is written into the registration and is final.
 
 A pass makes the idea eligible for a birth proposal on the owner's agenda; it never trades by itself, and live paper
 fitness after birth is still the real test. No model, no network.
@@ -77,7 +78,9 @@ def register_monthly(report, root=ROOT, now=None, ledger_path=None, finished=())
     if report is None:
         return {'outcome': 'no-scout-report'}
     tried = rnd_scout.entries(ledger_path)
-    taken = {r['idea'] for r in known}
+    # an idea is taken once it has a verdict, or while its test still tests today's code; a test a code change ended
+    # leaves its idea free for a new registration, judged only on months after it
+    taken = {r['idea'] for r in known if r.get('verdict') or (r['idea'] in tried and rule_fingerprint(r['idea'], tried[r['idea']]) == r['rules'])}
     pick = next((c for c in report['candidates'] if c['name'] in tried and c['name'] not in taken and not c.get('alreadyServedBy')
                  and c['averageExcessPct'] > 0), None)
     if pick is None:
@@ -186,7 +189,12 @@ def desk_rows(cache=daily.DAILY):
 def run(root=ROOT, cache=daily.DAILY, now=None, ledger_path=None, report=None, rows_for=None):
     """The daily step: judge every registration, then register this month's idea if a slot is free."""
     rows_for = rows_for or desk_rows(cache)
-    judged = [judge(r, rows_for, ledger_path) for r in registrations(root)]
+    records = registrations(root)
+    judged = [judge(r, rows_for, ledger_path) for r in records]
+    for record, j in zip(records, judged):
+        if j['status'] in ('passed', 'failed') and not record.get('verdict'):  # final: no later code change undoes it
+            batch.save(Path(root) / f"{record['name']}.json", record | {'verdict': {k: j.get(k) for k in (
+                'status', 'monthsJudged', 'ahead', 'behind', 'averageExcessPct', 'tStat')} | {'at': (now or datetime.now(timezone.utc)).isoformat()}})
     finished = {j['name'] for j in judged if j['status'] in ('ended', 'passed', 'failed')}
     registered = register_monthly(report if report is not None else latest_scout(), root, now, ledger_path, finished)
     if registered['outcome'] == 'registered':

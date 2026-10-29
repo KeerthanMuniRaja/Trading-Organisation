@@ -151,6 +151,18 @@ class ExtractTests(unittest.TestCase):
                 claims.run_extract(observations, stub, run, 'model-b', max_calls=5)
             self.assertEqual(len({c['id'] for c in claims.accepted_claims(run)}), 3)
 
+    def test_a_text_naming_no_desk_company_costs_no_model_call_and_no_budget(self):
+        notice = claims.observation_fields(row(evidence='fed', source='news-us-fed', title='Federal Reserve Board announces enforcement action',
+                                               text='The Board announced an enforcement action against a former bank employee.'))
+        jio = claims.observation_fields(row(evidence='jio', title='Reliance Jio shares rise', text='Reliance Jio shares rose 23%.'))  # not RIL
+        observations = [notice, jio, claims.observation_fields(row(evidence='ril'))]
+        stub = Stub({'claims': [claim('reported a 12% rise in quarterly net profit to Rs 19,000 crore')]})
+        with tempfile.TemporaryDirectory() as tmp:
+            out = claims.run_extract(observations, stub, Path(tmp) / 'run', 'model-a', max_calls=1)
+            self.assertEqual((out['callsThisRun'], out['skippedNoCompany'], out['remaining'], len(stub.calls)), (1, 2, 0, 1))
+            results = json.loads((Path(tmp) / 'run' / 'extracted.json').read_text(encoding='utf-8'))['results']
+            self.assertEqual((results['fed']['skipped'], results['fed']['accepted']), ('names-no-desk-company', []))
+
 
 PROFIT = {'metric': 'net profit', 'period': 'Q2FY27'}
 
@@ -213,6 +225,9 @@ class CorroborationTests(unittest.TestCase):
         self.assertEqual([claims.canonical_metric(v) for v in ('IPO premium', 'Share Price change', 'market capitalisation', 'PAT', 'Revenue from operations', 'EBITDA')],
                          ['share price', 'share price', 'market cap', 'net profit', 'revenue', 'ebitda'])
         self.assertEqual(claims.canonical_metric('consolidated net profit'), 'consolidated net profit')  # a different figure stays apart
+        self.assertEqual([claims.canonical_metric(v) for v in ('EBITDA growth', 'share price increase', 'market value addition', 'Profit',
+                                                               'revenue decline', 'combined market cap', 'growth')],
+                         ['ebitda', 'share price', 'market cap', 'net profit', 'revenue', 'combined market cap', 'growth'])
 
     def test_two_publishers_naming_one_fact_differently_now_corroborate(self):
         # 28 Oct 2026: the same listing-day gain, named and filed differently by two publishers

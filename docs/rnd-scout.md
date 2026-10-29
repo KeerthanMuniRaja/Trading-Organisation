@@ -105,6 +105,11 @@ The seen-history bar only rises: after 25 ideas it is p < 0.002, and the best id
 - **Ending:** a test ends, and frees its slot, if the rules' code changes after registration.
   - The fingerprint is `rnd_scout.code_fingerprint()`: timing, costs and every builder, but not the idea ledger.
   - So a newly invented idea does not end the tests already running.
+  - An idea whose test ended can be registered again. The new test is judged only on months after the new
+    registration, so nothing seen counts twice. Without this, one routine fix to the shared code would end every test
+    and lock its idea out for good.
+- **A verdict is final:** it is written into the registration when the horizon is reached. A failed idea is never
+  registered again, even after a code change.
 - **A pass is eligibility, not a trade (RND-05, 29 Oct 2026):** with the research source named (`RND_SOURCE`), a passed
   test goes to the owner's agenda the same way a seen-history pass does.
   - The researcher reports the verdict as evidence.

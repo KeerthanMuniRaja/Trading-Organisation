@@ -158,7 +158,7 @@ METRIC_NAMES = {
                     'listing premium', 'ipo premium', 'debut gain', 'debut premium'),
     'market cap': ('market cap', 'market capitalisation', 'market capitalization', 'mcap', 'm cap', 'market value',
                    'market valuation'),
-    'net profit': ('net profit', 'profit after tax', 'pat', 'net income'),
+    'net profit': ('net profit', 'profit after tax', 'pat', 'net income', 'profit'),
     'revenue': ('revenue', 'revenues', 'revenue from operations', 'total revenue', 'net sales', 'sales', 'topline'),
     'net interest income': ('net interest income', 'nii'),
 }
@@ -170,8 +170,16 @@ SAME_DAY = {'TODAY', 'DAILY', 'INTRADAY', 'SESSION', 'TODAYSSESSION', 'DAY', 'ON
 QUARTER_END_MONTH = {'JUN': 1, 'JUNE': 1, 'SEP': 2, 'SEPT': 2, 'SEPTEMBER': 2, 'DEC': 3, 'DECEMBER': 3, 'MAR': 4, 'MARCH': 4}
 
 
+CHANGE_WORDS = re.compile(r'\s+(?:growth|increase|rise|decline|fall|gain|change|jump|drop|surge|addition)$')
+
+
 def canonical_metric(value):
+    """A change word after the metric names a change of the same figure: on 29 Oct "ebitda growth", "share price
+    increase" and "market value addition" each stood alone. Qualifiers before it ("consolidated", "combined") name a
+    different figure and stay."""
     key = metric_key(value)
+    if key not in METRIC_CANON:
+        key = CHANGE_WORDS.sub('', key) or key
     return METRIC_CANON.get(key, key)
 
 
@@ -461,9 +469,18 @@ def run_extract(observations, llm, run_dir, model, max_calls):
     state = json.loads(path.read_text(encoding='utf-8')) if path.exists() else {'model': model, 'contractVersion': CONTRACT_VERSION, 'results': {}}
     if state['model'] != model or state['contractVersion'] != CONTRACT_VERSION:
         raise ValueError('This run used a different model or contract; choose a new run name')
-    calls, prompt_tokens, completion_tokens = 0, 0, 0
+    calls, prompt_tokens, completion_tokens, skipped = 0, 0, 0, 0
     for obs in observations:
         if obs['evidenceId'] in state['results']:
+            continue
+        if not mentions(normalise(obs['title'] + ' ' + obs['content'])):
+            # verify() rejects every claim about a company the text does not name, so a model call could add nothing.
+            # On 29 Oct the regulators' feeds (Fed enforcement actions, BoE minutes, SEBI recovery orders) took a third
+            # of the day's calls this way and left the desk's own news waiting.
+            state['results'][obs['evidenceId']] = {'evidenceId': obs['evidenceId'], 'contractVersion': CONTRACT_VERSION, 'accepted': [],
+                                                   'rejected': [], 'outcome': 'valid', 'skipped': 'names-no-desk-company'}
+            skipped += 1
+            save(path, state)
             continue
         if calls >= max_calls:
             break
@@ -474,7 +491,7 @@ def run_extract(observations, llm, run_dir, model, max_calls):
         completion_tokens += int(used[1] or 0)
         save(path, state)
     results = state['results'].values()
-    return {'observations': len(state['results']), 'callsThisRun': calls, 'tokensThisRun': [prompt_tokens, completion_tokens],
+    return {'observations': len(state['results']), 'callsThisRun': calls, 'skippedNoCompany': skipped, 'tokensThisRun': [prompt_tokens, completion_tokens],
             'remaining': sum(o['evidenceId'] not in state['results'] for o in observations),
             'failedExtractions': sum(r['outcome'] == 'failed' for r in results),
             'accepted': sum(len(r['accepted']) for r in results), 'rejected': sum(len(r['rejected']) for r in results)}

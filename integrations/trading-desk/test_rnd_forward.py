@@ -24,8 +24,8 @@ REPORT = {'through': '2026-09', 'candidates': [candidate('momentum-6m-top3', 0.3
                                                candidate('momentum-3m-top2', 0.1, p=0.3)]}
 
 
-def rows(excess_by_month, name='reversal-1m-bottom3'):
-    return lambda n, rule: [{'month': m, 'basketPct': 1.0, 'rules': {name: 1.0 + e}} for m, e in excess_by_month]
+def rows(excess_by_month):
+    return lambda n, rule: [{'month': m, 'basketPct': 1.0, 'rules': {n: 1.0 + e}} for m, e in excess_by_month]
 
 
 class ForwardTests(unittest.TestCase):
@@ -71,6 +71,23 @@ class ForwardTests(unittest.TestCase):
         record = rf.registrations(self.root)[0]
         with mock.patch.object(rnd_scout, 'code_fingerprint', return_value='changed'):
             self.assertEqual(rf.judge(record, rows([]), self.ledger)['status'], 'ended')
+
+    def test_an_ended_test_can_be_registered_again_but_a_verdict_is_final(self):
+        rf.register_monthly(REPORT, self.root, OCT, self.ledger)
+        with mock.patch.object(rnd_scout, 'code_fingerprint', return_value='fixed'):  # a rule-code fix ends the October test
+            nov = rf.run(self.root, now=datetime(2026, 11, 3, tzinfo=timezone.utc), ledger_path=self.ledger, report=REPORT, rows_for=rows([]))
+        self.assertEqual(nov['registration']['name'], '2026-11-reversal-1m-bottom3')  # the same idea again, from December only
+        months = [f'{2027 + k // 12}-{k % 12 + 1:02d}' for k in range(24)]
+        noisy = rows([(m, 3.0 if k % 2 else -2.8) for k, m in enumerate(months)])
+        failing = lambda n, rule: noisy(n, rule) if n == 'reversal-1m-bottom3' else []  # noqa: E731
+        with mock.patch.object(rnd_scout, 'code_fingerprint', return_value='fixed'):
+            dec = rf.run(self.root, now=datetime(2026, 12, 3, tzinfo=timezone.utc), ledger_path=self.ledger, report=REPORT, rows_for=failing)
+        self.assertEqual([t['status'] for t in dec['tests']], ['ended', 'failed', 'waiting'])
+        self.assertEqual(json.loads((self.root / '2026-11-reversal-1m-bottom3.json').read_text(encoding='utf-8'))['verdict']['status'], 'failed')
+        with mock.patch.object(rnd_scout, 'code_fingerprint', return_value='fixed again'):  # the failure is not undone by a change
+            jan = rf.register_monthly(REPORT, self.root, datetime(2027, 1, 3, tzinfo=timezone.utc), self.ledger,
+                                      finished=['2026-10-reversal-1m-bottom3', '2026-11-reversal-1m-bottom3', '2026-12-momentum-3m-top2'])
+        self.assertEqual(jan['name'], '2027-01-momentum-3m-top2')  # December's test ended too; the failed idea stays out
 
     def test_the_daily_run_judges_registers_and_reports(self):
         summary = rf.run(self.root, now=OCT, ledger_path=self.ledger, report=REPORT, rows_for=rows([('2026-11', 1.0)]))
