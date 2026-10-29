@@ -25,6 +25,14 @@ test('credential patterns are found and reported without the secret itself', () 
   assert.deepEqual(scanText('backend/test/helpers.ts', lines).map(f => f.rule), ['private-key', 'github-token', 'anthropic-or-openai-key']);
 });
 
+test('a company name in a news address is not a key, but a key after = or a space still is', () => {
+  const news = ['"url": "https://www.thehindubusinessline.com/markets/sk-hynix-shares-jump-after-record-quarterly-profit/article1.ece"',
+    '"title": "amd-micron-among-chip-stocks-rising-up-to-5-as-sk-hynix-posts-record-profit-on-ai-memory-demand"'].join('\n');
+  assert.deepEqual(scanText('local/feeds/x/selection.json', news), []);
+  assert.deepEqual(scanText('x.txt', `OPENAI_API_KEY=${fake('sk-', 40)}\nAuthorization: Bearer ${fake('sk-ant-', 40)}`).map(f => f.rule),
+    ['anthropic-or-openai-key', 'anthropic-or-openai-key']);
+});
+
 test('forbidden paths are flagged even when their content looks harmless', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'scan-'));
   try {

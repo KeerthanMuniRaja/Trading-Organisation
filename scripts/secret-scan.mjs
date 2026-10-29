@@ -10,7 +10,8 @@ import { fileURLToPath } from 'node:url';
 export const RULES = [
   ['private-key', /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
   ['github-token', /\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{30,}\b|\bgithub_pat_[A-Za-z0-9_]{40,}\b/],
-  ['anthropic-or-openai-key', /\bsk-(ant-)?[A-Za-z0-9_-]{30,}\b/],
+  // not glued to a '-' or '/' before it: "/markets/sk-hynix-shares-..." is a news address (SK Hynix), not a key
+  ['anthropic-or-openai-key', /(?<![-/])\bsk-(ant-)?[A-Za-z0-9_-]{30,}\b/],
   ['aws-access-key', /\bAKIA[0-9A-Z]{16}\b/],
   ['slack-token', /\bxox[abposr]-[A-Za-z0-9-]{10,}\b/],
   ['principals-with-token', /PRINCIPALS_JSON\s*=\s*['"]?\[\s*\{[^\n]*"token"\s*:\s*"[A-Za-z0-9_-]{40,}"/],
