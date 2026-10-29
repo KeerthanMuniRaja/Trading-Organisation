@@ -34,18 +34,39 @@ publishers offer for it.
 
 | Country | Sources |
 | --- | --- |
-| India | Economic Times, Mint and BusinessLine (enabled since 13 Oct); RBI and SEBI (tier 1) |
-| US | Federal Reserve, SEC (tier 1) |
-| Euro area / UK | ECB, Bank of England (tier 1) |
-| China | South China Morning Post: business and China, each the other's backup |
-| World | Al Jazeera |
+| India | Economic Times, Mint and BusinessLine (enabled since 13 Oct); RBI and SEBI (tier 1, enabled 29 Oct) |
+| US | Federal Reserve, SEC (tier 1, enabled 29 Oct) |
+| Euro area / UK | Bank of England (tier 1, enabled 29 Oct); ECB (off: its items have no summary) |
+| China | South China Morning Post: business and China, each the other's backup (enabled 29 Oct) |
+| World | Al Jazeera (enabled 29 Oct) |
+
+**29 Oct 2026: 8 more feeds on, at the owner's request.** The owner enables sources. Each was probed first with the
+cycle's own reader, and four needed fixes the reader could accept honestly:
+- **RBI:** it writes Indian times without a zone (`Thu, 29 Oct 2026 12:05:00`). A catalogue entry may now declare
+  `localZone`, the zone its publisher writes in, and the reader then reads unzoned times in it. This is a fact about
+  the source, recorded once, not a guess per item. A feed without the declaration stays exactly as strict as before.
+- **SEBI:** its items carry a day without a time (`28 Oct, 2026 +0530`). For a feed with a declared zone, such an item
+  is dated at the **end of that day**, or at the moment it was fetched if that is earlier. That is the latest it can
+  have been published, so nothing can look known before it was (a point-in-time rule). A future day is still
+  rejected.
+- **SCMP:** both addresses only redirected to the same address with a trailing slash. The catalogue now has the
+  final addresses; the reader still refuses redirects.
+- **ECB:** it stays off. Its items have no summary, and a title alone gives the fact-checker nothing to quote.
+
+The fact-checker now treats the RBI and SEBI as **primary sources** (`primarySourceIds` in
+`.local/claims/autolearn.json`). A claim they publish about a desk share is verified without waiting for a second
+publisher, but its quote and company checks still apply. Items that name none of our shares, which is most of the
+world news, are set aside by the triage rules with no model call. They still feed the world stories and the driver
+links.
 
 Some feeds that were checked are not listed, and `notListed` says why. Some fail the organisation's strict reader:
 - the Bank of Japan has no summaries;
 - the EIA has dates without a year;
 - Nikkei Asia uses RSS 1.0 without dates.
 
-Others could not be read at all: BBC, CNBC, MarketWatch and others. The reader's rules are never weakened to admit a source.
+Others could not be read at all: BBC, CNBC, MarketWatch and others. The reader's rules are never weakened to admit a
+source. The declared zone above is an exception only in form: it states a fact about one publisher, and the rule
+for everyone else is unchanged.
 
 ## Owner commands
 

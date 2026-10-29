@@ -22,6 +22,8 @@ test('configuration is explicit, HTTPS-only and bounded', () => {
     assert.throws(() => validateFeedConfig(bad));
   // Loopback HTTP is an explicit test-harness option, never a configuration field.
   assert.equal(validateFeedConfig({ ...base, feedUrl: 'http://127.0.0.1:9/feed' }, { allowLoopbackHttp: true }).feedUrl, 'http://127.0.0.1:9/feed');
+  assert.equal(validateFeedConfig({ ...base, localZone: '+0530' }).localZone, '+0530');  // the zone an official publisher writes in
+  for (const zone of ['IST', '+5:30', '+2400', 530]) assert.throws(() => validateFeedConfig({ ...base, localZone: zone }), /local zone/);
   assert.throws(() => validateFeedConfig({ ...base, feedUrl: 'http://192.168.1.2/feed' }, { allowLoopbackHttp: true }));
 });
 

@@ -136,10 +136,18 @@ function utc(year, month, day, hour, minute, second, offsetMinutes) {
   if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month || check.getUTCDate() !== day) return null;
   return value - offsetMinutes * 60000;
 }
-/** RFC 822 (RSS) or RFC 3339 (Atom) with an explicit zone. Unzoned or named local zones are not guessed. */
-export function parseFeedDate(raw) {
+const offsetOf = zone => (zone[0] === '-' ? -1 : 1) * (Number(zone.slice(1, 3)) * 60 + Number(zone.slice(3)));
+export const LOCAL_ZONE = /^[+-](?:0\d|1[0-4])[0-5]\d$/;
+/** RFC 822 (RSS) or RFC 3339 (Atom) with an explicit zone. Unzoned or named local zones are not guessed, unless the feed
+ *  declares the zone its publisher writes in (`localZone`, e.g. '+0530' for the RBI): a fact about the source, recorded
+ *  once in the catalogue, not a guess per item. */
+export function parseFeedDate(raw, localZone = null) {
   if (typeof raw !== 'string') return null;
   const value = raw.trim().replace(/\s+/g, ' ');
+  if (localZone && LOCAL_ZONE.test(localZone)) {
+    const bare = /^(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), )?(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4}) (\d{2}):(\d{2})(?::(\d{2}))?$/.exec(value);
+    if (bare) return utc(Number(bare[3]), MONTHS[bare[2]], Number(bare[1]), Number(bare[4]), Number(bare[5]), Number(bare[6] ?? 0), offsetOf(localZone));
+  }
   let m = /^(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), )?(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (\d{4}) (\d{2}):(\d{2})(?::(\d{2}))? (GMT|UTC|UT|Z|[+-]\d{4})$/.exec(value);
   if (m) {
     const zone = m[7], offset = /^[+-]/.test(zone)
@@ -155,6 +163,16 @@ export function parseFeedDate(raw) {
     return utc(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6]), offset);
   }
   return null;
+}
+
+/** A day with no time ("28 Oct, 2026 +0530", as SEBI writes), for a feed that declares its zone: the LAST moment of that
+ *  day. The true time is unknown, so the item is dated as late as it can have been, never earlier: nothing can then look
+ *  known before it was published. The caller also caps it at the retrieval time. */
+export function parseFeedDayEnd(raw, localZone = null) {
+  if (typeof raw !== 'string' || !localZone || !LOCAL_ZONE.test(localZone)) return null;
+  const m = /^(?:(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), )?(\d{1,2}) (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec),? (\d{4})(?: ([+-]\d{4}))?$/.exec(raw.trim().replace(/\s+/g, ' '));
+  if (!m || (m[4] && !LOCAL_ZONE.test(m[4]))) return null;
+  return utc(Number(m[3]), MONTHS[m[2]], Number(m[1]), 23, 59, 59, offsetOf(m[4] ?? localZone));
 }
 
 function atomText(element) {
@@ -225,7 +243,12 @@ export function prepareFeed(bytes, feed, fetchedAt) {
       if (!sourceId) throw new Error('Article origin has no source mapping');
       const title = entry.title.replace(/\s+/g, ' ').trim();
       if (!title || !entry.summary) throw new Error('Title and nonempty summary required');
-      const published = parseFeedDate(entry.published);
+      let published = parseFeedDate(entry.published, feed.localZone);
+      if (published === null) {
+        const dayEnd = parseFeedDayEnd(entry.published, feed.localZone);  // a day without a time: as late as it can have been
+        // a day that starts after retrieval stays in the future, so the check below still rejects it
+        if (dayEnd !== null) published = dayEnd - 86_399_000 > fetchedAt ? dayEnd : Math.min(dayEnd, fetchedAt);
+      }
       if (published === null) throw new Error('An explicit-zone publication timestamp is required');
       if (published > fetchedAt) throw new Error('Publication time is after retrieval');
       const room = 4000 - SUMMARY_LABEL.length;

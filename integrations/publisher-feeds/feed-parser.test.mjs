@@ -102,3 +102,18 @@ test('dates require a real calendar day and an explicit zone', () => {
     assert.equal(parseFeedDate(bad), null, String(bad));
   assert.equal(htmlToText('a&nbsp;&nbsp;b<br/>c &unknown; &#x41;'), 'a b\nc &unknown; A');
 });
+
+test('a feed that declares its zone is read in it; a day without a time is dated as late as it can have been', () => {
+  // the RBI writes Indian times without a zone, SEBI a day without a time (both 29 Oct 2026)
+  assert.equal(parseFeedDate('Thu, 29 Oct 2026 12:05:00', '+0530'), Date.parse('2026-10-29T06:35:00Z'));
+  assert.equal(parseFeedDate('Thu, 29 Oct 2026 12:05:00'), null);               // without the declaration: still never guessed
+  assert.equal(parseFeedDate('Thu, 29 Oct 2026 12:05:00 +0000', '+0530'), Date.parse('2026-10-29T12:05:00Z'));  // an explicit zone wins
+  assert.equal(parseFeedDate('Thu, 29 Oct 2026 12:05:00', '+2400'), null);      // not a real zone
+  const zoned = { ...feed, localZone: '+0530' }, at = Date.parse('2026-10-29T07:00:00Z');
+  const day = d => prepareFeed(bytes(rss(item({ date: d }))), zoned, at);
+  assert.equal(day('28 Oct, 2026 +0530').observations[0].publishedAt, '2026-10-28T18:29:59.000Z');  // the end of 28 Oct, Indian time
+  assert.equal(day('29 Oct, 2026 +0530').observations[0].publishedAt, '2026-10-29T07:00:00.000Z');  // today: no later than it was fetched
+  assert.deepEqual(day('30 Oct, 2026 +0530').rejected.map(r => r.reason), ['Publication time is after retrieval']);  // a future day stays future
+  assert.deepEqual(prepareFeed(bytes(rss(item({ date: '28 Oct, 2026 +0530' }))), feed, at).rejected.map(r => r.reason),
+    ['An explicit-zone publication timestamp is required']);  // an undeclared feed stays strict
+});

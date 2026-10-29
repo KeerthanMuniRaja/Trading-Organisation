@@ -1,7 +1,7 @@
 import { parseSourceMappings } from '../../scripts/import-observations.mjs';
-import { MAX_FEED_BYTES } from './feed-parser.mjs';
+import { LOCAL_ZONE, MAX_FEED_BYTES } from './feed-parser.mjs';
 
-const FIELDS = ['enabled', 'feedUrl', 'kind', 'sources', 'maxItemsPerCycle', 'pollIntervalMinutes', 'timeoutMs'];
+const FIELDS = ['enabled', 'feedUrl', 'kind', 'sources', 'maxItemsPerCycle', 'pollIntervalMinutes', 'timeoutMs', 'localZone'];
 const FEED_TYPES = new Set(['application/rss+xml', 'application/atom+xml', 'application/xml', 'text/xml']);
 
 /** Fixed operational codes; upstream bodies, headers and exception text are never echoed. */
@@ -25,6 +25,8 @@ export function validateFeedConfig(config, { allowLoopbackHttp = false } = {}) {
   if (!['news', 'article', 'filing'].includes(kind)) throw new Error('Invalid observation kind');
   const sources = parseSourceMappings({ sources: config.sources });
   if (!sources.size) throw new Error('At least one publisher mapping is required');
+  // the zone an official publisher writes its times in, when its feed omits it (feed-parser parseFeedDate)
+  if (config.localZone !== undefined && !(typeof config.localZone === 'string' && LOCAL_ZONE.test(config.localZone))) throw new Error('Invalid local zone');
   const integer = (value, fallback, min, max, label) => {
     const result = value ?? fallback;
     if (!Number.isInteger(result) || result < min || result > max) throw new Error('Invalid ' + label);
@@ -36,6 +38,7 @@ export function validateFeedConfig(config, { allowLoopbackHttp = false } = {}) {
     maxItemsPerCycle: integer(config.maxItemsPerCycle, 20, 1, 50, 'item limit'),
     pollIntervalMinutes: integer(config.pollIntervalMinutes, 60, 15, 1440, 'poll interval'),
     timeoutMs: integer(config.timeoutMs, 15000, 1000, 30000, 'timeout'),
+    ...(config.localZone ? { localZone: config.localZone } : {}),
   };
 }
 

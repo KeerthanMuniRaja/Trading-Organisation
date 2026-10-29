@@ -15,7 +15,7 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { fetchFeed, validateFeedConfig } from '../integrations/publisher-feeds/feed-client.mjs';
-import { FeedFormatError, prepareFeed } from '../integrations/publisher-feeds/feed-parser.mjs';
+import { FeedFormatError, LOCAL_ZONE, prepareFeed } from '../integrations/publisher-feeds/feed-parser.mjs';
 import { classify } from '../backend/dist/src/evidence-triage.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -32,7 +32,8 @@ export async function loadCatalogue(path = CATALOGUE) {
   for (const s of sources) {
     const ok = /^[a-z0-9-]{1,40}$/.test(s.id) && COUNTRIES.has(s.country) && [1, 2].includes(s.tier) && /^news-[a-z0-9-]{1,40}$/.test(s.sourceId)
       && new URL(s.feedUrl).protocol === 'https:' && new URL(s.origin).origin === s.origin && s.origin.startsWith('https://')
-      && (s.backup === null || (ids.has(s.backup) && s.backup !== s.id)) && typeof s.name === 'string' && Array.isArray(s.topics);
+      && (s.backup === null || (ids.has(s.backup) && s.backup !== s.id)) && typeof s.name === 'string' && Array.isArray(s.topics)
+      && (s.localZone === undefined || LOCAL_ZONE.test(String(s.localZone)));
     if (!ok) throw new Error(`Invalid catalogue entry ${s.id}`);
   }
   return sources;
@@ -40,7 +41,7 @@ export async function loadCatalogue(path = CATALOGUE) {
 
 /** The feed configuration the cycle reads (.local/feed-<id>.json). */
 export const feedConfig = s => ({ enabled: true, feedUrl: s.feedUrl, kind: 'news', sources: [{ origin: s.origin, sourceId: s.sourceId }],
-  maxItemsPerCycle: 25, pollIntervalMinutes: 60, timeoutMs: 15000 });
+  maxItemsPerCycle: 25, pollIntervalMinutes: 60, timeoutMs: 15000, ...(s.localZone ? { localZone: s.localZone } : {}) });
 
 /** Reads the feed once with the cycle's own client and parser. Nothing is stored or submitted. */
 export async function probe(s, { transport = fetch, now = Date.now() } = {}) {
