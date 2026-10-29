@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "note": "Charters the agents propose for the bot groups that already exist (bots' department labels). The owner decides each one on the agenda, with its budget ceiling (scripts/firm.mjs). Editing a charter here changes only future proposals.",
+  "departments": {
+    "desk": {
+      "name": "Trading desk",
+      "mandate": "Runs the organisation's paper-trading members: turns tested rules and model research into proposals, under the deterministic review, the release gate and the loss brakes. Judged by live paper fitness against holding all shares equally."
+    },
+    "research": {
+      "name": "Research",
+      "mandate": "Finds and tests what the desk could trade: daily trend research, the debate desk's bull and bear cases, R&D ideas and their forward tests. Judged by whether its calls and findings beat chance on later data."
+    }
+  }
+}

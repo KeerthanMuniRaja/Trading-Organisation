@@ -12,6 +12,7 @@
     "model:local": "node --env-file-if-exists=.env scripts/local-model.mjs",
     "model:tune": "node scripts/model-tune.mjs",
     "model:upgrade": "node --env-file-if-exists=.env scripts/model-upgrade.mjs",
+    "firm": "node --env-file-if-exists=.env scripts/firm.mjs",
     "handover": "node scripts/handover.mjs",
     "weekly": "node scripts/weekly-review.mjs",    "verify:real-model": "npm run build && node --env-file=.env scripts/verify-real-model.mjs",
     "model:doctor": "node --env-file=.env scripts/run-model-tool.mjs doctor",

@@ -30,6 +30,26 @@ A **department** is a charter with:
 - Every change to a department is audited.
 - A closed department can be reopened through a new approved proposal with a fresh charter.
 
+## Registering the firm: `npm run firm` (29 Oct 2026)
+
+The bots already work in two groups by their department label: **desk** (momentum-rules, tradingagents) and
+**research** (trend-bot, debate-bull, debate-bear). Neither was a registered department, so the firm had no charters,
+leads or ceilings. `scripts/firm.mjs` proposes them through the backend's own rules:
+
+```
+npm run firm -- plan             what would be proposed, with recommended ceilings (changes nothing)
+npm run firm -- source --yes     owner, once: register and approve 'organisation-records' (the organisation's own computed records)
+npm run firm -- propose          agents: evidence, independent verification, an open proposal per group
+npm run agenda                   owner: each proposal; accept with --budget-paise=<ceiling>
+```
+
+- **Charters:** in [`config/departments.json`](../config/departments.json).
+- **Evidence:** the group's record (members, specialty, method, state), reported by the researcher. The evaluator
+  verifies it only when its own read of `GET /v1/bots` gives exactly the same text.
+- **Recommended ceilings:** the members' current budgets, so registering moves no money. On 29 Oct that was the desk at
+  ₹5,000 and research at ₹1,000.
+- **What stays the owner's:** the decision and the ceiling. A group without a charter is not proposed.
+
 ## Bot births: opportunity-driven growth (LIFE-01)
 
 Code: [`backend/src/bot-births.ts`](../backend/src/bot-births.ts) (migration 040). Tests: `backend/test/bot-births.test.ts`.
