@@ -62,9 +62,6 @@ export async function planSteps({ withModel = false, root = ROOT, decisionCheck 
     { id: 'market-pulse', cmd: PY, args: [desk('market_pulse.py')], timeoutMs: 120_000, requires: join(root, '.local', 'world', 'headline-history.json') },
     // AWARE-02: every reported move is kept, and measured against the market over the next week once prices exist
     { id: 'reaction-study', cmd: PY, args: [desk('news_reactions.py')], timeoutMs: 120_000, requires: join(root, '.local', 'world', 'market-pulse.json') },
-    // NEWS-07: results days the press reports ("to declare results on Oct 17"), kept beyond the headline history, so the
-    // debate and the mentor's results-day lesson see them with no owner calendar (no model, no network)
-    { id: 'results-calendar', cmd: PY, args: [desk('results_calendar.py')], timeoutMs: 120_000, requires: join(root, '.local', 'world', 'headline-history.json') },
     // KNOW-06: everything collected, connected and searchable, point-in-time (items, stories, drivers, regimes, ideas, calls)
     { id: 'knowledge-index', cmd: PY, args: [desk('knowledge_index.py'), 'build'], timeoutMs: 300_000 },
     // SCENARIO-01: five personas rehearse the day's two biggest linked world stories (model needed; shadow only), and
@@ -83,6 +80,10 @@ export async function planSteps({ withModel = false, root = ROOT, decisionCheck 
       ? { id: 'claims-and-fact-check', cmd: PY, args: [join(root, 'integrations', 'claims', 'autolearn.py'), 'run', '--config', join('.local', 'claims', 'autolearn.json'),
           '--cycles', '1'], timeoutMs: 3_600_000, requires: join(root, '.local', 'claims', 'autolearn.json') }
       : { id: 'claims-and-fact-check', skip: 'model steps not enabled (--with-model)' },
+    // NEWS-07: results and policy days the press reports, from headlines and from the article text the fact-checker has
+    // just refreshed ("results on October 30"), kept beyond the headline history, so the debate and the mentor's
+    // results-day lesson see them with no owner calendar (no model, no network)
+    { id: 'results-calendar', cmd: PY, args: [desk('results_calendar.py')], timeoutMs: 120_000, requires: join(root, '.local', 'world', 'headline-history.json') },
     // AUTO-02: every open learning workflow advances one stage for the role it waits on (the model writes the lessons)
     withModel
       ? { id: 'learning-workflows', cmd: NODE, args: ['--env-file=.env', join(root, 'scripts', 'learning-cycle.mjs')], timeoutMs: 3_600_000 }

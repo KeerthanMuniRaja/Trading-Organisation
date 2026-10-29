@@ -128,6 +128,31 @@ def read(items, alias_list, names):
     return out
 
 
+SNAPSHOTS = daily.ROOT / '.local' / 'claims' / 'auto' / 'snapshots.json'
+SENTENCE = re.compile(r'(?<=[.!?])\s+')
+
+
+def read_bodies(snapshots, alias_list, names):
+    """Results days from the article text the fact-checker keeps (the desk shares' news, 29 Oct 2026): titles like
+    "Reliance Industries Q2 results 2026 date and time" carry no date, but their text does ("Reliance Industries' board
+    will review September-quarter results on October 30, 2026"). Each sentence is read by the same rules as a title,
+    and a date counts only for the companies named in that same sentence."""
+    out = []
+    for s in snapshots:
+        if not s.get('publishedAt') or not s.get('content'):
+            continue
+        published = datetime.fromisoformat(str(s['publishedAt']).replace('Z', '+00:00')).astimezone(IST).date()
+        for sentence in SENTENCE.split(' '.join(str(s['content']).split())):
+            days = dates_in(sentence, published)
+            symbols = market_pulse.named(sentence, alias_list) if days else []
+            for day in days:
+                for sym in dict.fromkeys(symbols):
+                    out.append({'date': day.isoformat(), 'kind': 'results', 'symbol': sym, 'company': names.get(sym, datasets.UNIVERSE.get(sym, sym)),
+                                'desk': sym in datasets.UNIVERSE, 'title': str(s.get('title', ''))[:200], 'publisher': s.get('sourceName'),
+                                'publishedAt': str(s['publishedAt']), 'from': 'article text'})
+    return out
+
+
 def merge(old, new, today, keep_days=KEEP_DAYS):
     """One entry per share per results period. Within RESCHEDULE_DAYS of each other, the latest headline wins; the same
     date reported twice keeps the first report. Entries older than keep_days are dropped."""
@@ -145,11 +170,15 @@ def merge(old, new, today, keep_days=KEEP_DAYS):
     return sorted((e for kept in by_share.values() for e in kept), key=lambda e: (e['date'], e.get('symbol') or '', e.get('kind') or ''))
 
 
-def build(headlines_path=HEADLINES, out=OUT, now=None, rows=None):
+def build(headlines_path=HEADLINES, out=OUT, now=None, rows=None, snapshots_path=SNAPSHOTS):
     now = now or datetime.now(timezone.utc)
     items = json.loads(Path(headlines_path).read_text(encoding='utf-8')) if Path(headlines_path).exists() else []
     names = rows if rows is not None else datasets.nifty500()
-    found = read(items, market_pulse.aliases(rows), names)
+    alias_list = market_pulse.aliases(rows)
+    found = read(items, alias_list, names)
+    if snapshots_path and Path(snapshots_path).exists():
+        raw = json.loads(Path(snapshots_path).read_text(encoding='utf-8'))
+        found += read_bodies(raw if isinstance(raw, list) else list(raw.values()), alias_list, names)
     old = json.loads(Path(out).read_text(encoding='utf-8')).get('events', []) if Path(out).exists() else []
     events = merge(old, found, now.astimezone(IST).date())
     report = {'generatedAt': now.isoformat(), 'headlinesRead': len(items), 'foundThisRun': len(found), 'events': events,

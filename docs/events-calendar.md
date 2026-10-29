@@ -41,6 +41,15 @@ the title:
 - **Without your file:** the status reads `press-reported results days only (no owner calendar): other dates unknown`.
   An empty list then means "none reported", never "nothing scheduled", and policy dates stay unknown until you add them.
 - **The mentor's results-day lesson** now reaches the debate whenever a press results date is upcoming.
+- **Article text (29 Oct 2026):** many titles carry no date, such as "Reliance Industries Q2 results 2026 date and
+  time".
+  - **What is read:** the reader also goes through the text of the desk shares' articles that the fact-checker keeps,
+    sentence by sentence.
+  - **The rule:** a date counts only for the companies named in the same sentence. For example: "Reliance Industries'
+    board will review September-quarter results on October 30".
+  - **When:** the step runs right after the fact-checker refreshes its copies, so an article saying "results tomorrow"
+    is read the same day.
+  - **First find:** Reliance on 30 Oct.
 - **Policy days (29 Oct 2026):** the same reader finds RBI and Fed decision days.
   - **What counts:** the headline must name the decider, with a decision word (meeting, decision, policy, outcome) just
     before the date. For example: "US Fed meeting October 2026 today" or "RBI MPC meeting on December 4".

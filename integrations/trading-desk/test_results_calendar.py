@@ -66,6 +66,21 @@ class CalendarTests(unittest.TestCase):
                          [('2026-10-17', 'HDFCBANK.NS', True), ('2026-10-17', 'ICICIBANK.NS', True)])
         self.assertEqual(found[0]['company'], 'HDFC Bank Ltd.')
 
+    def test_article_text_gives_the_date_a_title_leaves_out(self):
+        rows = {**ROWS, 'RELIANCE.NS': 'Reliance Industries Ltd.', 'INFY.NS': 'Infosys Ltd.'}
+        snap = {'publishedAt': '2026-10-28T09:29:00+05:30', 'sourceName': 'Mint', 'title': 'Reliance Industries Q2 results 2026 date and time',
+                'content': ("Feed summary (not the full article): Reliance Industries’ board will review September-quarter results on "
+                            "October 30, 2026, with an analyst meeting to follow. Infosys shares rose 2% on Monday. "
+                            "Peers report results on November 5.")}  # a date with no company in its sentence names nobody
+        found = rc.read_bodies([snap], rc.market_pulse.aliases(rows), rows)
+        self.assertEqual([(e['date'], e['symbol'], e['from']) for e in found], [('2026-10-30', 'RELIANCE.NS', 'article text')])
+        with tempfile.TemporaryDirectory() as d:
+            heads, snaps, out = Path(d) / 'h.json', Path(d) / 's.json', Path(d) / 'c.json'
+            heads.write_text('[]', encoding='utf-8')
+            snaps.write_text(json.dumps([snap]), encoding='utf-8')
+            r = rc.build(heads, out, now=datetime(2026, 10, 29, 6, tzinfo=timezone.utc), rows=rows, snapshots_path=snaps)
+            self.assertEqual([(e['date'], e['symbol']) for e in r['events']], [('2026-10-30', 'RELIANCE.NS')])
+
     def test_a_later_headline_reschedules_and_old_entries_expire(self):
         e = lambda d, at, s='SBIN.NS': {'date': d, 'symbol': s, 'publishedAt': at}  # noqa: E731
         kept = rc.merge([e('2026-11-05', '2026-10-20T10:00:00+05:30'), e('2025-07-01', '2025-06-20T10:00:00+05:30')],
@@ -79,9 +94,9 @@ class CalendarTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             heads, out = Path(d) / 'h.json', Path(d) / 'c.json'
             heads.write_text(json.dumps([item('HDFC Bank to announce Q2 results on Oct 17')]), encoding='utf-8')
-            rc.build(heads, out, now=datetime(2026, 10, 16, 10, tzinfo=timezone.utc), rows=ROWS)
+            rc.build(heads, out, now=datetime(2026, 10, 16, 10, tzinfo=timezone.utc), rows=ROWS, snapshots_path=None)
             heads.write_text(json.dumps([]), encoding='utf-8')  # the headline has rolled out of the history
-            r = rc.build(heads, out, now=datetime(2026, 10, 18, 10, tzinfo=timezone.utc), rows=ROWS)
+            r = rc.build(heads, out, now=datetime(2026, 10, 18, 10, tzinfo=timezone.utc), rows=ROWS, snapshots_path=None)
             self.assertEqual([(e['date'], e['symbol']) for e in r['events']], [('2026-10-17', 'HDFCBANK.NS')])
             self.assertIn('unverified', r['note'])
 
