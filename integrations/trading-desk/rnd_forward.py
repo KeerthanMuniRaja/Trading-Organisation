@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import statistics
 import sys
@@ -124,6 +125,59 @@ def judge(record, rows_for, ledger_path=None):
             'note': 'The pre-registered verdict. A pass makes the idea eligible for a birth proposal to the owner, never a trade by itself.'}
 
 
+def evidence_text(record, verdict):
+    """The exact text the evaluator must reproduce from its own judgement of the same registration."""
+    return (f"R&D forward test {record['name']} (rules {record['rules']}): idea {record['idea']}, {record['description']}. Registered "
+            f"{record['registeredAt'][:10]} and judged only on the months from {record['firstMonth']}, net of costs, against the equal-weight "
+            f"basket of the 8 shares: {verdict['monthsJudged']} months, ahead {verdict['ahead']}, behind {verdict['behind']}, average excess "
+            f"{verdict['averageExcessPct']:+.3f}% a month, one-sided t {verdict['tStat']}. Pre-registered bar: t at least "
+            f"{record['criterion']['tStatAtLeast']} and a positive average after {record['criterion']['months']} months. Passed.")
+
+
+def propose(department, source, env=None, opener=None, root=ROOT, rows_for=None, ledger_path=None):
+    """RND-05: a forward test that PASSED becomes a birth proposal on the owner's agenda, as rnd_scout.propose does for a
+    seen-history pass: the researcher reports the verdict as evidence, the evaluator (another identity) judges the same
+    registration itself and verifies the evidence only on an exact match, then the researcher proposes the birth."""
+    env = env if env is not None else os.environ
+    rows_for = rows_for or desk_rows()
+    base, researcher = rnd_scout.principals(env, 'researcher')
+    _, evaluator = rnd_scout.principals(env, 'evaluator')
+    call = lambda token, method, route, body=None: rnd_scout.call(base, token, method, route, body, opener, prefix='rnd-forward')  # noqa: E731
+    bots = {b['id'] for b in call(researcher, 'GET', '/v1/bots')}
+    proposed = {p['botId'] for p in call(researcher, 'GET', '/v1/bots/births')['proposals'] if p['status'] != 'rejected'}
+    tried = rnd_scout.entries(ledger_path)
+    outcomes = []
+    for record in registrations(root):
+        verdict = judge(record, rows_for, ledger_path)
+        if verdict['status'] != 'passed':
+            continue
+        bot_id = 'rnd-' + record['idea']
+        if bot_id in bots or bot_id in proposed:
+            outcomes.append({'idea': record['idea'], 'outcome': 'already served', 'by': bot_id})
+            continue
+        text = evidence_text(record, verdict)
+        published = f"{verdict['months'][-1]['month']}-28T10:30:00+00:00"
+        e = call(researcher, 'POST', '/v1/evidence', {'sourceId': source, 'kind': 'dataset', 'content': text, 'publishedAt': published})
+        if e.get('status') != 'verified':
+            again = judge(record, rows_for, ledger_path)  # the evaluator's own judgement of the same registration
+            ok = again['status'] == 'passed' and evidence_text(record, again) == text
+            call(evaluator, 'POST', '/v1/evidence/reviews', {'evidenceId': e['id'], 'status': 'verified' if ok else 'rejected',
+                 'expected': {'content': text, 'sourceId': source, 'kind': 'dataset', 'publishedAt': published}})
+            if not ok:
+                outcomes.append({'idea': record['idea'], 'outcome': 'evidence rejected: the evaluator could not reproduce it'})
+                continue
+        description, specialty, method = tried[record['idea']][:3]
+        birth = call(researcher, 'POST', '/v1/bots/births/proposals', {
+            'botId': bot_id, 'name': description[:120], 'department': department, 'specialty': specialty, 'method': method,
+            'contribution': f'Model-free {specialty} member: {description}.',
+            'opportunity': (f"Passed its pre-registered forward test: {verdict['ahead']} of {verdict['monthsJudged']} later months ahead of the basket, "
+                            f"{verdict['averageExcessPct']:+.3f}% a month, t {verdict['tStat']}.")[:600],
+            'successCriterion': 'Its live paper calls beat holding cash over at least 20 scored calls, and it stays ahead of the basket.',
+            'evidenceIds': [e['id']]})
+        outcomes.append({'idea': record['idea'], 'outcome': 'birth proposed', 'proposalId': birth['id'], 'botId': bot_id})
+    return outcomes
+
+
 def desk_rows(cache=daily.DAILY):
     dates, table = pd.aligned(daily.load(sorted(daily.datasets.UNIVERSE), cache))
     return lambda name, rule: rnd_scout.monthly(table, dates, {name: rule})
@@ -147,9 +201,16 @@ def run(root=ROOT, cache=daily.DAILY, now=None, ledger_path=None, report=None, r
     return summary
 
 
-def main():
+def main(argv=None):
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('--propose', action='store_true', help='turn a passed forward test into verified evidence and a birth proposal (RND-05)')
+    parser.add_argument('--department', default=os.environ.get('RND_DEPARTMENT', 'desk'))
+    parser.add_argument('--source', default=os.environ.get('RND_SOURCE', 'desk-research'))
+    args = parser.parse_args(argv)
     s = run()
-    print(json.dumps({'registration': s['registration'], 'running': s['running'], 'passed': s['passed'],
+    proposals = propose(args.department, args.source) if args.propose and s['passed'] else []
+    print(json.dumps({'registration': s['registration'], 'running': s['running'], 'passed': s['passed'], 'proposals': proposals,
                       'tests': [{k: t.get(k) for k in ('name', 'status', 'monthsJudged', 'monthsNeeded', 'averageExcessPct', 'tStat')} for t in s['tests']]},
                      indent=2))
 

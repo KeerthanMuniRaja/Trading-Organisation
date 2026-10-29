@@ -105,7 +105,16 @@ The seen-history bar only rises: after 25 ideas it is p < 0.002, and the best id
 - **Ending:** a test ends, and frees its slot, if the rules' code changes after registration.
   - The fingerprint is `rnd_scout.code_fingerprint()`: timing, costs and every builder, but not the idea ledger.
   - So a newly invented idea does not end the tests already running.
-- **A pass is eligibility, not a trade:** the idea may go to a birth proposal on the owner's agenda, and live paper fitness after birth is still the real test.
+- **A pass is eligibility, not a trade (RND-05, 29 Oct 2026):** with the research source named (`RND_SOURCE`), a passed
+  test goes to the owner's agenda the same way a seen-history pass does.
+  - The researcher reports the verdict as evidence.
+  - The evaluator judges the same registration itself and verifies the evidence only on an exact match.
+  - The researcher then proposes the bot's birth (`rnd-<idea>`).
+  - From there the existing path runs: the owner's approval, then `rnd_bot.py` onboarding, a release, a canary, and live
+    paper fitness, which is still the real test.
+
+  This closes the loop: an idea the model invents can reach paper trading with the owner deciding only the birth and
+  the money.
 - **Honest expectation:** a real edge of 0.5% a month with typical monthly noise would need longer than 24 months to reach t 2.5. A pass will be rare, and when one comes it means something.
 - **First registration (29 Oct 2026):** `momentum-6m-top3-quarterly`, the live bot's rule traded quarterly. On the seen history it was ahead in 60 of 106 differing months. It is judged from November 2026.
 - **Files:** `.local/trading-desk/rnd/forward/` holds the registrations, and `reports/latest.json` the latest report.

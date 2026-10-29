@@ -121,7 +121,9 @@ export async function planSteps({ withModel = false, root = ROOT, decisionCheck 
       timeoutMs: withModel ? 900_000 : 300_000 }, // invention can take 9 minutes on the laptop CPU, then the scout itself
     // RND-04: the seen-history bar only rises with every idea tried, so ideas also get a forward test: once a month the
     // best unserved one is registered and judged only on later months (at most 5 at once; no model)
-    { id: 'rnd-forward', cmd: PY, args: [desk('rnd_forward.py')], timeoutMs: 300_000 },
+    // RND-05: a passed forward test becomes verified evidence and a birth proposal once the owner named the research source
+    { id: 'rnd-forward', cmd: PY, args: [desk('rnd_forward.py'), ...(process.env.RND_SOURCE
+      ? ['--propose', '--source', process.env.RND_SOURCE, '--department', process.env.RND_DEPARTMENT || 'desk'] : [])], timeoutMs: 300_000 },
     // KNOW-05: the organisation's live knowledge (research, regime, news links, scenario record) for the agents and the digest
     { id: 'knowledge-refresh', cmd: PY, args: [desk('live_knowledge.py'), 'refresh'], timeoutMs: 120_000 },
     // MENTOR-01: the mentor's lessons, each re-checked on today's data (no model, no network)

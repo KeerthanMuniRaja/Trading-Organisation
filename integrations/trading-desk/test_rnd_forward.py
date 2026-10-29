@@ -77,6 +77,43 @@ class ForwardTests(unittest.TestCase):
         self.assertEqual((summary['registration']['outcome'], summary['running'], summary['passed']), ('registered', 1, []))
         self.assertEqual(json.loads((self.root / 'reports' / 'latest.json').read_text(encoding='utf-8'))['tests'][0]['status'], 'running')
 
+    def test_a_passed_forward_test_becomes_verified_evidence_and_a_birth_proposal(self):
+        rf.register_monthly(REPORT, self.root, OCT, self.ledger)
+        months = [f'{2026 + (10 + k) // 12}-{(10 + k) % 12 + 1:02d}' for k in range(24)]
+        passing = rows([(m, 1.0 if k % 4 else -0.5) for k, m in enumerate(months)])
+        calls = []
+
+        def opener(req, timeout):
+            route, body = req.full_url.split('3000', 1)[1], json.loads(req.data) if req.data else None
+            calls.append((route, body, req.headers['Authorization'].split()[-1]))
+            reply = ([] if route == '/v1/bots' else {'proposals': []} if route == '/v1/bots/births' else {'id': 'ev1', 'status': 'unverified'}
+                     if route == '/v1/evidence' else {'id': 'birth1'} if route == '/v1/bots/births/proposals' else {})
+
+            class Response:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *a):
+                    return False
+
+                def read(self, n=None):
+                    return json.dumps(reply).encode()
+            return Response()
+        env = {'API_URL': 'http://127.0.0.1:3000', 'PRINCIPALS_JSON': json.dumps([{'role': 'researcher', 'token': 'r'}, {'role': 'evaluator', 'token': 'e'}])}
+        out = rf.propose('desk', 'organisation-records', env, opener, self.root, passing, self.ledger)
+        self.assertEqual([(o['idea'], o['outcome'], o['botId']) for o in out], [('reversal-1m-bottom3', 'birth proposed', 'rnd-reversal-1m-bottom3')])
+        evidence = next(c for c in calls if c[0] == '/v1/evidence')
+        self.assertEqual((evidence[2], evidence[1]['sourceId']), ('r', 'organisation-records'))
+        self.assertIn('Passed.', evidence[1]['content'])
+        review = next(c for c in calls if c[0] == '/v1/evidence/reviews')
+        self.assertEqual((review[2], review[1]['status']), ('e', 'verified'))  # another identity, on its own judgement
+        birth = next(c for c in calls if c[0] == '/v1/bots/births/proposals')
+        self.assertEqual((birth[2], birth[1]['department'], birth[1]['evidenceIds']), ('r', 'desk', ['ev1']))
+        calls.clear()
+        running = rows([(m, 1.0) for m in months[:5]])  # not at the horizon: nothing is proposed
+        self.assertEqual(rf.propose('desk', 'organisation-records', env, opener, self.root, running, self.ledger), [])
+        self.assertFalse([c for c in calls if c[0] == '/v1/evidence'])
+
     def test_a_new_idea_in_the_ledger_does_not_end_running_tests(self):
         before = rnd_scout.code_fingerprint()
         ledger = Path(self.tmp.name) / 'ledger.jsonl'
